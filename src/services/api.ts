@@ -391,6 +391,38 @@ class ApiService {
     try {
       const response = await fetch(url, config);
       
+      // Manejar errores de autenticación (401, 403)
+      if (response.status === 401 || response.status === 403) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Si el error indica que no hay credenciales, limpiar sesión y redirigir
+        const errorMessage = errorData.detail || errorData.message || '';
+        if (errorMessage.includes('credenciales') || errorMessage.includes('autenticación') || 
+            errorMessage.includes('authentication') || response.status === 401) {
+          
+          // Limpiar localStorage
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          
+          // Redirigir al login solo si no estamos ya en la página de login
+          if (!window.location.pathname.includes('login') && !endpoint.includes('/auth/login')) {
+            // Usar window.location para forzar recarga completa y limpiar estado
+            window.location.href = '/';
+          }
+        }
+        
+        // Crear un error personalizado que preserve la estructura de Django
+        const customError = new Error();
+        customError.name = 'ValidationError';
+        customError.message = JSON.stringify(errorData);
+        
+        // Agregar el objeto original como propiedad
+        (customError as any).errorData = errorData;
+        (customError as any).status = response.status;
+        
+        throw customError;
+      }
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         
@@ -401,6 +433,7 @@ class ApiService {
         
         // Agregar el objeto original como propiedad
         (customError as any).errorData = errorData;
+        (customError as any).status = response.status;
         
         throw customError;
       }
@@ -446,10 +479,32 @@ class ApiService {
     // Obtener token CSRF antes de hacer login
     await this.getCsrf();
     
-    return this.request<LoginResponse>('/auth/login/', {
+    const response = await this.request<LoginResponse>('/auth/login/', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
+    
+    // Asegurar que las cookies se establezcan correctamente
+    // El backend establece las cookies de sesión automáticamente
+    // Solo necesitamos guardar la información del usuario en localStorage
+    
+    return response;
+  }
+
+  // Verificar si la sesión está activa
+  async checkSession(): Promise<boolean> {
+    try {
+      // Intentar hacer una petición simple que requiere autenticación
+      await this.request<{ status: string }>('/auth/csrf/');
+      return true;
+    } catch (error: any) {
+      // Si obtenemos un 403 o 401, la sesión no está activa
+      if (error.status === 401 || error.status === 403) {
+        return false;
+      }
+      // Otros errores pueden ser de red, asumimos que la sesión está activa
+      return true;
+    }
   }
 
   async logout(): Promise<void> {
