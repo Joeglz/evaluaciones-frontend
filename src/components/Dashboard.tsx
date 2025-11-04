@@ -4,8 +4,10 @@ import {
   FaChartBar, 
   FaBell, 
   FaComments, 
-  FaCog 
+  FaCog
 } from 'react-icons/fa';
+import Settings from './Settings';
+import Evaluaciones from './Evaluaciones';
 import './Dashboard.css';
 
 interface User {
@@ -14,6 +16,9 @@ interface User {
   email?: string;
   first_name?: string;
   last_name?: string;
+  role?: string;
+  is_admin?: boolean;
+  is_evaluador?: boolean;
 }
 
 interface DashboardProps {
@@ -22,6 +27,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [activeView, setActiveView] = useState<string>('home');
 
   useEffect(() => {
     // Obtener información del usuario desde localStorage
@@ -55,44 +61,87 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const renderContent = () => {
+    switch (activeView) {
+      case 'evaluaciones':
+        // Solo mostrar evaluaciones para administradores
+        if (user?.role === 'ADMIN' || user?.is_admin) {
+          return <Evaluaciones />;
+        } else {
+          return (
+            <div className="dashboard-content">
+              <div className="access-denied">
+                <h2>Acceso Restringido</h2>
+                <p>Esta sección solo está disponible para administradores.</p>
+              </div>
+            </div>
+          );
+        }
+      case 'ajustes':
+        return <Settings />;
+      case 'home':
+      default:
+        return (
+          <div className="dashboard-content">
+            <p>Contenido del dashboard aquí...</p>
+          </div>
+        );
+    }
+  };
+
   return (
     <div className="dashboard-container">
       {/* Header con mensaje de bienvenida */}
-      <header className="dashboard-header">
-        <div className="welcome-message">
-          <h1>Hola {getDisplayName()}, ¿qué quieres hacer hoy?</h1>
-        </div>
-        <button onClick={handleLogout} className="logout-button">
-          Cerrar Sesión
-        </button>
-      </header>
+      {(activeView === 'home' || activeView === 'ajustes' || activeView === 'evaluaciones') && (
+        <header className="dashboard-header">
+          <div className="welcome-message">
+            <h1>Hola {getDisplayName()}, ¿qué quieres hacer hoy?</h1>
+          </div>
+          <button onClick={handleLogout} className="logout-button">
+            Cerrar Sesión
+          </button>
+        </header>
+      )}
 
       {/* Contenido principal */}
       <main className="dashboard-main">
-        <div className="dashboard-content">
-          <p>Contenido del dashboard aquí...</p>
-        </div>
+        {renderContent()}
       </main>
 
       {/* Menú inferior */}
       <nav className="bottom-menu">
-        <div className="menu-item">
+        <div 
+          className={`menu-item ${activeView === 'evaluaciones' ? 'active' : ''}`}
+          onClick={() => setActiveView('evaluaciones')}
+        >
           <FaClipboardList className="menu-icon" />
           <span>Evaluaciones</span>
         </div>
-        <div className="menu-item">
+        <div 
+          className={`menu-item ${activeView === 'reportes' ? 'active' : ''}`}
+          onClick={() => setActiveView('reportes')}
+        >
           <FaChartBar className="menu-icon" />
           <span>Reportes</span>
         </div>
-        <div className="menu-item">
+        <div 
+          className={`menu-item ${activeView === 'notificaciones' ? 'active' : ''}`}
+          onClick={() => setActiveView('notificaciones')}
+        >
           <FaBell className="menu-icon" />
           <span>Notificaciones</span>
         </div>
-        <div className="menu-item">
+        <div 
+          className={`menu-item ${activeView === 'mensajes' ? 'active' : ''}`}
+          onClick={() => setActiveView('mensajes')}
+        >
           <FaComments className="menu-icon" />
           <span>Mensajes</span>
         </div>
-        <div className="menu-item">
+        <div 
+          className={`menu-item ${activeView === 'ajustes' ? 'active' : ''}`}
+          onClick={() => setActiveView('ajustes')}
+        >
           <FaCog className="menu-icon" />
           <span>Ajustes</span>
         </div>

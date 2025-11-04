@@ -55,13 +55,14 @@
 /* Contenido principal */
 .dashboard-main {
   flex: 1;
-  padding: 2rem 1.5rem;
+  padding: 0;
   overflow-y: auto;
 }
 
 .dashboard-content {
   max-width: 1200px;
   margin: 0 auto;
+  padding: 2rem 1.5rem;
 }
 
 .dashboard-content p {
@@ -150,6 +151,30 @@
   .menu-item span {
     font-size: 0.7rem;
   }
+}
+
+/* Estilos para acceso denegado */
+.access-denied {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(225, 32, 38, 0.1);
+  margin: 2rem;
+}
+
+.access-denied h2 {
+  color: #e12026;
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.access-denied p {
+  color: #6c757d;
+  font-size: 1.1rem;
+  margin: 0;
 }
 
 @media (max-width: 480px) {

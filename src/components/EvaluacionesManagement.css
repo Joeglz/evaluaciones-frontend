@@ -1,0 +1,696 @@
+/* EvaluacionesManagement.css */
+.evaluaciones-management {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.management-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e12026;
+}
+
+.management-header h2 {
+  color: #e12026;
+  margin: 0;
+  font-size: 2rem;
+}
+
+/* Filtros */
+.filters-section {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  align-items: end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+.filter-group select,
+.filter-group input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input svg {
+  position: absolute;
+  left: 10px;
+  color: #666;
+  z-index: 1;
+}
+
+.search-input input {
+  padding-left: 35px;
+  width: 100%;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: end;
+}
+
+/* Lista de evaluaciones */
+.evaluaciones-list {
+  margin-top: 20px;
+}
+
+.loading,
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.evaluaciones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+.evaluacion-card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.evaluacion-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  background: #f8f9fa;
+}
+
+.card-header h3 {
+  margin: 0;
+  color: #e12026;
+  font-size: 1.1rem;
+  flex: 1;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn-icon.btn-danger:hover {
+  background: #dc3545;
+  color: white;
+}
+
+.card-content {
+  padding: 20px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  color: #555;
+}
+
+.info-row svg {
+  margin-right: 8px;
+  color: #e12026;
+  width: 14px;
+}
+
+.resultado {
+  margin-top: 15px;
+  padding: 10px;
+  background: #e8f5e8;
+  border-radius: 4px;
+  text-align: center;
+  color: #2d5a2d;
+}
+
+/* Modales */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-large {
+  max-width: 800px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #e12026;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: #333;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px;
+  border-top: 1px solid #eee;
+}
+
+/* Formularios */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+.form-group input,
+.form-group select {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #e12026;
+  box-shadow: 0 0 0 2px rgba(225, 32, 38, 0.2);
+}
+
+/* Detalles */
+.detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.detail-section h4 {
+  color: #e12026;
+  margin-bottom: 15px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.section-header h4 {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.no-items {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-style: italic;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.detail-item label {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.detail-item span {
+  color: #333;
+}
+
+.status-active {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.status-inactive {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+.resultado {
+  color: #28a745;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+/* Puntos de evaluación */
+.puntos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.punto-item {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #e12026;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 15px;
+}
+
+.punto-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.punto-orden {
+  font-weight: 600;
+  color: #e12026;
+  min-width: 20px;
+}
+
+.punto-pregunta {
+  flex: 1;
+  color: #333;
+}
+
+.punto-puntuacion {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.punto-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn-icon.btn-danger {
+  color: #dc3545;
+}
+
+.btn-icon.btn-danger:hover {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.punto-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.punto-orden {
+  font-weight: 600;
+  color: #e12026;
+  min-width: 20px;
+}
+
+.punto-pregunta {
+  flex: 1;
+  color: #333;
+}
+
+.punto-puntuacion {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.puntuacion-1 {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.puntuacion-2 {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.puntuacion-3 {
+  background: #e8f5e8;
+  color: #2e7d32;
+}
+
+/* Criterios de evaluación */
+.criterios-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.criterio-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #17a2b8;
+  justify-content: space-between;
+}
+
+.criterio-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.criterio-orden {
+  font-weight: 600;
+  color: #17a2b8;
+  min-width: 20px;
+}
+
+.criterio-texto {
+  flex: 1;
+  color: #333;
+}
+
+.criterio-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Firmas */
+.firmas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.firma-item {
+  padding: 15px;
+  border-radius: 6px;
+  border: 2px solid #ddd;
+  transition: all 0.2s;
+}
+
+.firma-item.firmado {
+  border-color: #28a745;
+  background: #f8fff8;
+}
+
+.firma-item.pendiente {
+  border-color: #ffc107;
+  background: #fffdf0;
+}
+
+.firma-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.firma-tipo {
+  font-weight: 600;
+  color: #333;
+}
+
+.firma-estado {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.firma-estado.firmado {
+  background: #d4edda;
+  color: #155724;
+}
+
+.firma-estado.pendiente {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.firma-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.firma-nombre {
+  font-weight: 600;
+  color: #333;
+}
+
+.firma-usuario {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.firma-fecha {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+/* Botones */
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #e12026;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #c41e3a;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .evaluaciones-management {
+    padding: 15px;
+  }
+  
+  .management-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .evaluaciones-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .firmas-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal {
+    width: 95%;
+    margin: 10px;
+  }
+  
+  .modal-footer {
+    flex-direction: column;
+  }
+  
+  .modal-footer .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .management-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  
+  .card-actions {
+    justify-content: center;
+  }
+  
+  .punto-header,
+  .criterio-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+  
+  .firma-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+}
