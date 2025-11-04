@@ -1,5 +1,9 @@
 // Servicio de API para el frontend
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+// En desarrollo local, usar ruta relativa para aprovechar el proxy de React
+// En producción (build), usar la IP del servidor de producción
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? (process.env.REACT_APP_API_BASE_URL || 'http://10.12.46.229:8000/api/v1')
+  : (process.env.REACT_APP_API_BASE_URL || '/api/v1');
 
 export interface LoginRequest {
   username: string;
@@ -395,19 +399,29 @@ class ApiService {
       if (response.status === 401 || response.status === 403) {
         const errorData = await response.json().catch(() => ({}));
         
-        // Si el error indica que no hay credenciales, limpiar sesión y redirigir
-        const errorMessage = errorData.detail || errorData.message || '';
-        if (errorMessage.includes('credenciales') || errorMessage.includes('autenticación') || 
-            errorMessage.includes('authentication') || response.status === 401) {
-          
+        // Solo redirigir si es un 401 (No autenticado) o si el error específicamente indica problemas de autenticación
+        const errorMessage = (errorData.detail || errorData.message || '').toLowerCase();
+        const isAuthError = errorMessage.includes('credenciales') || 
+                           errorMessage.includes('autenticación') || 
+                           errorMessage.includes('authentication') ||
+                           errorMessage.includes('not authenticated') ||
+                           errorMessage.includes('no autenticado') ||
+                           errorMessage.includes('no se proveyeron') ||
+                           response.status === 401;
+        
+        // Redirigir para errores de autenticación reales (401 o 403 con mensaje de autenticación)
+        if (isAuthError && (response.status === 401 || (response.status === 403 && isAuthError))) {
           // Limpiar localStorage
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
           
           // Redirigir al login solo si no estamos ya en la página de login
-          if (!window.location.pathname.includes('login') && !endpoint.includes('/auth/login')) {
-            // Usar window.location para forzar recarga completa y limpiar estado
-            window.location.href = '/';
+          if (!window.location.pathname.includes('login') && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/csrf')) {
+            // Usar setTimeout para evitar redirecciones múltiples
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 100);
+            return {} as T; // Retornar objeto vacío para evitar procesar más
           }
         }
         
@@ -484,9 +498,17 @@ class ApiService {
       body: JSON.stringify(credentials),
     });
     
-    // Asegurar que las cookies se establezcan correctamente
-    // El backend establece las cookies de sesión automáticamente
-    // Solo necesitamos guardar la información del usuario en localStorage
+    // Esperar un momento para asegurar que las cookies se establezcan
+    // Esto es necesario porque el navegador necesita tiempo para procesar las cookies
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Verificar que las cookies se hayan establecido haciendo una petición simple
+    // Esto fuerza al navegador a enviar las cookies
+    try {
+      await this.request<{ csrfToken: string }>('/auth/csrf/');
+    } catch (error) {
+      console.warn('Warning: Could not verify session after login', error);
+    }
     
     return response;
   }
@@ -494,8 +516,9 @@ class ApiService {
   // Verificar si la sesión está activa
   async checkSession(): Promise<boolean> {
     try {
-      // Intentar hacer una petición simple que requiere autenticación
-      await this.request<{ status: string }>('/auth/csrf/');
+      // Intentar hacer una petición simple que no requiere autenticación
+      // pero que verifica que las cookies se estén enviando
+      await this.request<{ csrfToken: string }>('/auth/csrf/');
       return true;
     } catch (error: any) {
       // Si obtenemos un 403 o 401, la sesión no está activa
@@ -947,10 +970,17 @@ export function getMediaUrl(path: string | null): string {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path;
   }
+  
+  // En desarrollo con proxy, usar ruta relativa
+  // En producción (build), usar URL completa del servidor de producción
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? (process.env.REACT_APP_BACKEND_URL || 'http://10.12.46.229:8000')
+    : (process.env.REACT_APP_BACKEND_URL || '');
+  
   // Si comienza con /media/, usar la ruta directamente
   if (path.startsWith('/media/')) {
-    return `${API_BASE_URL.replace('/api/v1', '')}${path}`;
+    return `${baseUrl}${path}`;
   }
   // Si no, asumir que es una ruta relativa y agregar /media/
-  return `${API_BASE_URL.replace('/api/v1', '')}/media/${path}`;
+  return `${baseUrl}/media/${path}`;
 }

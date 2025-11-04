@@ -24,9 +24,11 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:prod": "REACT_APP_API_BASE_URL=http://10.12.46.229:8000/api/v1 REACT_APP_BACKEND_URL=http://10.12.46.229:8000 react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
+  "proxy": "http://localhost:8000",
   "eslintConfig": {
     "extends": [
       "react-app",

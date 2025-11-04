@@ -48,12 +48,24 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           localStorage.setItem('user', JSON.stringify(response.user));
         }
         
-        // Mostrar mensaje de éxito por 1 segundo y luego redirigir
-        setTimeout(() => {
-          if (onLoginSuccess) {
-            onLoginSuccess();
+        // Esperar un poco más para asegurar que las cookies se establezcan completamente
+        // y luego verificar que la sesión esté activa antes de redirigir
+        setTimeout(async () => {
+          try {
+            // Verificar que la sesión esté activa
+            const sessionActive = await apiService.checkSession();
+            if (sessionActive && onLoginSuccess) {
+              onLoginSuccess();
+            } else {
+              setError('Error al establecer la sesión. Por favor, intenta de nuevo.');
+              setSuccess(false);
+            }
+          } catch (error) {
+            console.error('Error verifying session:', error);
+            setError('Error al verificar la sesión. Por favor, intenta de nuevo.');
+            setSuccess(false);
           }
-        }, 1000);
+        }, 500);
       } else {
         setError(response.message || 'Credenciales inválidas');
       }
