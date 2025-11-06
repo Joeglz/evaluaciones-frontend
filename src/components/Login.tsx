@@ -55,7 +55,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             // Verificar que la sesión esté activa
             const sessionActive = await apiService.checkSession();
             if (sessionActive && onLoginSuccess) {
-              onLoginSuccess();
+            onLoginSuccess();
             } else {
               setError('Error al establecer la sesión. Por favor, intenta de nuevo.');
               setSuccess(false);

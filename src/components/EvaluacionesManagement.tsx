@@ -82,7 +82,7 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
         apiService.getEvaluaciones(),
         apiService.getAreas(),
         apiService.getPosiciones(),
-        apiService.getUsers({ role: 'supervisor' })
+        apiService.getUsers({ role: 'ADMIN,EVALUADOR', is_active: true })
       ]);
       
       setEvaluaciones(evaluacionesData.results);

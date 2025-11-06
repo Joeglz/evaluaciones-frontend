@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FaArrowLeft,
   FaUsers,
@@ -14,7 +14,8 @@ import {
   FaPrint,
   FaCalendarAlt,
   FaClipboardList,
-  FaEdit
+  FaEdit,
+  FaEraser
 } from 'react-icons/fa';
 import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -46,6 +47,24 @@ const Evaluaciones: React.FC = () => {
   const [evaluacionActual, setEvaluacionActual] = useState<any>(null);
   const [resultadosEvaluacion, setResultadosEvaluacion] = useState<any[]>([]);
   const [supervisorSeleccionado, setSupervisorSeleccionado] = useState<number | null>(null);
+  
+  // Referencias para los canvas de firmas
+  const empleadoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const evaluadorCanvasRef = useRef<HTMLCanvasElement>(null);
+  const calidadCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState<{ [key: string]: boolean }>({});
+  const [hasSignature, setHasSignature] = useState<{ [key: string]: boolean }>({});
+  const [signatures, setSignatures] = useState<{ [key: string]: string | null }>({
+    empleado: null,
+    evaluador: null,
+    calidad: null
+  });
+  const [showFirmaModal, setShowFirmaModal] = useState<{ [key: string]: boolean }>({
+    empleado: false,
+    evaluador: false,
+    calidad: false
+  });
+  const [currentFirmaTipo, setCurrentFirmaTipo] = useState<string>('');
 
   // Estados para filtros y búsqueda
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,6 +88,96 @@ const Evaluaciones: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Configurar los canvas para dibujar
+  useEffect(() => {
+    const configCanvas = (canvas: HTMLCanvasElement | null) => {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.strokeStyle = '#e12026';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    };
+
+    configCanvas(empleadoCanvasRef.current);
+    configCanvas(evaluadorCanvasRef.current);
+    configCanvas(calidadCanvasRef.current);
+  }, []);
+
+  // Funciones para dibujar en los canvas
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>, tipo: string) => {
+    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    setIsDrawing({ ...isDrawing, [tipo]: true });
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>, tipo: string) => {
+    if (!isDrawing[tipo]) return;
+
+    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+    setHasSignature({ ...hasSignature, [tipo]: true });
+  };
+
+  const stopDrawing = (tipo: string) => {
+    setIsDrawing({ ...isDrawing, [tipo]: false });
+    // Guardar la firma como imagen automáticamente
+    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+    if (canvas && hasSignature[tipo]) {
+      const dataURL = canvas.toDataURL('image/png');
+      setSignatures({ ...signatures, [tipo]: dataURL });
+    }
+  };
+
+  const handleOpenFirmaModal = (tipo: string) => {
+    setCurrentFirmaTipo(tipo);
+    setShowFirmaModal({ ...showFirmaModal, [tipo]: true });
+    
+    // Cargar firma existente si hay una
+    if (signatures[tipo]) {
+      const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+      if (canvas) {
+        const img = new Image();
+        img.onload = () => {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            setHasSignature({ ...hasSignature, [tipo]: true });
+          }
+        };
+        img.src = signatures[tipo] || '';
+      }
+    }
+  };
+
+  const clearSignature = (tipo: string) => {
+    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature({ ...hasSignature, [tipo]: false });
+    setSignatures({ ...signatures, [tipo]: null });
+  };
 
   useEffect(() => {
     // Filtrar usuarios cuando cambie el término de búsqueda
@@ -209,8 +318,7 @@ const Evaluaciones: React.FC = () => {
       // Inicializar resultados vacíos para cada punto de evaluación
       const resultadosIniciales = evaluacion.puntos_evaluacion?.map((punto: any) => ({
         punto_evaluacion: punto.id,
-        puntuacion: null,
-        observaciones: ''
+        puntuacion: null
       })) || [];
       setResultadosEvaluacion(resultadosIniciales);
       
@@ -233,15 +341,6 @@ const Evaluaciones: React.FC = () => {
     );
   };
 
-  const handleObservacionChange = (puntoId: number, observacion: string) => {
-    setResultadosEvaluacion(prev => 
-      prev.map(resultado => 
-        resultado.punto_evaluacion === puntoId 
-          ? { ...resultado, observaciones: observacion }
-          : resultado
-      )
-    );
-  };
 
   const guardarEvaluacion = async () => {
     if (!selectedUser || !evaluacionActual || !supervisorSeleccionado) {
@@ -319,6 +418,23 @@ const Evaluaciones: React.FC = () => {
       case 'usuario-detalle':
         setCurrentView('usuarios');
         setSelectedUser(null);
+        break;
+      case 'usuario-evaluacion':
+        setCurrentView('usuario-detalle');
+        setEvaluacionActual(null);
+        setResultadosEvaluacion([]);
+        setSupervisorSeleccionado(null);
+        // Limpiar firmas
+        setSignatures({
+          empleado: null,
+          evaluador: null,
+          calidad: null
+        });
+        setHasSignature({
+          empleado: false,
+          evaluador: false,
+          calidad: false
+        });
         break;
       case 'onboarding':
         setCurrentView('grupos');
@@ -652,31 +768,55 @@ const Evaluaciones: React.FC = () => {
 
     return (
       <div className="evaluaciones-section">
-        <div className="evaluation-header">
-          <div className="evaluation-breadcrumb">
-            <button 
-              className="btn-back"
-              onClick={() => setCurrentView('usuario-detalle')}
-            >
-              <FaArrowLeft />
-            </button>
-            <h2>Evaluación: {evaluacionActual.nombre}</h2>
-          </div>
-          <div className="evaluation-user-info">
-            <h3>{selectedUser.full_name}</h3>
-            <p>{selectedUser.numero_empleado ? `#${selectedUser.numero_empleado}` : ''}</p>
-          </div>
-        </div>
 
         <div className="evaluation-content">
           <div className="evaluation-form">
             <div className="form-section">
-              <h4>Información de la Evaluación</h4>
-              <div className="evaluation-info">
-                <p><strong>Área:</strong> {evaluacionActual.area_name}</p>
-                <p><strong>Posición:</strong> {evaluacionActual.posicion_name}</p>
-                <p><strong>Nivel:</strong> {evaluacionActual.nivel_display}</p>
-                <p><strong>Mínimo Aprobatorio:</strong> {evaluacionActual.minimo_aprobatorio}%</p>
+              <h4>{evaluacionActual.nombre}</h4>
+              <div className="evaluation-info-table-container">
+                <table className="evaluation-info-table">
+                  <tbody>
+                    <tr>
+                      <td>Nombre del empleado: {selectedUser.full_name}</td>
+                      <td>No empleado: {selectedUser.numero_empleado ? `#${selectedUser.numero_empleado}` : 'No asignado'}</td>
+                    </tr>
+                    <tr>
+                      <td>Puesto: {evaluacionActual.posicion_name}</td>
+                      <td>Fecha de Ingreso: {selectedUser.fecha_ingreso ? new Date(selectedUser.fecha_ingreso).toLocaleDateString('es-ES') : 'No asignada'}</td>
+                    </tr>
+                    <tr>
+                      <td>Área: {evaluacionActual.area_name}</td>
+                      <td>Nombre de la operación y/o habilidad a evaluar: {evaluacionActual.nombre}</td>
+                    </tr>
+                    <tr>
+                      <td>Nivel de la habilidad a evaluar: {evaluacionActual.nivel_display}</td>
+                      <td rowSpan={2} className="nivel-status-cell">
+                        <div className="nivel-status-container">
+                          <div className="nivel-box">
+                            {evaluacionActual.nivel_display}
+                          </div>
+                          <div className="status-grid">
+                            {[
+                              { pos: 1, nivel: 4 }, // Superior izquierda
+                              { pos: 2, nivel: 1 }, // Superior derecha
+                              { pos: 3, nivel: 3 }, // Inferior izquierda
+                              { pos: 4, nivel: 2 }  // Inferior derecha
+                            ].map(({ pos, nivel }) => (
+                              <div 
+                                key={pos} 
+                                className={`status-item ${evaluacionActual.nivel === nivel ? 'active' : ''}`}
+                              >
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Se recomienda Observar al operador durante 5 ciclos</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -698,53 +838,209 @@ const Evaluaciones: React.FC = () => {
               </div>
             </div>
 
+            <div className="puntos-evaluacion-table-container">
+                <table className="puntos-evaluacion-table">
+                  <thead>
+                    <tr>
+                      <th>Puntos a Evaluar</th>
+                      <th className="calificacion-header">Bajo (1)</th>
+                      <th className="calificacion-header">Medio (2)</th>
+                      <th className="calificacion-header">Alto (3)</th>
+                    </tr>
+                  </thead>
+                <tbody>
+                  {evaluacionActual.puntos_evaluacion?.map((punto: any, index: number) => {
+                    const resultado = resultadosEvaluacion.find(r => r.punto_evaluacion === punto.id);
+                    return (
+                      <tr key={punto.id}>
+                        <td className="punto-pregunta">
+                          <span className="punto-numero">{index + 1}.</span>
+                          {punto.pregunta}
+                        </td>
+                        {[1, 2, 3].map(puntuacion => (
+                          <td 
+                            key={puntuacion}
+                            className={`punto-calificacion ${resultado?.puntuacion === puntuacion ? 'selected' : ''}`}
+                            onClick={() => handlePuntuacionChange(punto.id, puntuacion)}
+                          >
+                            <label className="puntuacion-option">
+                              <input
+                                type="radio"
+                                name={`puntuacion-${punto.id}`}
+                                value={puntuacion}
+                                checked={resultado?.puntuacion === puntuacion}
+                                onChange={() => handlePuntuacionChange(punto.id, puntuacion)}
+                              />
+                              {resultado?.puntuacion === puntuacion && (
+                                <span className="checkmark">✓</span>
+                              )}
+                            </label>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
             <div className="form-section">
-              <h4>Puntos de Evaluación</h4>
-              <div className="puntos-evaluacion">
-                {evaluacionActual.puntos_evaluacion?.map((punto: any, index: number) => {
-                  const resultado = resultadosEvaluacion.find(r => r.punto_evaluacion === punto.id);
+              <h4>Criterios de Evaluación</h4>
+              <div className="criterios-evaluacion-table-container">
+                <table className="criterios-evaluacion-table">
+                  <tbody>
+                    {evaluacionActual.criterios_evaluacion && evaluacionActual.criterios_evaluacion.length > 0 ? (
+                      <>
+                        {evaluacionActual.criterios_evaluacion.map((criterio: any) => (
+                          <tr key={criterio.id}>
+                            <td className="criterio-definition">
+                              <span className="criterio-texto">{criterio.criterio}</span>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td className="criterio-formula">
+                            <strong>EVALUACIÓN = ( PUNTOS OBTENIDOS / 17 ) * 80</strong>
+                          </td>
+                        </tr>
+                      </>
+                    ) : (
+                      <tr>
+                        <td className="criterio-definition">
+                          <span className="criterio-texto">No hay criterios definidos</span>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <h4>Resultado</h4>
+              <div className="resultado-evaluacion">
+                {(() => {
+                  const puntosObtenidos = resultadosEvaluacion.reduce((sum, resultado) => {
+                    return sum + (resultado.puntuacion || 0);
+                  }, 0);
+                  const resultado = (puntosObtenidos / 17) * 80;
                   return (
-                    <div key={punto.id} className="punto-evaluacion-item">
-                      <div className="punto-header">
-                        <span className="punto-numero">{index + 1}.</span>
-                        <h5>{punto.pregunta}</h5>
+                    <div className="resultado-content">
+                      <div className="resultado-formula">
+                        <span className="resultado-label">Puntos Obtenidos:</span>
+                        <span className="resultado-value">{puntosObtenidos}</span>
                       </div>
-                      <div className="punto-content">
-                        <div className="puntuacion-section">
-                          <label>Puntuación:</label>
-                          <div className="puntuacion-options">
-                            {[1, 2, 3].map(puntuacion => (
-                              <label key={puntuacion} className="puntuacion-option">
-                                <input
-                                  type="radio"
-                                  name={`puntuacion-${punto.id}`}
-                                  value={puntuacion}
-                                  checked={resultado?.puntuacion === puntuacion}
-                                  onChange={() => handlePuntuacionChange(punto.id, puntuacion)}
-                                />
-                                <span className={`puntuacion-label puntuacion-${puntuacion}`}>
-                                  {puntuacion === 1 ? 'Bajo' : puntuacion === 2 ? 'Medio' : 'Alto'}
-                                </span>
-                              </label>
-                            ))}
+                      <div className="resultado-formula">
+                        <span className="resultado-label">Fórmula:</span>
+                        <span className="resultado-value">( {puntosObtenidos} / 17 ) * 80 = {resultado.toFixed(2)}%</span>
+                      </div>
+                      <div className="resultado-final">
+                        <strong>Resultado: {resultado.toFixed(2)}%</strong>
+                      </div>
+                      <div className="minimo-aprobatorio">
+                        Mínimo aprobatorio para este nivel: {evaluacionActual.minimo_aprobatorio || 80}%
+                      </div>
+                      <div className="fecha-evaluacion">
+                        Fecha de evaluación: {new Date().toLocaleDateString('es-ES', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </div>
+                </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="form-section">
+              <h4>Firmas</h4>
+              <div className="firmas-container">
+                {['empleado', 'evaluador', 'calidad'].map((tipo) => {
+                  const tipoLabel = tipo === 'empleado' ? 'Empleado' : tipo === 'evaluador' ? 'Evaluador' : 'Calidad';
+                  
+                  return (
+                    <div key={tipo} className="firma-item">
+                      <label className="firma-label">{tipoLabel}</label>
+                      {signatures[tipo] ? (
+                        <div className="firma-preview-container">
+                          <div className="firma-preview">
+                            <img src={signatures[tipo] || ''} alt={`Firma ${tipoLabel}`} />
                           </div>
+                          <button
+                            type="button"
+                            className="btn-editar-firma"
+                            onClick={() => handleOpenFirmaModal(tipo)}
+                          >
+                            <FaEdit /> Editar Firma
+                          </button>
                         </div>
-                        <div className="observaciones-section">
-                          <label>Observaciones:</label>
-                          <textarea
-                            value={resultado?.observaciones || ''}
-                            onChange={(e) => handleObservacionChange(punto.id, e.target.value)}
-                            placeholder="Observaciones adicionales..."
-                            rows={3}
-                            className="form-control"
-                          />
-                        </div>
-                      </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-agregar-firma"
+                          onClick={() => handleOpenFirmaModal(tipo)}
+                        >
+                          <FaPlus /> Agregar Firma
+                        </button>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </div>
+
+            {/* Modal de Firma */}
+            {showFirmaModal.empleado || showFirmaModal.evaluador || showFirmaModal.calidad ? (
+              <div className="modal-overlay" onClick={() => setShowFirmaModal({ empleado: false, evaluador: false, calidad: false })}>
+                <div className="modal modal-firma" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>Firma - {currentFirmaTipo === 'empleado' ? 'Empleado' : currentFirmaTipo === 'evaluador' ? 'Evaluador' : 'Calidad'}</h3>
+                    <button 
+                      className="modal-close"
+                      onClick={() => setShowFirmaModal({ empleado: false, evaluador: false, calidad: false })}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="firma-canvas-wrapper">
+                      <canvas
+                        ref={currentFirmaTipo === 'empleado' ? empleadoCanvasRef : currentFirmaTipo === 'evaluador' ? evaluadorCanvasRef : calidadCanvasRef}
+                        width={600}
+                        height={250}
+                        className="firma-canvas"
+                        onMouseDown={(e) => startDrawing(e, currentFirmaTipo)}
+                        onMouseMove={(e) => draw(e, currentFirmaTipo)}
+                        onMouseUp={() => stopDrawing(currentFirmaTipo)}
+                        onMouseLeave={() => stopDrawing(currentFirmaTipo)}
+                      />
+                    </div>
+                    <div className="firma-controls">
+                      <button
+                        type="button"
+                        className="btn-clear-firma"
+                        onClick={() => clearSignature(currentFirmaTipo)}
+                        disabled={!hasSignature[currentFirmaTipo]}
+                      >
+                        <FaEraser /> Limpiar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-guardar-firma"
+                        onClick={() => {
+                          stopDrawing(currentFirmaTipo);
+                          setShowFirmaModal({ empleado: false, evaluador: false, calidad: false });
+                        }}
+                        disabled={!hasSignature[currentFirmaTipo]}
+                      >
+                        <FaSave /> Guardar Firma
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="evaluation-actions">
               <button 
