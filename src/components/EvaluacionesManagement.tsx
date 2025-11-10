@@ -45,6 +45,7 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
     minimo_aprobatorio: 70,
     fecha_evaluacion: '',
     is_active: true,
+    es_plantilla: true, // Las evaluaciones en este componente son plantillas
     puntos_evaluacion: [] as any[],
     criterios_evaluacion: [] as any[]
   });
@@ -79,7 +80,7 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
     try {
       setLoading(true);
       const [evaluacionesData, areasData, posicionesData, supervisoresData] = await Promise.all([
-        apiService.getEvaluaciones(),
+        apiService.getEvaluaciones({ es_plantilla: true }), // Solo cargar plantillas
         apiService.getAreas(),
         apiService.getPosiciones(),
         apiService.getUsers({ role: 'ADMIN,EVALUADOR', is_active: true })
@@ -104,7 +105,9 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const applyFilters = async () => {
     try {
       setLoading(true);
-      const params: any = {};
+      const params: any = {
+        es_plantilla: true // Solo mostrar plantillas
+      };
       
       if (filtros.area_id) params.area_id = parseInt(filtros.area_id);
       if (filtros.posicion_id) params.posicion_id = parseInt(filtros.posicion_id);
@@ -133,11 +136,12 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       setLoading(true);
       await apiService.createEvaluacion({
         nombre: createForm.nombre,
+        es_plantilla: createForm.es_plantilla,
         posicion: createForm.posicion!,
         supervisor: createForm.supervisor,
         nivel: createForm.nivel,
         minimo_aprobatorio: createForm.minimo_aprobatorio,
-        fecha_evaluacion: createForm.fecha_evaluacion,
+        fecha_evaluacion: createForm.fecha_evaluacion || null,
         is_active: createForm.is_active,
         puntos_evaluacion: createForm.puntos_evaluacion,
         criterios_evaluacion: createForm.criterios_evaluacion
@@ -211,6 +215,7 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       minimo_aprobatorio: 70,
       fecha_evaluacion: '',
       is_active: true,
+      es_plantilla: true,
       puntos_evaluacion: [],
       criterios_evaluacion: []
     });

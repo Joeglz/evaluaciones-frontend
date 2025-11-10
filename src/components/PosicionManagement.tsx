@@ -9,7 +9,7 @@ import {
   FaFilter,
   FaBriefcase
 } from 'react-icons/fa';
-import { apiService, Posicion, Area } from '../services/api';
+import { apiService, Posicion, Area, NivelPosicion, Evaluacion } from '../services/api';
 import './PosicionManagement.css';
 
 const PosicionManagement: React.FC = () => {
@@ -34,6 +34,16 @@ const PosicionManagement: React.FC = () => {
   
   // Posición seleccionada
   const [selectedPosicion, setSelectedPosicion] = useState<Posicion | null>(null);
+  
+  // Estados para niveles y evaluaciones
+  const [nivelesPosicion, setNivelesPosicion] = useState<NivelPosicion[]>([]);
+  const [nivelesPorPosicion, setNivelesPorPosicion] = useState<Record<number, NivelPosicion[]>>({});
+  const [evaluacionesPlantillas, setEvaluacionesPlantillas] = useState<Evaluacion[]>([]);
+  const [evaluacionesPorNivel, setEvaluacionesPorNivel] = useState<Record<number, Evaluacion[]>>({});
+  const [nombreEvaluacionPorNivel, setNombreEvaluacionPorNivel] = useState<Record<number, string>>({});
+  const [plantillaSeleccionadaPorNivel, setPlantillaSeleccionadaPorNivel] = useState<Record<number, number>>({});
+  const [loadingNiveles, setLoadingNiveles] = useState(false);
+  const [loadingEvaluaciones, setLoadingEvaluaciones] = useState(false);
   
   // Formularios
   const [createForm, setCreateForm] = useState({
@@ -116,6 +126,21 @@ const PosicionManagement: React.FC = () => {
       const response = await apiService.getPosiciones(params);
       setPosiciones(response.results);
       setError(null);
+      
+      // Cargar niveles para cada posición
+      const niveles: Record<number, NivelPosicion[]> = {};
+      if (response.results && response.results.length > 0) {
+        for (const posicion of response.results) {
+          try {
+            const nivelesResponse = await apiService.getNivelesPosicion({ posicion_id: posicion.id });
+            niveles[posicion.id] = nivelesResponse.results || [];
+          } catch (err) {
+            console.error(`Error al cargar niveles para posición ${posicion.id}:`, err);
+            niveles[posicion.id] = [];
+          }
+        }
+      }
+      setNivelesPorPosicion(niveles);
     } catch (err) {
       setError('Error al cargar posiciones');
       console.error(err);
@@ -195,7 +220,7 @@ const PosicionManagement: React.FC = () => {
     }
   };
 
-  const openEditModal = (posicion: Posicion) => {
+  const openEditModal = async (posicion: Posicion) => {
     setSelectedPosicion(posicion);
     setEditErrors({});
     setEditForm({
@@ -204,7 +229,161 @@ const PosicionManagement: React.FC = () => {
       is_active: posicion.is_active
     });
     setShowEditModal(true);
+    // Cargar niveles y evaluaciones cuando se abre el modal
+    await loadNivelesPosicion(posicion.id);
+    await loadEvaluacionesPlantillas();
   };
+
+  const loadNivelesPosicion = async (posicionId: number) => {
+    try {
+      setLoadingNiveles(true);
+      const response = await apiService.getNivelesPosicion({ posicion_id: posicionId });
+      setNivelesPosicion(response.results);
+      
+      // Cargar evaluaciones para cada nivel
+      const evaluaciones: Record<number, Evaluacion[]> = {};
+      for (const nivel of response.results) {
+        try {
+          const evalResponse = await apiService.getEvaluaciones({ 
+            nivel_posicion_id: nivel.id,
+            es_plantilla: false
+          });
+          evaluaciones[nivel.id] = evalResponse.results;
+        } catch (err) {
+          console.error(`Error al cargar evaluaciones para nivel ${nivel.id}:`, err);
+          evaluaciones[nivel.id] = [];
+        }
+      }
+      setEvaluacionesPorNivel(evaluaciones);
+    } catch (err) {
+      console.error('Error al cargar niveles:', err);
+      setNivelesPosicion([]);
+    } finally {
+      setLoadingNiveles(false);
+    }
+  };
+
+  const loadEvaluacionesPlantillas = async () => {
+    try {
+      setLoadingEvaluaciones(true);
+      const response = await apiService.getEvaluaciones({ es_plantilla: true });
+      setEvaluacionesPlantillas(response.results);
+    } catch (err) {
+      console.error('Error al cargar evaluaciones plantillas:', err);
+      setEvaluacionesPlantillas([]);
+    } finally {
+      setLoadingEvaluaciones(false);
+    }
+  };
+
+  const handleCrearNivel = async (posicionId: number, nivel: number) => {
+    try {
+      await apiService.createNivelPosicion({
+        posicion: posicionId,
+        nivel: nivel,
+        is_active: true
+      });
+      await loadNivelesPosicion(posicionId);
+      
+      // Actualizar nivelesPorPosicion para reflejar el cambio
+      const nivelesResponse = await apiService.getNivelesPosicion({ posicion_id: posicionId });
+      setNivelesPorPosicion(prev => ({
+        ...prev,
+        [posicionId]: nivelesResponse.results
+      }));
+      
+      alert(`Nivel ${nivel} creado exitosamente`);
+    } catch (err: any) {
+      alert(`Error al crear nivel: ${err.message}`);
+    }
+  };
+
+  const handleEliminarNivel = async (nivelId: number) => {
+    if (!selectedPosicion) return;
+    if (!confirm('¿Estás seguro de eliminar este nivel?')) return;
+    
+    try {
+      await apiService.deleteNivelPosicion(nivelId);
+      await loadNivelesPosicion(selectedPosicion.id);
+      
+      // Actualizar nivelesPorPosicion para reflejar el cambio
+      const nivelesResponse = await apiService.getNivelesPosicion({ posicion_id: selectedPosicion.id });
+      setNivelesPorPosicion(prev => ({
+        ...prev,
+        [selectedPosicion.id]: nivelesResponse.results
+      }));
+      
+      alert('Nivel eliminado exitosamente');
+    } catch (err: any) {
+      alert(`Error al eliminar nivel: ${err.message}`);
+    }
+  };
+
+  const handleAgregarEvaluacionANivel = async (nivelPosicionId: number, plantillaId: number, nombre: string) => {
+    try {
+      const plantilla = evaluacionesPlantillas.find(p => p.id === plantillaId);
+      if (!plantilla) return;
+
+      if (!nombre || !nombre.trim()) {
+        alert('Por favor ingresa un nombre para la evaluación');
+        return;
+      }
+
+      // Obtener la plantilla completa con puntos y criterios
+      const plantillaCompleta = await apiService.getEvaluacion(plantillaId);
+
+      // Crear una evaluación real basada en la plantilla, copiando puntos y criterios
+      await apiService.createEvaluacion({
+        nombre: nombre.trim(),
+        es_plantilla: false,
+        nivel_posicion: nivelPosicionId,
+        plantilla: plantillaId,
+        supervisor: null,
+        minimo_aprobatorio: plantillaCompleta.minimo_aprobatorio,
+        is_active: true,
+        puntos_evaluacion: plantillaCompleta.puntos_evaluacion.map(p => ({
+          pregunta: p.pregunta,
+          orden: p.orden
+        })),
+        criterios_evaluacion: plantillaCompleta.criterios_evaluacion.map(c => ({
+          criterio: c.criterio,
+          orden: c.orden
+        }))
+      });
+      
+      // Recargar evaluaciones para este nivel
+      const evalResponse = await apiService.getEvaluaciones({ 
+        nivel_posicion_id: nivelPosicionId,
+        es_plantilla: false
+      });
+      setEvaluacionesPorNivel(prev => ({
+        ...prev,
+        [nivelPosicionId]: evalResponse.results
+      }));
+      
+      // Limpiar campos
+      setPlantillaSeleccionadaPorNivel(prev => {
+        const newState = { ...prev };
+        delete newState[nivelPosicionId];
+        return newState;
+      });
+      setNombreEvaluacionPorNivel(prev => {
+        const newState = { ...prev };
+        delete newState[nivelPosicionId];
+        return newState;
+      });
+      
+      alert('Evaluación agregada al nivel exitosamente');
+    } catch (err: any) {
+      alert(`Error al agregar evaluación: ${err.message}`);
+    }
+  };
+
+  const getEvaluacionesPorNivel = (nivelPosicionId: number): Evaluacion[] => {
+    return evaluacionesPorNivel[nivelPosicionId] || [];
+  };
+
+  const nivelesDisponibles = [1, 2, 3, 4];
 
   const openDeleteModal = (posicion: Posicion) => {
     setSelectedPosicion(posicion);
@@ -227,6 +406,15 @@ const PosicionManagement: React.FC = () => {
   const getAreaName = (areaId: number): string => {
     const area = areas.find(a => a.id === areaId);
     return area ? area.name : 'Área no encontrada';
+  };
+
+  const getNivelesDePosicion = (posicionId: number): NivelPosicion[] => {
+    return nivelesPorPosicion[posicionId] || [];
+  };
+
+  const tieneNivel = (posicionId: number, nivelNum: number): boolean => {
+    const niveles = getNivelesDePosicion(posicionId);
+    return niveles.some(n => n.nivel === nivelNum && n.is_active);
   };
 
   const handleAreaChange = (areaId: string) => {
@@ -312,16 +500,61 @@ const PosicionManagement: React.FC = () => {
             <tr>
               <th>Nombre</th>
                 <th>Área</th>
+              <th>Niveles</th>
               <th>Estado</th>
               <th>Fecha Creación</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {posiciones.map((posicion) => (
+            {posiciones.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
+                  {loading ? 'Cargando posiciones...' : 'No hay posiciones disponibles'}
+                </td>
+              </tr>
+            ) : (
+              posiciones.map((posicion) => {
+                const niveles = getNivelesDePosicion(posicion.id);
+                // Debug: verificar niveles cargados
+                if (niveles.length > 0) {
+                  console.log(`Posición ${posicion.name} tiene ${niveles.length} niveles:`, niveles.map(n => n.nivel));
+                }
+                return (
               <tr key={posicion.id}>
                 <td>{posicion.name}</td>
                 <td>{getAreaName(posicion.area)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {[1, 2, 3, 4].map((nivelNum) => {
+                          const tieneEsteNivel = tieneNivel(posicion.id, nivelNum);
+                          return (
+                            <span
+                              key={nivelNum}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '0.375rem 0.625rem',
+                                borderRadius: '6px',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                                backgroundColor: tieneEsteNivel ? '#d4edda' : '#e9ecef',
+                                color: tieneEsteNivel ? '#155724' : '#6c757d',
+                                border: `2px solid ${tieneEsteNivel ? '#28a745' : '#ced4da'}`,
+                                minWidth: '2.5rem',
+                                height: '2rem',
+                                textAlign: 'center',
+                                transition: 'all 0.2s ease'
+                              }}
+                              title={tieneEsteNivel ? `Nivel ${nivelNum} activo` : `Nivel ${nivelNum} no disponible`}
+                            >
+                              {nivelNum}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
                 <td>
                   <span className={`status-badge ${posicion.is_active ? 'status-active' : 'status-inactive'}`}>
                     {posicion.is_active ? 'Activa' : 'Inactiva'}
@@ -352,7 +585,9 @@ const PosicionManagement: React.FC = () => {
                   </button>
                 </td>
               </tr>
-            ))}
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -492,7 +727,155 @@ const PosicionManagement: React.FC = () => {
               
               <FieldError errors={editErrors.general} />
               
-              <div className="modal-actions">
+              {/* Sección de Niveles y Evaluaciones */}
+              <div className="niveles-section" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid #e9ecef' }}>
+                <h3 style={{ marginBottom: '1rem' }}>Niveles y Evaluaciones</h3>
+                
+                {loadingNiveles ? (
+                  <div>Cargando niveles...</div>
+                ) : (
+                  <div className="niveles-container">
+                    {nivelesDisponibles.map((nivelNum) => {
+                      const nivelExistente = nivelesPosicion.find(n => n.nivel === nivelNum);
+                      return (
+                        <div key={nivelNum} className="nivel-item" style={{ 
+                          marginBottom: '1.5rem', 
+                          padding: '1rem', 
+                          border: '1px solid #dee2e6', 
+                          borderRadius: '8px',
+                          backgroundColor: '#f8f9fa'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <h4 style={{ margin: 0 }}>Nivel {nivelNum}</h4>
+                            {nivelExistente ? (
+                              <button
+                                type="button"
+                                className="btn-icon btn-delete"
+                                onClick={() => handleEliminarNivel(nivelExistente.id)}
+                                title="Eliminar nivel"
+                              >
+                                <FaTrash />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                onClick={() => handleCrearNivel(selectedPosicion!.id, nivelNum)}
+                                title="Agregar nivel"
+                              >
+                                <FaPlus /> Agregar Nivel {nivelNum}
+                              </button>
+                            )}
+                          </div>
+                          
+                          {nivelExistente && (
+                            <div className="evaluaciones-nivel" style={{ marginTop: '1rem' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                <select
+                                  className="form-control"
+                                  value={plantillaSeleccionadaPorNivel[nivelExistente.id] || ''}
+                                  onChange={(e) => {
+                                    const plantillaId = e.target.value ? parseInt(e.target.value) : 0;
+                                    setPlantillaSeleccionadaPorNivel(prev => ({
+                                      ...prev,
+                                      [nivelExistente.id]: plantillaId
+                                    }));
+                                    // Pre-llenar el nombre con el de la plantilla
+                                    if (plantillaId > 0) {
+                                      const plantilla = evaluacionesPlantillas.find(p => p.id === plantillaId);
+                                      if (plantilla) {
+                                        setNombreEvaluacionPorNivel(prev => ({
+                                          ...prev,
+                                          [nivelExistente.id]: plantilla.nombre
+                                        }));
+                                      }
+                                    } else {
+                                      setNombreEvaluacionPorNivel(prev => ({
+                                        ...prev,
+                                        [nivelExistente.id]: ''
+                                      }));
+                                    }
+                                  }}
+                                  style={{ width: '100%' }}
+                                >
+                                  <option value="">Seleccionar Plantilla...</option>
+                                  {evaluacionesPlantillas.map(plantilla => (
+                                    <option key={plantilla.id} value={plantilla.id}>
+                                      {plantilla.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                
+                                {plantillaSeleccionadaPorNivel[nivelExistente.id] && (
+                                  <>
+                                    <input
+                                      type="text"
+                                      className="form-control"
+                                      placeholder="Nombre de la evaluación *"
+                                      value={nombreEvaluacionPorNivel[nivelExistente.id] || ''}
+                                      onChange={(e) => {
+                                        setNombreEvaluacionPorNivel(prev => ({
+                                          ...prev,
+                                          [nivelExistente.id]: e.target.value
+                                        }));
+                                      }}
+                                      style={{ width: '100%' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="btn-primary"
+                                      onClick={() => {
+                                        const plantillaId = plantillaSeleccionadaPorNivel[nivelExistente.id];
+                                        const nombre = nombreEvaluacionPorNivel[nivelExistente.id];
+                                        if (plantillaId && nombre) {
+                                          handleAgregarEvaluacionANivel(nivelExistente.id, plantillaId, nombre);
+                                        }
+                                      }}
+                                      style={{ width: '100%', padding: '0.5rem' }}
+                                    >
+                                      Agregar Evaluación
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              
+                              {/* Lista de evaluaciones del nivel */}
+                              <div className="evaluaciones-list" style={{ marginTop: '0.5rem' }}>
+                                {getEvaluacionesPorNivel(nivelExistente.id).length === 0 ? (
+                                  <div style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
+                                    No hay evaluaciones asignadas a este nivel
+                                  </div>
+                                ) : (
+                                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                                    {getEvaluacionesPorNivel(nivelExistente.id).map(evaluacion => (
+                                      <li key={evaluacion.id} style={{ 
+                                        padding: '0.5rem', 
+                                        marginBottom: '0.25rem', 
+                                        backgroundColor: 'white',
+                                        borderRadius: '4px',
+                                        border: '1px solid #dee2e6'
+                                      }}>
+                                        {evaluacion.nombre}
+                                        {evaluacion.plantilla_nombre && (
+                                          <span style={{ fontSize: '0.85rem', color: '#666', marginLeft: '0.5rem' }}>
+                                            (Plantilla: {evaluacion.plantilla_nombre})
+                                          </span>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              
+              <div className="modal-actions" style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #e9ecef' }}>
                 <button type="button" className="btn-secondary" onClick={() => setShowEditModal(false)}>
                   Cancelar
                 </button>

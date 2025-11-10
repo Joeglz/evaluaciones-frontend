@@ -22,13 +22,15 @@ import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Evaluaciones.css';
 
+type AreaWithSupervisores = Area & { supervisores?: Array<{ id: number }> };
+
 const Evaluaciones: React.FC = () => {
   // Hook para manejar toasts
   const { toasts, removeToast, showSuccess, showError } = useToast();
 
   // Estados para la navegación jerárquica
   const [currentView, setCurrentView] = useState<'areas' | 'grupos' | 'posiciones' | 'usuarios' | 'usuario-detalle' | 'usuario-evaluacion' | 'onboarding' | 'lista-asistencia-form'>('areas');
-  const [selectedArea, setSelectedArea] = useState<Area | null>(null);
+  const [selectedArea, setSelectedArea] = useState<AreaWithSupervisores | null>(null);
   const [selectedGrupo, setSelectedGrupo] = useState<Grupo | null>(null);
   const [selectedPosicion, setSelectedPosicion] = useState<Posicion | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -250,8 +252,8 @@ const Evaluaciones: React.FC = () => {
   };
 
   // Navegación entre vistas
-  const handleAreaClick = (area: Area) => {
-    setSelectedArea(area);
+const handleAreaClick = (area: Area) => {
+  setSelectedArea(area as AreaWithSupervisores);
     setCurrentView('grupos');
   };
 
@@ -314,6 +316,22 @@ const Evaluaciones: React.FC = () => {
         is_active: true 
       });
       setSupervisores(supervisoresData.results);
+      
+      // Seleccionar supervisor por defecto según la evaluación o el área
+      let supervisorPorDefecto: number | null = null;
+      if (evaluacion.supervisor) {
+        supervisorPorDefecto = evaluacion.supervisor;
+      } else if (selectedArea?.supervisores && selectedArea.supervisores.length > 0) {
+        supervisorPorDefecto = selectedArea.supervisores[0].id;
+      }
+      if (
+        supervisorPorDefecto &&
+        supervisoresData.results.some((supervisor: User) => supervisor.id === supervisorPorDefecto)
+      ) {
+        setSupervisorSeleccionado(supervisorPorDefecto);
+      } else {
+        setSupervisorSeleccionado(null);
+      }
       
       // Inicializar resultados vacíos para cada punto de evaluación
       const resultadosIniciales = evaluacion.puntos_evaluacion?.map((punto: any) => ({
@@ -849,40 +867,40 @@ const Evaluaciones: React.FC = () => {
                     </tr>
                   </thead>
                 <tbody>
-                  {evaluacionActual.puntos_evaluacion?.map((punto: any, index: number) => {
-                    const resultado = resultadosEvaluacion.find(r => r.punto_evaluacion === punto.id);
-                    return (
+                {evaluacionActual.puntos_evaluacion?.map((punto: any, index: number) => {
+                  const resultado = resultadosEvaluacion.find(r => r.punto_evaluacion === punto.id);
+                  return (
                       <tr key={punto.id}>
                         <td className="punto-pregunta">
-                          <span className="punto-numero">{index + 1}.</span>
+                        <span className="punto-numero">{index + 1}.</span>
                           {punto.pregunta}
                         </td>
-                        {[1, 2, 3].map(puntuacion => (
+                            {[1, 2, 3].map(puntuacion => (
                           <td 
                             key={puntuacion}
                             className={`punto-calificacion ${resultado?.puntuacion === puntuacion ? 'selected' : ''}`}
                             onClick={() => handlePuntuacionChange(punto.id, puntuacion)}
                           >
                             <label className="puntuacion-option">
-                              <input
-                                type="radio"
-                                name={`puntuacion-${punto.id}`}
-                                value={puntuacion}
-                                checked={resultado?.puntuacion === puntuacion}
-                                onChange={() => handlePuntuacionChange(punto.id, puntuacion)}
-                              />
+                                <input
+                                  type="radio"
+                                  name={`puntuacion-${punto.id}`}
+                                  value={puntuacion}
+                                  checked={resultado?.puntuacion === puntuacion}
+                                  onChange={() => handlePuntuacionChange(punto.id, puntuacion)}
+                                />
                               {resultado?.puntuacion === puntuacion && (
                                 <span className="checkmark">✓</span>
                               )}
-                            </label>
+                              </label>
                           </td>
-                        ))}
+                            ))}
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
+                          </div>
 
             <div className="form-section">
               <h4>Criterios de Evaluación</h4>
@@ -913,8 +931,8 @@ const Evaluaciones: React.FC = () => {
                     )}
                   </tbody>
                 </table>
-              </div>
-            </div>
+                        </div>
+                        </div>
 
             <div className="form-section">
               <h4>Resultado</h4>

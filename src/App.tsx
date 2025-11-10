@@ -13,14 +13,14 @@ function App() {
     const checkAuth = async () => {
       try {
         // Verificar si hay datos de usuario en localStorage
-        const user = localStorage.getItem('user');
-        
+    const user = localStorage.getItem('user');
+    
         if (user) {
           // Intentar verificar si la sesión está activa
           try {
             const sessionActive = await apiService.checkSession();
             if (sessionActive) {
-              setIsAuthenticated(true);
+      setIsAuthenticated(true);
             } else {
               // Sesión expirada, limpiar localStorage
               localStorage.removeItem('authToken');

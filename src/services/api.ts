@@ -31,11 +31,19 @@ export interface ApiError {
   status?: number;
 }
 
+export interface AreaSupervisor {
+  id: number;
+  full_name: string;
+  role: string;
+  role_display: string;
+}
+
 export interface Area {
   id: number;
   name: string;
   grupos: Grupo[];
   posiciones: Posicion[];
+  supervisores?: AreaSupervisor[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -58,6 +66,36 @@ export interface Posicion {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface NivelPosicion {
+  id: number;
+  posicion: number;
+  posicion_name: string;
+  area_name: string;
+  nivel: number;
+  nivel_display: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NivelPosicionCreate {
+  posicion: number;
+  nivel: number;
+  is_active?: boolean;
+}
+
+export interface NivelPosicionUpdate {
+  nivel: number;
+  is_active: boolean;
+}
+
+export interface NivelesPosicionListResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: NivelPosicion[];
 }
 
 
@@ -184,6 +222,7 @@ export interface PosicionUpdate {
 }
 
 export interface PosicionNested {
+  id?: number;
   name: string;
   is_active?: boolean;
 }
@@ -197,6 +236,7 @@ export interface AreaCreateWithGroups {
   name: string;
   grupos?: GrupoNested[];
   posiciones?: PosicionNested[];
+  supervisores?: number[];
   is_active?: boolean;
 }
 
@@ -204,6 +244,7 @@ export interface AreaUpdateWithGroups {
   name: string;
   grupos?: GrupoNested[];
   posiciones?: PosicionNested[];
+  supervisores?: number[];
   is_active?: boolean;
 }
 
@@ -268,15 +309,20 @@ export interface FirmaEvaluacion {
 export interface Evaluacion {
   id: number;
   nombre: string;
-  posicion: number;
-  posicion_name: string;
-  area_name: string;
+  es_plantilla: boolean;
+  posicion: number | null;
+  posicion_name: string | null;
+  nivel_posicion: number | null;
+  nivel_posicion_data: NivelPosicion | null;
+  plantilla: number | null;
+  plantilla_nombre: string | null;
+  area_name: string | null;
   supervisor: number | null;
-  supervisor_name: string;
-  nivel: number;
-  nivel_display: string;
+  supervisor_name: string | null;
+  nivel: number | null;
+  nivel_display: string | null;
   minimo_aprobatorio: number;
-  fecha_evaluacion: string;
+  fecha_evaluacion: string | null;
   resultado: number | null;
   is_active: boolean;
   puntos_evaluacion: PuntoEvaluacion[];
@@ -288,11 +334,14 @@ export interface Evaluacion {
 
 export interface EvaluacionCreate {
   nombre: string;
-  posicion: number;
+  es_plantilla: boolean;
+  posicion?: number | null;
+  nivel_posicion?: number | null;
+  plantilla?: number | null;
   supervisor: number | null;
-  nivel: number;
+  nivel?: number | null;
   minimo_aprobatorio: number;
-  fecha_evaluacion: string;
+  fecha_evaluacion?: string | null;
   is_active?: boolean;
   puntos_evaluacion?: Array<{ pregunta: string; orden: number }>;
   criterios_evaluacion?: Array<{ criterio: string; orden: number }>;
@@ -792,6 +841,52 @@ class ApiService {
     });
   }
 
+  // Gestión de niveles de posición
+  async getNivelesPosicion(params?: {
+    posicion_id?: number;
+    area_id?: number;
+    nivel?: number;
+  }): Promise<NivelesPosicionListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.posicion_id) searchParams.append('posicion_id', params.posicion_id.toString());
+    if (params?.area_id) searchParams.append('area_id', params.area_id.toString());
+    if (params?.nivel) searchParams.append('nivel', params.nivel.toString());
+    
+    const queryString = searchParams.toString();
+    return this.request<NivelesPosicionListResponse>(`/users/niveles-posicion/${queryString ? '?' + queryString : ''}`);
+  }
+
+  async getNivelPosicion(id: number): Promise<NivelPosicion> {
+    return this.request<NivelPosicion>(`/users/niveles-posicion/${id}/`);
+  }
+
+  async createNivelPosicion(nivelData: NivelPosicionCreate): Promise<NivelPosicion> {
+    return this.request<NivelPosicion>('/users/niveles-posicion/', {
+      method: 'POST',
+      body: JSON.stringify(nivelData),
+    });
+  }
+
+  async updateNivelPosicion(id: number, nivelData: NivelPosicionUpdate): Promise<NivelPosicion> {
+    return this.request<NivelPosicion>(`/users/niveles-posicion/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(nivelData),
+    });
+  }
+
+  async deleteNivelPosicion(id: number): Promise<void> {
+    try {
+      await this.request<void>(`/users/niveles-posicion/${id}/`, {
+        method: 'DELETE',
+      });
+    } catch (error: any) {
+      if (error.message && error.message.includes('Unexpected end of JSON input')) {
+        return;
+      }
+      throw error;
+    }
+  }
+
   // Gestión de listas de asistencia
   async getListasAsistencia(params?: { 
     search?: string; 
@@ -858,6 +953,9 @@ class ApiService {
     posicion_id?: number;
     supervisor_id?: number;
     nivel?: number;
+    nivel_posicion_id?: number;
+    plantilla_id?: number;
+    es_plantilla?: boolean;
     search?: string;
     page?: number;
   }): Promise<EvaluacionesListResponse> {
@@ -866,6 +964,9 @@ class ApiService {
     if (params?.posicion_id) searchParams.append('posicion_id', params.posicion_id.toString());
     if (params?.supervisor_id) searchParams.append('supervisor_id', params.supervisor_id.toString());
     if (params?.nivel) searchParams.append('nivel', params.nivel.toString());
+    if (params?.nivel_posicion_id) searchParams.append('nivel_posicion_id', params.nivel_posicion_id.toString());
+    if (params?.plantilla_id) searchParams.append('plantilla_id', params.plantilla_id.toString());
+    if (params?.es_plantilla !== undefined) searchParams.append('es_plantilla', params.es_plantilla.toString());
     if (params?.search) searchParams.append('search', params.search);
     if (params?.page) searchParams.append('page', params.page.toString());
     
