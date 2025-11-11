@@ -1,0 +1,367 @@
+.reportes-contenedor {
+  padding: 1.5rem 1rem 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  color: #1f1f1f;
+}
+
+.reportes-encabezado {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reportes-encabezado h2 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.reportes-descripcion {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+  color: #4b4b4b;
+}
+
+.reportes-select-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 18rem;
+}
+
+.reportes-filtros {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reportes-select__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #555;
+}
+
+.reportes-select {
+  border: 1px solid #d6d6d6;
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+  color: #1f1f1f;
+  background-color: #ffffff;
+}
+
+.reportes-select:focus {
+  outline: 2px solid rgba(225, 32, 38, 0.35);
+  border-color: #e12026;
+}
+
+.reportes-input {
+  border: 1px solid #d6d6d6;
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+  color: #1f1f1f;
+  background-color: #ffffff;
+}
+
+.reportes-input:focus {
+  outline: 2px solid rgba(225, 32, 38, 0.35);
+  border-color: #e12026;
+}
+
+.reportes-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reportes-periodo {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #323232;
+}
+
+.reportes-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+
+.reportes-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.reportes-legend__swatch {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.2rem;
+}
+
+.reportes-total {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.reportes-grafica {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.reportes-grafica__fila {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.reportes-grafica__encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.reportes-grafica__posicion {
+  font-weight: 600;
+}
+
+.reportes-grafica__total {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.reportes-grafica__barra {
+  display: flex;
+  width: 100%;
+  min-height: 2.4rem;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background-color: #f2f2f2;
+}
+
+.reportes-grafica__segmento {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  padding: 0 0.5rem;
+}
+
+.reportes-grafica__segmento:hover,
+.reportes-grafica__segmento:focus {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+}
+
+.reportes-grafica__segmento:focus {
+  outline: 2px solid #1f1f1f;
+  outline-offset: -2px;
+}
+
+.reportes-grafica__barra--vacia {
+  width: 100%;
+  text-align: center;
+  padding: 0.75rem 0;
+  font-size: 0.85rem;
+  color: #777;
+}
+
+.reportes-mensaje {
+  padding: 1rem;
+  background-color: #f5f5f5;
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
+  color: #444;
+}
+
+.reportes-mensaje.error {
+  background-color: #fdecec;
+  color: #a8191f;
+  border: 1px solid #e12026;
+}
+
+.reportes-linea {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem 1rem 2rem;
+  background-color: #ffffff;
+  border-radius: 1rem;
+  box-shadow: 0 12px 32px -18px rgba(31, 31, 31, 0.25);
+}
+
+.reportes-linea__cabecera h3 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.reportes-linea__cabecera p {
+  margin: 0.35rem 0 0;
+  color: #4b4b4b;
+  font-size: 0.95rem;
+}
+
+.reportes-linea__filtros {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reportes-linea__meses {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reportes-linea__meses-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #555;
+}
+
+.reportes-linea__meses-select {
+  border: 1px solid #d6d6d6;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  color: #1f1f1f;
+  background-color: #ffffff;
+  width: 100%;
+  max-width: 320px;
+}
+
+.reportes-linea__meses-select:focus {
+  outline: 2px solid rgba(225, 32, 38, 0.35);
+  border-color: #e12026;
+}
+
+.reportes-linea__meses-nota {
+  font-size: 0.8rem;
+  color: #6a6a6a;
+}
+
+.reportes-linea__contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reportes-linea__svg {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.reportes-linea__eje {
+  stroke: #c7c7c7;
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.reportes-linea__eje-texto {
+  font-size: 0.78rem;
+  fill: #565656;
+}
+
+.reportes-linea__trazo {
+  fill: none;
+  stroke: #e12026;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.reportes-linea__punto {
+  fill: #e12026;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.reportes-linea__valor {
+  font-size: 0.85rem;
+  fill: #1f1f1f;
+  font-weight: 600;
+}
+
+.reportes-linea__etiqueta {
+  font-size: 0.85rem;
+  fill: #4b4b4b;
+}
+
+.reportes-linea__resumen {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .reportes-contenedor {
+    padding: 2rem 2rem 6rem;
+  }
+
+  .reportes-encabezado {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+
+  .reportes-filtros {
+    flex-direction: row;
+    gap: 1.5rem;
+    align-items: flex-end;
+  }
+
+  .reportes-descripcion {
+    max-width: 36rem;
+  }
+
+  .reportes-grafica__fila {
+    gap: 0.5rem;
+  }
+
+  .reportes-linea {
+    padding: 2rem;
+  }
+
+  .reportes-linea__filtros {
+    flex-direction: row;
+    gap: 2rem;
+    align-items: flex-end;
+  }
+
+  .reportes-linea__meses {
+    flex: 1;
+    max-width: 360px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .reportes-contenedor {
+    padding-bottom: 3rem;
+  }
+
+  .reportes-grafica__barra {
+    min-height: 2.8rem;
+  }
+
+  .reportes-grafica__segmento {
+    font-size: 0.85rem;
+  }
+
+  .reportes-linea__svg {
+    max-width: 720px;
+  }
+}
+
+

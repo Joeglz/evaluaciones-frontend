@@ -82,6 +82,84 @@
   margin-top: 1rem;
 }
 
+.profile-photo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.profile-photo-preview {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9e9e9e;
+  font-size: 3rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.profile-photo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.profile-photo-actions .btn-upload {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: #e12026;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.profile-photo-actions .btn-upload input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.profile-photo-actions .btn-link {
+  background: none;
+  border: none;
+  color: #e12026;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.profile-photo-actions .btn-link:hover {
+  text-decoration: underline;
+}
+
+.photo-remove-note {
+  font-size: 0.85rem;
+  color: #c62828;
+  font-weight: 600;
+  text-align: center;
+}
+
 .profile-display {
   display: grid;
   gap: 1rem;

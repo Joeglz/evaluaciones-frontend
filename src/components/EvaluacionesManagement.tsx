@@ -5,6 +5,13 @@ import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './EvaluacionesManagement.css';
 
+const slugifyText = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-');
 interface EvaluacionesManagementProps {}
 
 const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
@@ -32,6 +39,7 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showPuntoModal, setShowPuntoModal] = useState(false);
   const [showCriterioModal, setShowCriterioModal] = useState(false);
+  const [showFirmaModal, setShowFirmaModal] = useState(false);
   const [selectedEvaluacion, setSelectedEvaluacion] = useState<any>(null);
   const [editingPunto, setEditingPunto] = useState<any>(null);
   const [editingCriterio, setEditingCriterio] = useState<any>(null);
@@ -43,6 +51,8 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
     supervisor: null as number | null,
     nivel: 1 as 1 | 2 | 3 | 4 | 5,
     minimo_aprobatorio: 70,
+    formula_divisor: 17,
+    formula_multiplicador: 80,
     fecha_evaluacion: '',
     is_active: true,
     es_plantilla: true, // Las evaluaciones en este componente son plantillas
@@ -56,6 +66,8 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
     supervisor: null as number | null,
     nivel: 1 as 1 | 2 | 3 | 4 | 5,
     minimo_aprobatorio: 70,
+    formula_divisor: 17,
+    formula_multiplicador: 80,
     fecha_evaluacion: '',
     is_active: true
   });
@@ -69,6 +81,11 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const [criterioForm, setCriterioForm] = useState({
     criterio: '',
     orden: 0
+  });
+
+const [firmaForm, setFirmaForm] = useState({
+  nombre: '',
+  identificador: ''
   });
 
   // Cargar datos iniciales
@@ -131,6 +148,14 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       showError('Por favor completa todos los campos requeridos');
       return;
     }
+    if (createForm.formula_divisor <= 0) {
+      showError('El divisor de la fórmula debe ser mayor a cero');
+      return;
+    }
+    if (createForm.formula_multiplicador < 0) {
+      showError('El multiplicador de la fórmula no puede ser negativo');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -141,6 +166,8 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
         supervisor: createForm.supervisor,
         nivel: createForm.nivel,
         minimo_aprobatorio: createForm.minimo_aprobatorio,
+        formula_divisor: createForm.formula_divisor,
+        formula_multiplicador: createForm.formula_multiplicador,
         fecha_evaluacion: createForm.fecha_evaluacion || null,
         is_active: createForm.is_active,
         puntos_evaluacion: createForm.puntos_evaluacion,
@@ -166,6 +193,14 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       showError('Por favor completa todos los campos requeridos');
       return;
     }
+    if (editForm.formula_divisor <= 0) {
+      showError('El divisor de la fórmula debe ser mayor a cero');
+      return;
+    }
+    if (editForm.formula_multiplicador < 0) {
+      showError('El multiplicador de la fórmula no puede ser negativo');
+      return;
+    }
     
     try {
       setLoading(true);
@@ -175,6 +210,8 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
         supervisor: editForm.supervisor,
         nivel: editForm.nivel,
         minimo_aprobatorio: editForm.minimo_aprobatorio,
+        formula_divisor: editForm.formula_divisor,
+        formula_multiplicador: editForm.formula_multiplicador,
         fecha_evaluacion: editForm.fecha_evaluacion,
         is_active: editForm.is_active
       });
@@ -213,6 +250,8 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       supervisor: null,
       nivel: 1,
       minimo_aprobatorio: 70,
+      formula_divisor: 17,
+      formula_multiplicador: 80,
       fecha_evaluacion: '',
       is_active: true,
       es_plantilla: true,
@@ -229,6 +268,8 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       supervisor: evaluacion.supervisor,
       nivel: evaluacion.nivel,
       minimo_aprobatorio: evaluacion.minimo_aprobatorio,
+       formula_divisor: evaluacion.formula_divisor ?? 17,
+       formula_multiplicador: evaluacion.formula_multiplicador ?? 80,
       fecha_evaluacion: evaluacion.fecha_evaluacion,
       is_active: evaluacion.is_active
     });
@@ -431,6 +472,79 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
       criterio: '',
       orden: 0
     });
+  };
+
+  const resetFirmaForm = () => {
+    setFirmaForm({
+      nombre: '',
+      identificador: ''
+    });
+  };
+
+  const openCreateFirmaModal = () => {
+    if (!selectedEvaluacion) return;
+    resetFirmaForm();
+    setShowFirmaModal(true);
+  };
+
+  const handleCreateFirma = async () => {
+    if (!selectedEvaluacion) return;
+    if (!firmaForm.nombre.trim()) {
+      showError('Ingresa el nombre visible de la firma');
+      return;
+    }
+
+    const slug = slugifyText(firmaForm.identificador || firmaForm.nombre);
+    if (!slug) {
+      showError('Ingresa un identificador válido para la firma');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await apiService.createFirmaEvaluacion({
+        evaluacion: selectedEvaluacion.id,
+        tipo_firma: slug,
+        nombre: firmaForm.nombre.trim()
+      });
+      showSuccess('Firma agregada exitosamente');
+      setShowFirmaModal(false);
+      resetFirmaForm();
+      const fullEvaluacion = await apiService.getEvaluacion(selectedEvaluacion.id);
+      setSelectedEvaluacion(fullEvaluacion);
+    } catch (error: any) {
+      console.error('Error agregando firma:', error);
+      const errorMessage =
+        error.response?.data?.detail ||
+        error.response?.data?.non_field_errors?.[0] ||
+        error.response?.data?.tipo_firma?.[0];
+      showError(errorMessage || 'Error al agregar la firma');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteFirma = async (firmaId: number, estaFirmado: boolean) => {
+    if (!selectedEvaluacion) return;
+    if (estaFirmado) {
+      showError('No puedes eliminar una firma que ya ha sido firmada.');
+      return;
+    }
+
+    if (!window.confirm('¿Eliminar esta firma de la evaluación?')) return;
+
+    try {
+      setLoading(true);
+      await apiService.deleteFirmaEvaluacion(firmaId);
+      showSuccess('Firma eliminada correctamente');
+      const fullEvaluacion = await apiService.getEvaluacion(selectedEvaluacion.id);
+      setSelectedEvaluacion(fullEvaluacion);
+    } catch (error: any) {
+      console.error('Error eliminando firma:', error);
+      showError(error.response?.data?.detail || 'Error al eliminar la firma');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -680,7 +794,27 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
                     min="0"
                     max="100"
                     value={createForm.minimo_aprobatorio}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, minimo_aprobatorio: parseInt(e.target.value) }))}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, minimo_aprobatorio: parseInt(e.target.value) || 0 }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Divisor de Fórmula</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    value={createForm.formula_divisor}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, formula_divisor: Math.max(1, parseInt(e.target.value) || 1) }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Multiplicador de Fórmula</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    value={createForm.formula_multiplicador}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, formula_multiplicador: Math.max(0, parseInt(e.target.value) || 0) }))}
                   />
                 </div>
 
@@ -786,7 +920,27 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
                     min="0"
                     max="100"
                     value={editForm.minimo_aprobatorio}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, minimo_aprobatorio: parseInt(e.target.value) }))}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, minimo_aprobatorio: parseInt(e.target.value) || 0 }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Divisor de Fórmula</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    value={editForm.formula_divisor}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, formula_divisor: Math.max(1, parseInt(e.target.value) || 1) }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Multiplicador de Fórmula</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    value={editForm.formula_multiplicador}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, formula_multiplicador: Math.max(0, parseInt(e.target.value) || 0) }))}
                   />
                 </div>
 
@@ -996,34 +1150,65 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
                   )}
                 </div>
 
-                {selectedEvaluacion.firmas && selectedEvaluacion.firmas.length > 0 && (
                   <div className="detail-section">
+                  <div className="section-header">
                     <h4>Firmas</h4>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={openCreateFirmaModal}
+                    >
+                      <FaPlus /> Agregar Firma
+                    </button>
+                  </div>
+
+                  {selectedEvaluacion.firmas && selectedEvaluacion.firmas.length > 0 ? (
                     <div className="firmas-grid">
                       {selectedEvaluacion.firmas.map((firma: any) => (
-                        <div key={firma.id} className={`firma-item ${firma.esta_firmado ? 'firmado' : 'pendiente'}`}>
+                        <div
+                          key={firma.id}
+                          className={`firma-item ${firma.esta_firmado ? 'firmado' : 'pendiente'}`}
+                        >
                           <div className="firma-header">
-                            <span className="firma-tipo">{firma.tipo_firma_display}</span>
+                            <span className="firma-tipo">
+                              {firma.tipo_firma_display || firma.tipo_firma}
+                            </span>
                             <span className={`firma-estado ${firma.esta_firmado ? 'firmado' : 'pendiente'}`}>
-                              {firma.esta_firmado ? 'Firmado' : 'Pendiente'}
+                              {firma.estado_display || (firma.esta_firmado ? 'Firmado' : 'Pendiente')}
                             </span>
                           </div>
                           <div className="firma-details">
                             <div className="firma-nombre">{firma.nombre}</div>
-                            {firma.esta_firmado && (
+                            {firma.esta_firmado ? (
                               <>
                                 <div className="firma-usuario">{firma.usuario_nombre}</div>
                                 <div className="firma-fecha">
-                                  {new Date(firma.fecha_firma).toLocaleDateString()}
+                                  {firma.fecha_firma ? new Date(firma.fecha_firma).toLocaleDateString() : ''}
                                 </div>
                               </>
+                            ) : (
+                              <div className="firma-orden">Orden: {firma.orden}</div>
+                            )}
+                          </div>
+                          <div className="firma-actions">
+                            {!firma.esta_firmado && (
+                              <button
+                                className="btn-icon btn-danger"
+                                onClick={() => handleDeleteFirma(firma.id, firma.esta_firmado)}
+                                title="Eliminar firma"
+                              >
+                                <FaTrash />
+                              </button>
                             )}
                           </div>
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <div className="no-items">
+                      <p>No hay firmas configuradas</p>
                   </div>
                 )}
+                </div>
               </div>
             </div>
             
@@ -1159,6 +1344,80 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
                 disabled={loading || !criterioForm.criterio.trim()}
               >
                 {loading ? 'Guardando...' : (editingCriterio ? 'Actualizar' : 'Agregar')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Firmas */}
+      {showFirmaModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Nueva Firma</h3>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setShowFirmaModal(false);
+                  resetFirmaForm();
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Nombre visible *</label>
+                <input
+                  type="text"
+                  value={firmaForm.nombre}
+                  onChange={(e) =>
+                    setFirmaForm(prev => ({
+                      ...prev,
+                      nombre: e.target.value,
+                      identificador: prev.identificador ? prev.identificador : slugifyText(e.target.value)
+                    }))
+                  }
+                  placeholder="Ej. Firma del Supervisor"
+                />
+              </div>
+              <div className="form-group">
+                <label>Identificador (sin espacios) *</label>
+                <input
+                  type="text"
+                  value={firmaForm.identificador}
+                  onChange={(e) =>
+                    setFirmaForm(prev => ({
+                      ...prev,
+                      identificador: slugifyText(e.target.value)
+                    }))
+                  }
+                  placeholder="Ej. supervisor-produccion"
+                />
+                <small className="field-helper">
+                  Debe ser único dentro de la evaluación. Se genera automáticamente a partir del nombre, pero puedes ajustarlo.
+                </small>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowFirmaModal(false);
+                  resetFirmaForm();
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleCreateFirma}
+                disabled={loading || !firmaForm.nombre.trim()}
+              >
+                {loading ? 'Guardando...' : 'Agregar Firma'}
               </button>
             </div>
           </div>

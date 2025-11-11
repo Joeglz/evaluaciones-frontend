@@ -23,6 +23,7 @@ export interface LoginResponse {
     role: string;
     is_admin: boolean;
     is_evaluador: boolean;
+    profile_photo?: string | null;
   };
 }
 
@@ -114,6 +115,7 @@ export interface User {
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;
+  profile_photo: string | null;
   signature: string | null;
   is_active: boolean;
   date_joined: string;
@@ -134,6 +136,7 @@ export interface UserCreate {
   numero_empleado: string | null;
   fecha_ingreso: string | null;
   is_active: boolean;
+  profile_photo?: string | null;
 }
 
 export interface UserUpdate {
@@ -148,6 +151,8 @@ export interface UserUpdate {
   numero_empleado: string | null;
   fecha_ingreso: string | null;
   is_active: boolean;
+  remove_profile_photo?: boolean;
+  profile_photo?: string | null;
 }
 
 export interface ChangePassword {
@@ -298,12 +303,81 @@ export interface FirmaEvaluacion {
   tipo_firma: string;
   tipo_firma_display: string;
   nombre: string;
+  orden: number;
   usuario: number | null;
   usuario_nombre: string;
   esta_firmado: boolean;
+  estado_display: string;
+  pendiente_de: string | null;
   fecha_firma: string | null;
+  imagen?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ResultadoEvaluacionDetalle {
+  id: number;
+  evaluacion_usuario: number;
+  punto_evaluacion: number;
+  punto_evaluacion_pregunta: string;
+  puntuacion: number | null;
+  puntuacion_display: string;
+  observaciones: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResultadoEvaluacionInput {
+  punto_evaluacion: number;
+  puntuacion: number | null;
+  observaciones?: string;
+}
+
+export interface EvaluacionUsuario {
+  id: number;
+  evaluacion: number;
+  evaluacion_nombre: string;
+  usuario: number;
+  usuario_nombre: string;
+  supervisor: number | null;
+  supervisor_nombre: string | null;
+  estado: string;
+  estado_display: string;
+  fecha_inicio: string | null;
+  fecha_completada: string | null;
+  resultado_final: number | null;
+  observaciones: string;
+  resultados_puntos: ResultadoEvaluacionDetalle[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluacionUsuarioCreate {
+  evaluacion: number;
+  usuario: number;
+  supervisor: number | null;
+  estado?: string;
+  observaciones?: string;
+  fecha_inicio?: string;
+  fecha_completada?: string;
+  resultado_final?: number | null;
+  resultados_puntos: ResultadoEvaluacionInput[];
+}
+
+export interface EvaluacionUsuarioUpdate {
+  supervisor?: number | null;
+  estado?: string;
+  fecha_inicio?: string | null;
+  fecha_completada?: string | null;
+  resultado_final?: number | null;
+  observaciones?: string;
+}
+
+export interface EvaluacionesUsuarioListResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: EvaluacionUsuario[];
 }
 
 export interface Evaluacion {
@@ -322,12 +396,100 @@ export interface Evaluacion {
   nivel: number | null;
   nivel_display: string | null;
   minimo_aprobatorio: number;
+  formula_divisor: number;
+  formula_multiplicador: number;
   fecha_evaluacion: string | null;
   resultado: number | null;
   is_active: boolean;
+  estado_firmas: string;
+  estado_firmas_display: string;
   puntos_evaluacion: PuntoEvaluacion[];
   criterios_evaluacion: CriterioEvaluacion[];
   firmas: FirmaEvaluacion[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgresoNivel {
+  id: number;
+  usuario: number;
+  usuario_nombre: string;
+  posicion: number | null;
+  posicion_nombre: string | null;
+  nivel: number;
+  total_evaluaciones: number;
+  evaluaciones_completadas: number;
+  porcentaje: number;
+  completado: boolean;
+  fecha_completado: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NivelClave = 'onboarding' | 'nivel_1' | 'nivel_2' | 'nivel_3' | 'nivel_4';
+
+export interface NivelEtiqueta {
+  clave: NivelClave;
+  etiqueta: string;
+}
+
+export interface ComposicionNivelesDetalle {
+  posicion_id: number;
+  posicion_nombre: string;
+  total_usuarios: number;
+  onboarding: number;
+  nivel_1: number;
+  nivel_2: number;
+  nivel_3: number;
+  nivel_4: number;
+}
+
+export interface ComposicionNivelesResponse {
+  area_id: number;
+  area_nombre: string;
+  total_usuarios: number;
+  anio: number;
+  mes: number;
+  niveles: NivelEtiqueta[];
+  posiciones: ComposicionNivelesDetalle[];
+}
+
+export interface AvanceMensualPunto {
+  mes: string;
+  niveles_completados: number;
+}
+
+export interface AvanceMensualResponse {
+  area_id: number;
+  area_nombre: string;
+  total_niveles: number;
+  serie: AvanceMensualPunto[];
+}
+
+export interface AvanceAnualPunto {
+  anio: number;
+  niveles_completados: number;
+}
+
+export interface AvanceAnualResponse {
+  area_id: number;
+  area_nombre: string;
+  total_niveles: number;
+  serie: AvanceAnualPunto[];
+}
+
+export interface Notificacion {
+  id: number;
+  titulo: string;
+  mensaje: string;
+  tipo: string;
+  evaluacion: number | null;
+  evaluacion_nombre: string | null;
+  firma: number | null;
+  firma_tipo: string | null;
+  firma_tipo_display: string | null;
+  es_leida: boolean;
+  metadata: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
@@ -341,10 +503,13 @@ export interface EvaluacionCreate {
   supervisor: number | null;
   nivel?: number | null;
   minimo_aprobatorio: number;
+  formula_divisor?: number;
+  formula_multiplicador?: number;
   fecha_evaluacion?: string | null;
   is_active?: boolean;
   puntos_evaluacion?: Array<{ pregunta: string; orden: number }>;
   criterios_evaluacion?: Array<{ criterio: string; orden: number }>;
+  firmas?: Array<{ tipo_firma: string; nombre: string; orden?: number }>;
 }
 
 export interface EvaluacionUpdate {
@@ -353,6 +518,8 @@ export interface EvaluacionUpdate {
   supervisor: number | null;
   nivel: number;
   minimo_aprobatorio: number;
+  formula_divisor?: number;
+  formula_multiplicador?: number;
   fecha_evaluacion: string;
   is_active: boolean;
 }
@@ -616,17 +783,19 @@ class ApiService {
     return this.request<User>(`/users/${id}/`);
   }
 
-  async createUser(userData: UserCreate): Promise<User> {
+  async createUser(userData: UserCreate | FormData): Promise<User> {
+    const body = userData instanceof FormData ? userData : JSON.stringify(userData);
     return this.request<User>('/users/', {
       method: 'POST',
-      body: JSON.stringify(userData),
+      body,
     });
   }
 
-  async updateUser(id: number, userData: UserUpdate): Promise<User> {
+  async updateUser(id: number, userData: UserUpdate | FormData): Promise<User> {
+    const body = userData instanceof FormData ? userData : JSON.stringify(userData);
     return this.request<User>(`/users/${id}/`, {
       method: 'PUT',
-      body: JSON.stringify(userData),
+      body,
     });
   }
 
@@ -992,6 +1161,44 @@ class ApiService {
     });
   }
 
+  async patchEvaluacion(
+    id: number,
+    evaluacionData: Partial<EvaluacionUpdate & { nivel_posicion?: number | null; plantilla?: number | null }>
+  ): Promise<Evaluacion> {
+    return this.request<Evaluacion>(`/users/evaluaciones/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(evaluacionData),
+    });
+  }
+
+  async createFirmaEvaluacion(data: {
+    evaluacion: number;
+    tipo_firma: string;
+    nombre: string;
+    imagen?: string;
+  }): Promise<FirmaEvaluacion> {
+    return this.request<FirmaEvaluacion>('/users/firmas-evaluacion/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async firmarEvaluacion(
+    evaluacionId: number,
+    data: { tipo_firma: string; nombre: string; imagen?: string; usuario?: number | null }
+  ): Promise<FirmaEvaluacion> {
+    return this.request<FirmaEvaluacion>(`/users/evaluaciones/${evaluacionId}/firmar/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFirmaEvaluacion(firmaId: number): Promise<void> {
+    await this.request<void>(`/users/firmas-evaluacion/${firmaId}/`, {
+      method: 'DELETE',
+    });
+  }
+
   async deleteEvaluacion(id: number): Promise<void> {
     try {
       await this.request<void>(`/users/evaluaciones/${id}/`, {
@@ -1048,6 +1255,43 @@ class ApiService {
     });
   }
 
+  // Gestión de evaluaciones de usuario
+  async getEvaluacionesUsuario(params?: {
+    usuario?: number;
+    evaluacion?: number;
+    supervisor?: number;
+    estado?: string;
+    page?: number;
+  }): Promise<EvaluacionesUsuarioListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.usuario) searchParams.append('usuario', params.usuario.toString());
+    if (params?.evaluacion) searchParams.append('evaluacion', params.evaluacion.toString());
+    if (params?.supervisor) searchParams.append('supervisor', params.supervisor.toString());
+    if (params?.estado) searchParams.append('estado', params.estado);
+    if (params?.page) searchParams.append('page', params.page.toString());
+
+    const queryString = searchParams.toString();
+    return this.request<EvaluacionesUsuarioListResponse>(`/users/evaluaciones-usuario/${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getEvaluacionUsuario(id: number): Promise<EvaluacionUsuario> {
+    return this.request<EvaluacionUsuario>(`/users/evaluaciones-usuario/${id}/`);
+  }
+
+  async createEvaluacionUsuario(data: EvaluacionUsuarioCreate): Promise<EvaluacionUsuario> {
+    return this.request<EvaluacionUsuario>('/users/evaluaciones-usuario/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateEvaluacionUsuario(id: number, data: EvaluacionUsuarioUpdate): Promise<EvaluacionUsuario> {
+    return this.request<EvaluacionUsuario>(`/users/evaluaciones-usuario/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteCriterioEvaluacion(id: number): Promise<void> {
     try {
       await this.request<void>(`/users/criterios-evaluacion/${id}/`, {
@@ -1059,6 +1303,119 @@ class ApiService {
       }
       throw error;
     }
+  }
+
+  async obtenerNotificaciones(params?: { solo_no_leidas?: boolean }): Promise<Notificacion[]> {
+    const query =
+      params && typeof params.solo_no_leidas !== 'undefined'
+        ? `?solo_no_leidas=${params.solo_no_leidas}`
+        : '';
+
+    const data = await this.request<Notificacion[] | { results?: Notificacion[] }>(
+      `/users/notificaciones/${query}`,
+      {
+        method: 'GET',
+      }
+    );
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (data && Array.isArray(data.results)) {
+      return data.results;
+    }
+
+    return [];
+  }
+
+  async marcarNotificacionLeida(id: number, esLeida = true): Promise<Notificacion> {
+    return this.request<Notificacion>(`/users/notificaciones/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ es_leida: esLeida }),
+    });
+  }
+
+  async eliminarNotificacion(id: number): Promise<void> {
+    await this.request<void>(`/users/notificaciones/${id}/`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getProgresosNivel(params?: {
+    usuario?: number;
+    posicion?: number;
+    nivel?: number;
+    completado?: boolean;
+  }): Promise<ProgresoNivel[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.usuario !== undefined) {
+      searchParams.append('usuario', String(params.usuario));
+    }
+    if (params?.posicion !== undefined) {
+      searchParams.append('posicion', String(params.posicion));
+    }
+    if (params?.nivel !== undefined) {
+      searchParams.append('nivel', String(params.nivel));
+    }
+    if (params?.completado !== undefined) {
+      searchParams.append('completado', String(params.completado));
+    }
+    const query = searchParams.toString();
+    const url = query ? `/users/progresos-nivel/?${query}` : '/users/progresos-nivel/';
+    return this.request<ProgresoNivel[]>(url, {
+      method: 'GET',
+    });
+  }
+
+  async getReporteComposicionNiveles(params: {
+    area_id: number;
+    anio?: number;
+    mes?: number;
+    nivel_maximo?: number;
+  }): Promise<ComposicionNivelesResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.append('area_id', String(params.area_id));
+    if (typeof params.anio === 'number') {
+      searchParams.append('anio', String(params.anio));
+    }
+    if (typeof params.mes === 'number') {
+      searchParams.append('mes', String(params.mes));
+    }
+    if (typeof params.nivel_maximo === 'number') {
+      searchParams.append('nivel_maximo', String(params.nivel_maximo));
+    }
+
+    const query = searchParams.toString();
+    return this.request<ComposicionNivelesResponse>(
+      `/users/reportes/composicion-niveles/${query ? `?${query}` : ''}`
+    );
+  }
+
+  async getReporteAvanceMensual(params: {
+    area_id: number;
+    meses: string[];
+  }): Promise<AvanceMensualResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.append('area_id', String(params.area_id));
+    params.meses.forEach((mes) => {
+      searchParams.append('meses', mes);
+    });
+
+    const query = searchParams.toString();
+    return this.request<AvanceMensualResponse>(
+      `/users/reportes/avance-mensual/${query ? `?${query}` : ''}`
+    );
+  }
+
+  async getReporteAvanceAnual(params: { area_id: number }): Promise<AvanceAnualResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.append('area_id', String(params.area_id));
+
+    const query = searchParams.toString();
+    return this.request<AvanceAnualResponse>(
+      `/users/reportes/avance-anual/${query ? `?${query}` : ''}`
+    );
   }
 }
 

@@ -15,10 +15,13 @@ import {
   FaUserTag,
   FaBuilding
 } from 'react-icons/fa';
-import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo } from '../services/api';
+import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './UserManagement.css';
+
+const MAX_PROFILE_PHOTO_SIZE = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_PROFILE_PHOTO_TYPES = ['image/jpeg', 'image/png'];
 
 const UserManagement: React.FC = () => {
   // Hook para manejar toasts
@@ -95,6 +98,12 @@ const UserManagement: React.FC = () => {
     new_password_confirm: ''
   });
 
+  const [createProfilePhotoFile, setCreateProfilePhotoFile] = useState<File | null>(null);
+  const [createProfilePhotoPreview, setCreateProfilePhotoPreview] = useState<string | null>(null);
+  const [editProfilePhotoFile, setEditProfilePhotoFile] = useState<File | null>(null);
+  const [editProfilePhotoPreview, setEditProfilePhotoPreview] = useState<string | null>(null);
+  const [removeProfilePhoto, setRemoveProfilePhoto] = useState<boolean>(false);
+
   // Cargar datos iniciales
   useEffect(() => {
     loadAreas();
@@ -118,6 +127,22 @@ const UserManagement: React.FC = () => {
       setSearching(true);
     }
   }, [searchTerm, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    return () => {
+      if (createProfilePhotoPreview && createProfilePhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(createProfilePhotoPreview);
+      }
+    };
+  }, [createProfilePhotoPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(editProfilePhotoPreview);
+      }
+    };
+  }, [editProfilePhotoPreview]);
 
   const handleValidationErrors = (error: any): Record<string, string[]> => {
     // Si es un error de validación con el objeto completo de Django
@@ -145,6 +170,93 @@ const UserManagement: React.FC = () => {
     return { general: ['Error desconocido'] };
   };
 
+  const validateProfilePhoto = (file: File): boolean => {
+    if (!ALLOWED_PROFILE_PHOTO_TYPES.includes(file.type)) {
+      showError('La foto debe ser una imagen JPG o PNG.');
+      return false;
+    }
+    if (file.size > MAX_PROFILE_PHOTO_SIZE) {
+      showError('La foto debe pesar máximo 2 MB.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleCreatePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (createProfilePhotoPreview && createProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(createProfilePhotoPreview);
+    }
+    if (!file) {
+      setCreateProfilePhotoFile(null);
+      setCreateProfilePhotoPreview(null);
+      return;
+    }
+    if (!validateProfilePhoto(file)) {
+      event.target.value = '';
+      setCreateProfilePhotoFile(null);
+      setCreateProfilePhotoPreview(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setCreateProfilePhotoFile(file);
+    setCreateProfilePhotoPreview(previewUrl);
+  };
+
+  const clearCreateProfilePhoto = () => {
+    if (createProfilePhotoPreview && createProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(createProfilePhotoPreview);
+    }
+    setCreateProfilePhotoFile(null);
+    setCreateProfilePhotoPreview(null);
+  };
+
+  const handleEditPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+    if (!file) {
+      setEditProfilePhotoFile(null);
+      setEditProfilePhotoPreview(
+        selectedUser?.profile_photo ? getMediaUrl(selectedUser.profile_photo) : null
+      );
+      return;
+    }
+    if (!validateProfilePhoto(file)) {
+      event.target.value = '';
+      setEditProfilePhotoFile(null);
+      setEditProfilePhotoPreview(
+        selectedUser?.profile_photo ? getMediaUrl(selectedUser.profile_photo) : null
+      );
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setEditProfilePhotoFile(file);
+    setEditProfilePhotoPreview(previewUrl);
+    setRemoveProfilePhoto(false);
+  };
+
+  const clearEditProfilePhotoSelection = () => {
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+    setEditProfilePhotoFile(null);
+    setEditProfilePhotoPreview(
+      selectedUser?.profile_photo ? getMediaUrl(selectedUser.profile_photo) : null
+    );
+    setRemoveProfilePhoto(false);
+  };
+
+  const handleRemoveCurrentProfilePhoto = () => {
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+    setEditProfilePhotoFile(null);
+    setEditProfilePhotoPreview(null);
+    setRemoveProfilePhoto(true);
+  };
+
   const loadAreas = async () => {
     try {
       const response = await apiService.getAreas({ is_active: true });
@@ -152,6 +264,21 @@ const UserManagement: React.FC = () => {
     } catch (err) {
       console.error('Error al cargar áreas:', err);
     }
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    clearCreateProfilePhoto();
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+    setEditProfilePhotoFile(null);
+    setEditProfilePhotoPreview(null);
+    setRemoveProfilePhoto(false);
   };
 
   const loadPosiciones = async () => {
@@ -193,6 +320,8 @@ const UserManagement: React.FC = () => {
       is_active: true
     });
     setCreateErrors({});
+    clearCreateProfilePhoto();
+    setShowCreateModal(true);
   };
 
   const startEditUser = (user: User) => {
@@ -214,6 +343,13 @@ const UserManagement: React.FC = () => {
       is_active: user.is_active
     });
     setEditErrors({});
+
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+    setEditProfilePhotoFile(null);
+    setEditProfilePhotoPreview(user.profile_photo ? getMediaUrl(user.profile_photo) : null);
+    setRemoveProfilePhoto(false);
   };
 
   const nextStep = () => {
@@ -229,6 +365,19 @@ const UserManagement: React.FC = () => {
   };
 
   const closeStepModal = () => {
+    if (createProfilePhotoPreview && createProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(createProfilePhotoPreview);
+    }
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+
+    setCreateProfilePhotoFile(null);
+    setCreateProfilePhotoPreview(null);
+    setEditProfilePhotoFile(null);
+    setEditProfilePhotoPreview(null);
+    setRemoveProfilePhoto(false);
+
     setIsCreating(false);
     setIsEditing(false);
     setCurrentStep(1);
@@ -274,11 +423,46 @@ const UserManagement: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCreateErrors({}); // Limpiar errores previos
-    
+    setCreateErrors({});
+
     try {
-      await apiService.createUser(createForm);
-      setShowCreateModal(false);
+      let payload: UserCreate | FormData;
+
+      if (createProfilePhotoFile) {
+        const formData = new FormData();
+        formData.append('username', createForm.username);
+        formData.append('email', createForm.email);
+        formData.append('first_name', createForm.first_name || '');
+        formData.append('last_name', createForm.last_name || '');
+        formData.append('password', createForm.password);
+        formData.append('password_confirm', createForm.password_confirm);
+        formData.append('role', createForm.role);
+        formData.append('is_active', createForm.is_active ? 'true' : 'false');
+
+        if (createForm.numero_empleado) {
+          formData.append('numero_empleado', createForm.numero_empleado);
+        }
+        if (createForm.fecha_ingreso) {
+          formData.append('fecha_ingreso', createForm.fecha_ingreso);
+        }
+        if (createForm.posicion !== null) {
+          formData.append('posicion', String(createForm.posicion));
+        }
+        if (createForm.grupo !== null) {
+          formData.append('grupo', String(createForm.grupo));
+        }
+        if (createForm.areas.length > 0) {
+          createForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
+        }
+
+        formData.append('profile_photo', createProfilePhotoFile);
+        payload = formData;
+      } else {
+        payload = createForm;
+      }
+
+      await apiService.createUser(payload);
+      closeCreateModal();
       resetCreateForm();
       loadUsers();
       alert('Usuario creado exitosamente');
@@ -291,12 +475,52 @@ const UserManagement: React.FC = () => {
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
-    
-    setEditErrors({}); // Limpiar errores previos
-    
+
+    setEditErrors({});
+
     try {
-      await apiService.updateUser(selectedUser.id, editForm);
-      setShowEditModal(false);
+      let payload: UserUpdate | FormData;
+
+      if (editProfilePhotoFile) {
+        const formData = new FormData();
+        formData.append('username', editForm.username);
+        formData.append('email', editForm.email);
+        formData.append('first_name', editForm.first_name || '');
+        formData.append('last_name', editForm.last_name || '');
+        formData.append('role', editForm.role);
+        formData.append('is_active', editForm.is_active ? 'true' : 'false');
+
+        if (editForm.numero_empleado) {
+          formData.append('numero_empleado', editForm.numero_empleado);
+        } else {
+          formData.append('numero_empleado', '');
+        }
+
+        if (editForm.fecha_ingreso) {
+          formData.append('fecha_ingreso', editForm.fecha_ingreso);
+        } else {
+          formData.append('fecha_ingreso', '');
+        }
+
+        if (editForm.posicion !== null) {
+          formData.append('posicion', String(editForm.posicion));
+        }
+        if (editForm.grupo !== null) {
+          formData.append('grupo', String(editForm.grupo));
+        }
+        if (editForm.areas.length > 0) {
+          editForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
+        }
+
+        formData.append('remove_profile_photo', removeProfilePhoto ? 'true' : 'false');
+        formData.append('profile_photo', editProfilePhotoFile);
+        payload = formData;
+      } else {
+        payload = { ...editForm, remove_profile_photo: removeProfilePhoto };
+      }
+
+      await apiService.updateUser(selectedUser.id, payload);
+      closeEditModal();
       setSelectedUser(null);
       loadUsers();
       alert('Usuario actualizado exitosamente');
@@ -373,6 +597,12 @@ const UserManagement: React.FC = () => {
       fecha_ingreso: user.fecha_ingreso,
       is_active: user.is_active
     });
+    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editProfilePhotoPreview);
+    }
+    setEditProfilePhotoFile(null);
+    setEditProfilePhotoPreview(user.profile_photo ? getMediaUrl(user.profile_photo) : null);
+    setRemoveProfilePhoto(false);
     setShowEditModal(true);
   };
 
@@ -409,6 +639,7 @@ const UserManagement: React.FC = () => {
       fecha_ingreso: null,
       is_active: true
     });
+    clearCreateProfilePhoto();
   };
 
   // Función para abrir modal de detalles del usuario
@@ -464,10 +695,64 @@ const UserManagement: React.FC = () => {
   const renderStep1 = () => {
     const form = isCreating ? createForm : editForm;
     const errors = isCreating ? createErrors : editErrors;
+    const photoPreview = isCreating ? createProfilePhotoPreview : editProfilePhotoPreview;
 
     return (
       <div className="step-content">
         <h3>Datos Generales</h3>
+
+        <div className="step-photo-block">
+          <div className="step-photo-preview">
+            {photoPreview ? (
+              <img src={photoPreview} alt="Foto de perfil" />
+            ) : (
+              <div className="photo-placeholder">
+                <FaUser />
+              </div>
+            )}
+          </div>
+          <div className="step-photo-actions">
+            <label className="btn-upload full">
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                onChange={isCreating ? handleCreatePhotoChange : handleEditPhotoChange}
+              />
+              {photoPreview ? 'Cambiar foto' : 'Agregar foto'}
+            </label>
+            {photoPreview && (
+              <button
+                type="button"
+                className="btn-link"
+                onClick={isCreating ? clearCreateProfilePhoto : clearEditProfilePhotoSelection}
+              >
+                Quitar foto
+              </button>
+            )}
+            {!isCreating && selectedUser?.profile_photo && !removeProfilePhoto && (
+              <button type="button" className="btn-link" onClick={handleRemoveCurrentProfilePhoto}>
+                Eliminar foto actual
+              </button>
+            )}
+            {!isCreating && removeProfilePhoto && (
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  setRemoveProfilePhoto(false);
+                  setEditProfilePhotoPreview(selectedUser?.profile_photo ? getMediaUrl(selectedUser.profile_photo) : null);
+                }}
+              >
+                Restaurar foto
+              </button>
+            )}
+            {!isCreating && removeProfilePhoto && (
+              <p className="photo-remove-note">Se eliminará la foto actual al guardar.</p>
+            )}
+            <FieldError errors={errors.profile_photo} />
+          </div>
+        </div>
+
         <div className="form-grid">
           <div className="form-group">
             <label>Nombre de Usuario *</label>
@@ -741,13 +1026,92 @@ const UserManagement: React.FC = () => {
   const handleFinalSubmit = async () => {
     try {
       if (isCreating) {
-        await apiService.createUser(createForm);
+        let payload: UserCreate | FormData;
+
+        if (createProfilePhotoFile) {
+          const formData = new FormData();
+          formData.append('username', createForm.username);
+          formData.append('email', createForm.email);
+          formData.append('first_name', createForm.first_name || '');
+          formData.append('last_name', createForm.last_name || '');
+          formData.append('password', createForm.password);
+          formData.append('password_confirm', createForm.password_confirm);
+          formData.append('role', createForm.role);
+          formData.append('is_active', createForm.is_active ? 'true' : 'false');
+
+          if (createForm.numero_empleado) {
+            formData.append('numero_empleado', createForm.numero_empleado);
+          }
+
+          if (createForm.fecha_ingreso) {
+            formData.append('fecha_ingreso', createForm.fecha_ingreso);
+          }
+
+          if (createForm.posicion !== null) {
+            formData.append('posicion', String(createForm.posicion));
+          }
+
+          if (createForm.grupo !== null) {
+            formData.append('grupo', String(createForm.grupo));
+          }
+
+          createForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
+          formData.append('profile_photo', createProfilePhotoFile);
+          payload = formData;
+        } else {
+          payload = createForm;
+        }
+
+        await apiService.createUser(payload);
         showSuccess('Usuario creado exitosamente');
       } else if (isEditing && selectedUser) {
-        await apiService.updateUser(selectedUser.id, editForm);
+        let payload: UserUpdate | FormData;
+
+        if (editProfilePhotoFile || removeProfilePhoto) {
+          const formData = new FormData();
+          formData.append('username', editForm.username);
+          formData.append('email', editForm.email);
+          formData.append('first_name', editForm.first_name || '');
+          formData.append('last_name', editForm.last_name || '');
+          formData.append('role', editForm.role);
+          formData.append('is_active', editForm.is_active ? 'true' : 'false');
+
+          if (editForm.numero_empleado) {
+            formData.append('numero_empleado', editForm.numero_empleado);
+          } else {
+            formData.append('numero_empleado', '');
+          }
+
+          if (editForm.fecha_ingreso) {
+            formData.append('fecha_ingreso', editForm.fecha_ingreso);
+          } else {
+            formData.append('fecha_ingreso', '');
+          }
+
+          if (editForm.posicion !== null) {
+            formData.append('posicion', String(editForm.posicion));
+          }
+
+          if (editForm.grupo !== null) {
+            formData.append('grupo', String(editForm.grupo));
+          }
+
+          editForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
+          formData.append('remove_profile_photo', removeProfilePhoto ? 'true' : 'false');
+
+          if (editProfilePhotoFile) {
+            formData.append('profile_photo', editProfilePhotoFile);
+          }
+
+          payload = formData;
+        } else {
+          payload = { ...editForm, remove_profile_photo: removeProfilePhoto };
+        }
+
+        await apiService.updateUser(selectedUser.id, payload);
         showSuccess('Usuario actualizado exitosamente');
       }
-      
+
       closeStepModal();
       loadUsers();
     } catch (err: any) {
@@ -828,8 +1192,20 @@ const UserManagement: React.FC = () => {
               >
                 <td className="user-name-cell">
                   <div className="user-info">
-                    <span className="user-full-name">{user.full_name}</span>
-                    <span className="user-username">@{user.username}</span>
+                    <div className="user-avatar">
+                      {user.profile_photo ? (
+                        <img
+                          src={getMediaUrl(user.profile_photo)}
+                          alt={`Foto de ${user.full_name}`}
+                        />
+                      ) : (
+                        <FaUser />
+                      )}
+                    </div>
+                    <div className="user-data">
+                      <span className="user-full-name">{user.full_name}</span>
+                      <span className="user-username">@{user.username}</span>
+                    </div>
                   </div>
                 </td>
                 <td>
@@ -858,170 +1234,226 @@ const UserManagement: React.FC = () => {
 
       {/* Modal: Crear Usuario */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={closeCreateModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2>Crear Nuevo Usuario</h2>
             <form onSubmit={handleCreateUser}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Usuario *</label>
-                  <input
-                    type="text"
-                    value={createForm.username}
-                    onChange={(e) => setCreateForm({...createForm, username: e.target.value})}
-                    required
-                    className={createErrors.username ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.username} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Email *</label>
-                  <input
-                    type="email"
-                    value={createForm.email}
-                    onChange={(e) => setCreateForm({...createForm, email: e.target.value})}
-                    required
-                    className={createErrors.email ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.email} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Nombre</label>
-                  <input
-                    type="text"
-                    value={createForm.first_name}
-                    onChange={(e) => setCreateForm({...createForm, first_name: e.target.value})}
-                    className={createErrors.first_name ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.first_name} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Apellido</label>
-                  <input
-                    type="text"
-                    value={createForm.last_name}
-                    onChange={(e) => setCreateForm({...createForm, last_name: e.target.value})}
-                    className={createErrors.last_name ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.last_name} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Contraseña *</label>
-                  <input
-                    type="password"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
-                    required
-                    className={createErrors.password ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.password} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Confirmar Contraseña *</label>
-                  <input
-                    type="password"
-                    value={createForm.password_confirm}
-                    onChange={(e) => setCreateForm({...createForm, password_confirm: e.target.value})}
-                    required
-                    className={createErrors.password_confirm ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.password_confirm} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Rol *</label>
-                  <select
-                    value={createForm.role}
-                    onChange={(e) => setCreateForm({...createForm, role: e.target.value})}
-                    required
-                    className={createErrors.role ? 'field-error-input' : ''}
-                  >
-                    <option value="USUARIO">Usuario Regular</option>
-                    <option value="EVALUADOR">Evaluador</option>
-                    <option value="ADMIN">Administrador</option>
-                  </select>
-                  <FieldError errors={createErrors.role} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Posición</label>
-                  <select
-                    value={createForm.posicion || ''}
-                    onChange={(e) => setCreateForm({...createForm, posicion: e.target.value ? parseInt(e.target.value) : null})}
-                    className={createErrors.posicion ? 'field-error-input' : ''}
-                  >
-                    <option value="">Seleccionar posición</option>
-                    {posiciones.map((posicion) => (
-                      <option key={posicion.id} value={posicion.id}>
-                        {posicion.name} ({areas.find(a => a.id === posicion.area)?.name || 'Área no encontrada'})
-                      </option>
-                    ))}
-                  </select>
-                  <FieldError errors={createErrors.posicion} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Número de Empleado</label>
-                  <input
-                    type="text"
-                    value={createForm.numero_empleado || ''}
-                    onChange={(e) => setCreateForm({...createForm, numero_empleado: e.target.value || null})}
-                    className={createErrors.numero_empleado ? 'field-error-input' : ''}
-                    placeholder="Ej: EMP001"
-                  />
-                  <FieldError errors={createErrors.numero_empleado} />
-                </div>
-                
-                <div className="form-group">
-                  <label>Fecha de Ingreso</label>
-                  <input
-                    type="date"
-                    value={createForm.fecha_ingreso || ''}
-                    onChange={(e) => setCreateForm({...createForm, fecha_ingreso: e.target.value || null})}
-                    className={createErrors.fecha_ingreso ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={createErrors.fecha_ingreso} />
-                </div>
-                
-                <div className="form-group full-width">
-                  <label>Áreas Asignadas</label>
-                  <div className="areas-checkboxes">
-                    {areas.map((area) => (
-                      <label key={area.id} className="area-checkbox">
+              <div className="modal-body">
+                <section className="modal-section">
+                  <h3>Datos Generales</h3>
+                  <div className="form-grid two-columns">
+                    <div className="form-group">
+                      <label>Usuario *</label>
+                      <input
+                        type="text"
+                        value={createForm.username}
+                        onChange={(e) => setCreateForm({...createForm, username: e.target.value})}
+                        required
+                        className={createErrors.username ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.username} />
+                    </div>
+                    <div className="form-group">
+                      <label>Email *</label>
+                      <input
+                        type="email"
+                        value={createForm.email}
+                        onChange={(e) => setCreateForm({...createForm, email: e.target.value})}
+                        required
+                        className={createErrors.email ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.email} />
+                    </div>
+                    <div className="form-group">
+                      <label>Nombre</label>
+                      <input
+                        type="text"
+                        value={createForm.first_name}
+                        onChange={(e) => setCreateForm({...createForm, first_name: e.target.value})}
+                        className={createErrors.first_name ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.first_name} />
+                    </div>
+                    <div className="form-group">
+                      <label>Apellido</label>
+                      <input
+                        type="text"
+                        value={createForm.last_name}
+                        onChange={(e) => setCreateForm({...createForm, last_name: e.target.value})}
+                        className={createErrors.last_name ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.last_name} />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="modal-section">
+                  <h3>Credenciales</h3>
+                  <div className="form-grid two-columns">
+                    <div className="form-group">
+                      <label>Contraseña *</label>
+                      <input
+                        type="password"
+                        value={createForm.password}
+                        onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
+                        required
+                        className={createErrors.password ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.password} />
+                    </div>
+                    <div className="form-group">
+                      <label>Confirmar Contraseña *</label>
+                      <input
+                        type="password"
+                        value={createForm.password_confirm}
+                        onChange={(e) => setCreateForm({...createForm, password_confirm: e.target.value})}
+                        required
+                        className={createErrors.password_confirm ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.password_confirm} />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="modal-section">
+                  <h3>Foto de Perfil</h3>
+                  <div className="photo-upload">
+                    <div className="photo-preview">
+                      {createProfilePhotoPreview ? (
+                        <img src={createProfilePhotoPreview} alt="Previsualización foto de perfil" />
+                      ) : (
+                        <div className="photo-placeholder">
+                          <FaUser />
+                        </div>
+                      )}
+                    </div>
+                    <div className="photo-actions">
+                      <label className="btn-upload">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png"
+                          onChange={handleCreatePhotoChange}
+                        />
+                        Seleccionar foto
+                      </label>
+                      {createProfilePhotoPreview && (
+                        <button type="button" className="btn-link" onClick={clearCreateProfilePhoto}>
+                          Quitar foto
+                        </button>
+                      )}
+                    </div>
+                    <FieldError errors={createErrors.profile_photo} />
+                  </div>
+                </section>
+
+                <section className="modal-section">
+                  <h3>Asignación</h3>
+                  <div className="form-grid two-columns">
+                    <div className="form-group">
+                      <label>Rol *</label>
+                      <select
+                        value={createForm.role}
+                        onChange={(e) => setCreateForm({...createForm, role: e.target.value})}
+                        required
+                        className={createErrors.role ? 'field-error-input' : ''}
+                      >
+                        <option value="USUARIO">Usuario Regular</option>
+                        <option value="EVALUADOR">Evaluador</option>
+                        <option value="ADMIN">Administrador</option>
+                      </select>
+                      <FieldError errors={createErrors.role} />
+                    </div>
+                    <div className="form-group">
+                      <label>Posición</label>
+                      <select
+                        value={createForm.posicion || ''}
+                        onChange={(e) => setCreateForm({...createForm, posicion: e.target.value ? parseInt(e.target.value) : null})}
+                        className={createErrors.posicion ? 'field-error-input' : ''}
+                      >
+                        <option value="">Seleccionar posición</option>
+                        {posiciones.map((posicion) => (
+                          <option key={posicion.id} value={posicion.id}>
+                            {posicion.name} ({areas.find(a => a.id === posicion.area)?.name || 'Área no encontrada'})
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError errors={createErrors.posicion} />
+                    </div>
+                    <div className="form-group">
+                      <label>Grupo</label>
+                      <select
+                        value={createForm.grupo || ''}
+                        onChange={(e) => setCreateForm({...createForm, grupo: e.target.value ? parseInt(e.target.value) : null})}
+                        className={createErrors.grupo ? 'field-error-input' : ''}
+                      >
+                        <option value="">Seleccionar grupo</option>
+                        {grupos.map((grupo) => (
+                          <option key={grupo.id} value={grupo.id}>
+                            {grupo.name} ({areas.find(a => a.id === grupo.area)?.name || 'Área no encontrada'})
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError errors={createErrors.grupo} />
+                    </div>
+                    <div className="form-group">
+                      <label>Número de Empleado</label>
+                      <input
+                        type="text"
+                        value={createForm.numero_empleado || ''}
+                        onChange={(e) => setCreateForm({...createForm, numero_empleado: e.target.value || null})}
+                        className={createErrors.numero_empleado ? 'field-error-input' : ''}
+                        placeholder="Ej: EMP001"
+                      />
+                      <FieldError errors={createErrors.numero_empleado} />
+                    </div>
+                    <div className="form-group">
+                      <label>Fecha de Ingreso</label>
+                      <input
+                        type="date"
+                        value={createForm.fecha_ingreso || ''}
+                        onChange={(e) => setCreateForm({...createForm, fecha_ingreso: e.target.value || null})}
+                        className={createErrors.fecha_ingreso ? 'field-error-input' : ''}
+                      />
+                      <FieldError errors={createErrors.fecha_ingreso} />
+                    </div>
+                    <div className="form-group full-width">
+                      <label>Áreas Asignadas</label>
+                      <div className="areas-checkboxes">
+                        {areas.map((area) => (
+                          <label key={area.id} className="area-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={createForm.areas.includes(area.id)}
+                              onChange={(e) => handleAreaChange(area.id, e.target.checked, 'create')}
+                            />
+                            <span>{area.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <FieldError errors={createErrors.areas} />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="modal-section">
+                  <h3>Estado</h3>
+                  <div className="form-grid two-columns">
+                    <div className="form-group checkbox-group">
+                      <label>
                         <input
                           type="checkbox"
-                          checked={createForm.areas.includes(area.id)}
-                          onChange={(e) => handleAreaChange(area.id, e.target.checked, 'create')}
+                          checked={createForm.is_active}
+                          onChange={(e) => setCreateForm({...createForm, is_active: e.target.checked})}
                         />
-                        <span>{area.name}</span>
+                        Usuario activo
                       </label>
-                    ))}
+                    </div>
                   </div>
-                  <FieldError errors={createErrors.areas} />
-                </div>
-                
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={createForm.is_active}
-                      onChange={(e) => setCreateForm({...createForm, is_active: e.target.checked})}
-                    />
-                    Usuario activo
-                  </label>
-                </div>
+                </section>
               </div>
-              
-              {/* Errores generales */}
-              <FieldError errors={createErrors.general} />
-              
+
               <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowCreateModal(false)}>
+                <button type="button" className="btn-secondary" onClick={closeCreateModal}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary">
@@ -1035,127 +1467,213 @@ const UserManagement: React.FC = () => {
 
       {/* Modal: Editar Usuario */}
       {showEditModal && selectedUser && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Editar Usuario</h2>
+        <div className="modal-overlay" onClick={closeEditModal}>
+          <div className="modal-content modal-edit-user" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Editar Usuario</h2>
+              <button className="modal-close-btn" onClick={closeEditModal} title="Cerrar">
+                <FaTimes />
+              </button>
+            </div>
             <form onSubmit={handleUpdateUser}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Usuario *</label>
-                  <input
-                    type="text"
-                    value={editForm.username}
-                    onChange={(e) => setEditForm({...editForm, username: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Email *</label>
-                  <input
-                    type="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({...editForm, email: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Nombre</label>
-                  <input
-                    type="text"
-                    value={editForm.first_name}
-                    onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Apellido</label>
-                  <input
-                    type="text"
-                    value={editForm.last_name}
-                    onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Rol *</label>
-                  <select
-                    value={editForm.role}
-                    onChange={(e) => setEditForm({...editForm, role: e.target.value})}
-                    required
-                  >
-                    <option value="USUARIO">Usuario Regular</option>
-                    <option value="EVALUADOR">Evaluador</option>
-                    <option value="ADMIN">Administrador</option>
-                  </select>
-                </div>
-                
-                <div className="form-group">
-                  <label>Posición</label>
-                  <select
-                    value={editForm.posicion || ''}
-                    onChange={(e) => setEditForm({...editForm, posicion: e.target.value ? parseInt(e.target.value) : null})}
-                  >
-                    <option value="">Seleccionar posición</option>
-                    {posiciones.map((posicion) => (
-                      <option key={posicion.id} value={posicion.id}>
-                        {posicion.name} ({areas.find(a => a.id === posicion.area)?.name || 'Área no encontrada'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="form-group">
-                  <label>Número de Empleado</label>
-                  <input
-                    type="text"
-                    value={editForm.numero_empleado || ''}
-                    onChange={(e) => setEditForm({...editForm, numero_empleado: e.target.value || null})}
-                    placeholder="Ej: EMP001"
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Fecha de Ingreso</label>
-                  <input
-                    type="date"
-                    value={editForm.fecha_ingreso || ''}
-                    onChange={(e) => setEditForm({...editForm, fecha_ingreso: e.target.value || null})}
-                  />
-                </div>
-                
-                <div className="form-group full-width">
-                  <label>Áreas Asignadas</label>
-                  <div className="areas-checkboxes">
-                    {areas.map((area) => (
-                      <label key={area.id} className="area-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={editForm.areas.includes(area.id)}
-                          onChange={(e) => handleAreaChange(area.id, e.target.checked, 'edit')}
-                        />
-                        <span>{area.name}</span>
-                      </label>
-                    ))}
+              <div className="modal-body edit-user-body">
+                <aside className="edit-user-sidebar">
+                  <div className="photo-preview large">
+                    {editProfilePhotoPreview ? (
+                      <img src={editProfilePhotoPreview} alt="Previsualización foto de perfil" />
+                    ) : (
+                      <div className="photo-placeholder">
+                        <FaUser />
+                      </div>
+                    )}
                   </div>
-                  <FieldError errors={editErrors.areas} />
-                </div>
-                
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
-                    />
-                    Usuario activo
-                  </label>
+                  <div className="photo-actions column">
+                    <label className="btn-upload full">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        onChange={handleEditPhotoChange}
+                      />
+                      Cambiar foto
+                    </label>
+                    {editProfilePhotoFile && (
+                      <button type="button" className="btn-link" onClick={clearEditProfilePhotoSelection}>
+                        Cancelar selección
+                      </button>
+                    )}
+                    {(editProfilePhotoPreview || selectedUser?.profile_photo) && !removeProfilePhoto && (
+                      <button type="button" className="btn-link" onClick={handleRemoveCurrentProfilePhoto}>
+                        Eliminar foto
+                      </button>
+                    )}
+                    {removeProfilePhoto && selectedUser?.profile_photo && (
+                      <button
+                        type="button"
+                        className="btn-link"
+                        onClick={() => {
+                          setRemoveProfilePhoto(false);
+                          setEditProfilePhotoPreview(getMediaUrl(selectedUser.profile_photo));
+                        }}
+                      >
+                        Restaurar foto
+                      </button>
+                    )}
+                    {removeProfilePhoto && (
+                      <p className="photo-remove-note">La foto actual se eliminará al guardar.</p>
+                    )}
+                    <FieldError errors={editErrors.profile_photo} />
+                  </div>
+                  <div className="sidebar-divider" />
+                  <div className="sidebar-status">
+                    <span>Estado</span>
+                    <label className="switch-label">
+                      <input
+                        type="checkbox"
+                        checked={editForm.is_active}
+                        onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
+                      />
+                      <span>{editForm.is_active ? 'Activo' : 'Inactivo'}</span>
+                    </label>
+                  </div>
+                  <div className="sidebar-summary">
+                    <p><strong>Usuario:</strong> {selectedUser.username}</p>
+                    <p><strong>Email:</strong> {selectedUser.email}</p>
+                  </div>
+                </aside>
+
+                <div className="edit-user-main">
+                  <section className="modal-section">
+                    <h3>Datos Generales</h3>
+                    <div className="form-grid two-columns">
+                      <div className="form-group">
+                        <label>Usuario *</label>
+                        <input
+                          type="text"
+                          value={editForm.username}
+                          onChange={(e) => setEditForm({...editForm, username: e.target.value})}
+                          required
+                        />
+                        <FieldError errors={editErrors.username} />
+                      </div>
+                      <div className="form-group">
+                        <label>Email *</label>
+                        <input
+                          type="email"
+                          value={editForm.email}
+                          onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                          required
+                        />
+                        <FieldError errors={editErrors.email} />
+                      </div>
+                      <div className="form-group">
+                        <label>Nombre</label>
+                        <input
+                          type="text"
+                          value={editForm.first_name}
+                          onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
+                        />
+                        <FieldError errors={editErrors.first_name} />
+                      </div>
+                      <div className="form-group">
+                        <label>Apellido</label>
+                        <input
+                          type="text"
+                          value={editForm.last_name}
+                          onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
+                        />
+                        <FieldError errors={editErrors.last_name} />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="modal-section">
+                    <h3>Asignación</h3>
+                    <div className="form-grid two-columns">
+                      <div className="form-group">
+                        <label>Rol *</label>
+                        <select
+                          value={editForm.role}
+                          onChange={(e) => setEditForm({...editForm, role: e.target.value})}
+                          required
+                        >
+                          <option value="USUARIO">Usuario Regular</option>
+                          <option value="EVALUADOR">Evaluador</option>
+                          <option value="ADMIN">Administrador</option>
+                        </select>
+                        <FieldError errors={editErrors.role} />
+                      </div>
+                      <div className="form-group">
+                        <label>Posición</label>
+                        <select
+                          value={editForm.posicion || ''}
+                          onChange={(e) => setEditForm({...editForm, posicion: e.target.value ? parseInt(e.target.value) : null})}
+                        >
+                          <option value="">Seleccionar posición</option>
+                          {posiciones.map((posicion) => (
+                            <option key={posicion.id} value={posicion.id}>
+                              {posicion.name} ({areas.find(a => a.id === posicion.area)?.name || 'Área no encontrada'})
+                            </option>
+                          ))}
+                        </select>
+                        <FieldError errors={editErrors.posicion} />
+                      </div>
+                      <div className="form-group">
+                        <label>Grupo</label>
+                        <select
+                          value={editForm.grupo || ''}
+                          onChange={(e) => setEditForm({...editForm, grupo: e.target.value ? parseInt(e.target.value) : null})}
+                        >
+                          <option value="">Seleccionar grupo</option>
+                          {grupos.map((grupo) => (
+                            <option key={grupo.id} value={grupo.id}>
+                              {grupo.name} ({areas.find(a => a.id === grupo.area)?.name || 'Área no encontrada'})
+                            </option>
+                          ))}
+                        </select>
+                        <FieldError errors={editErrors.grupo} />
+                      </div>
+                      <div className="form-group">
+                        <label>Número de Empleado</label>
+                        <input
+                          type="text"
+                          value={editForm.numero_empleado || ''}
+                          onChange={(e) => setEditForm({...editForm, numero_empleado: e.target.value || null})}
+                          placeholder="Ej: EMP001"
+                        />
+                        <FieldError errors={editErrors.numero_empleado} />
+                      </div>
+                      <div className="form-group">
+                        <label>Fecha de Ingreso</label>
+                        <input
+                          type="date"
+                          value={editForm.fecha_ingreso || ''}
+                          onChange={(e) => setEditForm({...editForm, fecha_ingreso: e.target.value || null})}
+                        />
+                        <FieldError errors={editErrors.fecha_ingreso} />
+                      </div>
+                      <div className="form-group full-width">
+                        <label>Áreas Asignadas</label>
+                        <div className="areas-checkboxes">
+                          {areas.map((area) => (
+                            <label key={area.id} className="area-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={editForm.areas.includes(area.id)}
+                                onChange={(e) => handleAreaChange(area.id, e.target.checked, 'edit')}
+                              />
+                              <span>{area.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <FieldError errors={editErrors.areas} />
+                      </div>
+                    </div>
+                  </section>
                 </div>
               </div>
-              
+
               <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowEditModal(false)}>
+                <button type="button" className="btn-secondary" onClick={closeEditModal}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary">
@@ -1267,6 +1785,17 @@ const UserManagement: React.FC = () => {
               </button>
             </div>
             
+            <div className="user-detail-avatar">
+              {selectedUser.profile_photo ? (
+                <img
+                  src={getMediaUrl(selectedUser.profile_photo)}
+                  alt={`Foto de ${selectedUser.full_name}`}
+                />
+              ) : (
+                <FaUser />
+              )}
+            </div>
+
             <div className="form-grid">
               <div className="form-group">
                 <label>Usuario</label>
@@ -1452,56 +1981,66 @@ const UserManagement: React.FC = () => {
       {/* Modal de pasos para crear/editar usuario */}
       {(isCreating || isEditing) && (
         <div className="modal-overlay">
-          <div className="modal step-modal">
-            <div className="modal-header">
-              <h2>
-                {isCreating ? 'Crear Nuevo Usuario' : 'Editar Usuario'}
-                <span className="step-indicator">Paso {currentStep} de 3</span>
-              </h2>
-              <button className="modal-close" onClick={closeStepModal}>
+          <div className="step-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="step-modal__header">
+              <button className="step-modal__close" onClick={closeStepModal} title="Cerrar">
                 <FaTimes />
               </button>
-            </div>
+              <div className="step-modal__title">
+                <h2>{isCreating ? 'Crear Usuario' : 'Editar Usuario'}</h2>
+                <span className="step-modal__subtitle">Paso {currentStep} de 3</span>
+              </div>
+            </header>
 
-            <div className="step-progress">
-              <div className={`step ${currentStep >= 1 ? 'active' : ''}`}>
+            <nav className="step-modal__progress">
+              <button
+                type="button"
+                className={`progress-chip ${currentStep === 1 ? 'active' : ''}`}
+                onClick={() => setCurrentStep(1)}
+              >
                 <FaUser />
-                <span>Datos Generales</span>
-              </div>
-              <div className={`step ${currentStep >= 2 ? 'active' : ''}`}>
+                <span>Datos</span>
+              </button>
+              <button
+                type="button"
+                className={`progress-chip ${currentStep === 2 ? 'active' : ''}`}
+                onClick={() => setCurrentStep(2)}
+              >
                 <FaUserTag />
-                <span>Rol y Fechas</span>
-              </div>
-              <div className={`step ${currentStep >= 3 ? 'active' : ''}`}>
+                <span>Rol</span>
+              </button>
+              <button
+                type="button"
+                className={`progress-chip ${currentStep === 3 ? 'active' : ''}`}
+                onClick={() => setCurrentStep(3)}
+              >
                 <FaBuilding />
-                <span>Área y Posición</span>
-              </div>
-            </div>
+                <span>Ubicación</span>
+              </button>
+            </nav>
 
-            <div className="modal-body">
+            <section className="step-modal__body">
               {currentStep === 1 && renderStep1()}
               {currentStep === 2 && renderStep2()}
               {currentStep === 3 && renderStep3()}
-            </div>
+            </section>
 
-            <div className="modal-footer">
-              <div className="step-buttons">
-                {currentStep > 1 && (
-                  <button className="btn-secondary" onClick={prevStep}>
-                    <FaArrowLeft /> Anterior
-                  </button>
-                )}
-                {currentStep < 3 ? (
-                  <button className="btn-primary" onClick={nextStep}>
-                    Siguiente <FaArrowRight />
-                  </button>
-                ) : (
-                  <button className="btn-primary" onClick={handleFinalSubmit}>
-                    {isCreating ? 'Crear Usuario' : 'Actualizar Usuario'}
-                  </button>
-                )}
-              </div>
-            </div>
+            <footer className="step-modal__footer">
+              {currentStep > 1 && (
+                <button className="btn-secondary" onClick={prevStep}>
+                  <FaArrowLeft /> Anterior
+                </button>
+              )}
+              {currentStep < 3 ? (
+                <button className="btn-primary" onClick={nextStep}>
+                  Siguiente <FaArrowRight />
+                </button>
+              ) : (
+                <button className="btn-primary" onClick={handleFinalSubmit}>
+                  {isCreating ? 'Crear Usuario' : 'Actualizar Usuario'}
+                </button>
+              )}
+            </footer>
           </div>
         </div>
       )}

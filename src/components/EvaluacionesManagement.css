@@ -572,6 +572,11 @@
   color: #333;
 }
 
+.firma-orden {
+  color: #666;
+  font-size: 0.85rem;
+}
+
 .firma-usuario {
   color: #666;
   font-size: 0.9rem;
@@ -580,6 +585,16 @@
 .firma-fecha {
   color: #666;
   font-size: 0.8rem;
+}
+
+.firma-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.firma-actions .btn-icon {
+  border: none;
 }
 
 /* Botones */

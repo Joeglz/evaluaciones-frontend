@@ -7,6 +7,9 @@ import './UserProfile.css';
 
 interface UserProfileProps {}
 
+const PROFILE_PHOTO_MAX_SIZE = 2 * 1024 * 1024;
+const ALLOWED_PROFILE_PHOTO_TYPES = ['image/jpeg', 'image/png'];
+
 const UserProfile: React.FC<UserProfileProps> = () => {
   const [user, setUser] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -17,6 +20,9 @@ const UserProfile: React.FC<UserProfileProps> = () => {
     numero_empleado: '',
     signature: null as File | null
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [removeProfilePhoto, setRemoveProfilePhoto] = useState(false);
   const [errors, setErrors] = useState<any>({});
   const [loading, setLoading] = useState(false);
   const { toasts, showSuccess, showError, removeToast } = useToast();
@@ -29,6 +35,14 @@ const UserProfile: React.FC<UserProfileProps> = () => {
   useEffect(() => {
     loadUserData();
   }, []);
+
+useEffect(() => {
+  return () => {
+    if (profilePhotoPreview && profilePhotoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(profilePhotoPreview);
+    }
+  };
+}, [profilePhotoPreview]);
 
   useEffect(() => {
     // Configurar el canvas para dibujar
@@ -58,6 +72,9 @@ const UserProfile: React.FC<UserProfileProps> = () => {
           numero_empleado: parsedUser.numero_empleado || '',
           signature: null
         });
+        setProfilePhotoFile(null);
+        setProfilePhotoPreview(parsedUser.profile_photo ? getMediaUrl(parsedUser.profile_photo) : null);
+        setRemoveProfilePhoto(false);
       } catch (error) {
         console.error('Error parsing user data:', error);
         showError('Error al cargar los datos del usuario');
@@ -80,6 +97,71 @@ const UserProfile: React.FC<UserProfileProps> = () => {
       }));
     }
   };
+
+const validateProfilePhoto = (file: File): boolean => {
+  if (!ALLOWED_PROFILE_PHOTO_TYPES.includes(file.type)) {
+    showError('La foto debe ser una imagen JPG o PNG.');
+    return false;
+  }
+  if (file.size > PROFILE_PHOTO_MAX_SIZE) {
+    showError('La foto debe pesar máximo 2 MB.');
+    return false;
+  }
+  return true;
+};
+
+const handleProfilePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0] ?? null;
+
+  if (profilePhotoPreview && profilePhotoPreview.startsWith('blob:')) {
+    URL.revokeObjectURL(profilePhotoPreview);
+  }
+
+  if (!file) {
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(user?.profile_photo ? getMediaUrl(user.profile_photo) : null);
+    setRemoveProfilePhoto(false);
+    return;
+  }
+
+  if (!validateProfilePhoto(file)) {
+    event.target.value = '';
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(user?.profile_photo ? getMediaUrl(user.profile_photo) : null);
+    setRemoveProfilePhoto(false);
+    return;
+  }
+
+  const url = URL.createObjectURL(file);
+  setProfilePhotoFile(file);
+  setProfilePhotoPreview(url);
+  setRemoveProfilePhoto(false);
+};
+
+const clearProfilePhotoSelection = () => {
+  if (profilePhotoPreview && profilePhotoPreview.startsWith('blob:')) {
+    URL.revokeObjectURL(profilePhotoPreview);
+  }
+  setProfilePhotoFile(null);
+  setProfilePhotoPreview(user?.profile_photo ? getMediaUrl(user.profile_photo) : null);
+  setRemoveProfilePhoto(false);
+};
+
+const handleRemoveProfilePhoto = () => {
+  if (profilePhotoPreview && profilePhotoPreview.startsWith('blob:')) {
+    URL.revokeObjectURL(profilePhotoPreview);
+  }
+  setProfilePhotoFile(null);
+  setProfilePhotoPreview(null);
+  setRemoveProfilePhoto(true);
+};
+
+const startEditingProfile = () => {
+  setIsEditing(true);
+  setRemoveProfilePhoto(false);
+  setProfilePhotoFile(null);
+  setProfilePhotoPreview(user?.profile_photo ? getMediaUrl(user.profile_photo) : null);
+};
 
   // Funciones para el canvas de firma
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -220,6 +302,15 @@ const UserProfile: React.FC<UserProfileProps> = () => {
       submitData.append('email', formData.email);
       submitData.append('numero_empleado', formData.numero_empleado);
       
+      if (profilePhotoFile) {
+        submitData.append('profile_photo', profilePhotoFile);
+        submitData.append('remove_profile_photo', 'false');
+      } else if (removeProfilePhoto) {
+        submitData.append('remove_profile_photo', 'true');
+      } else {
+        submitData.append('remove_profile_photo', 'false');
+      }
+      
       // Si hay una firma dibujada pero no guardada, guardarla automáticamente
       if (hasSignature && !formData.signature) {
         const canvas = canvasRef.current;
@@ -267,11 +358,15 @@ const UserProfile: React.FC<UserProfileProps> = () => {
         last_name: response.last_name,
         email: response.email,
         numero_empleado: response.numero_empleado,
-        signature: response.signature
+        signature: response.signature,
+        profile_photo: response.profile_photo,
       };
       
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      setProfilePhotoFile(null);
+      setProfilePhotoPreview(response.profile_photo ? getMediaUrl(response.profile_photo) : null);
+      setRemoveProfilePhoto(false);
       
       setIsEditing(false);
       showSuccess('Perfil actualizado exitosamente');
@@ -320,7 +415,7 @@ const UserProfile: React.FC<UserProfileProps> = () => {
             {!isEditing && (
               <button 
                 className="btn-edit"
-                onClick={() => setIsEditing(true)}
+                onClick={startEditingProfile}
               >
                 <FaEdit /> Editar
               </button>
@@ -328,6 +423,53 @@ const UserProfile: React.FC<UserProfileProps> = () => {
           </div>
 
           <div className="profile-info">
+            <div className="profile-photo-section">
+              <div className="profile-photo-preview">
+                {profilePhotoPreview ? (
+                  <img src={profilePhotoPreview} alt="Foto de perfil" />
+                ) : (
+                  <FaUser />
+                )}
+              </div>
+              {isEditing && (
+                <div className="profile-photo-actions">
+                  <label className="btn-upload">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      onChange={handleProfilePhotoChange}
+                    />
+                    Cambiar foto
+                  </label>
+                  {profilePhotoFile && (
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={clearProfilePhotoSelection}
+                    >
+                      Cancelar selección
+                    </button>
+                  )}
+                  {(profilePhotoPreview || user?.profile_photo) && (
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={handleRemoveProfilePhoto}
+                    >
+                      Eliminar foto
+                    </button>
+                  )}
+                  {removeProfilePhoto && user?.profile_photo && (
+                    <span className="photo-remove-note">
+                      La foto se eliminará al guardar.
+                    </span>
+                  )}
+                  {errors.profile_photo && (
+                    <span className="error-message">{errors.profile_photo}</span>
+                  )}
+                </div>
+              )}
+            </div>
             {isEditing ? (
               <div className="profile-form">
                 <div className="form-row">

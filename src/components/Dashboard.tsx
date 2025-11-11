@@ -8,6 +8,8 @@ import {
 } from 'react-icons/fa';
 import Settings from './Settings';
 import Evaluaciones from './Evaluaciones';
+import Notificaciones from './Notificaciones';
+import Reportes from './Reportes';
 import './Dashboard.css';
 
 interface User {
@@ -79,6 +81,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         }
       case 'ajustes':
         return <Settings />;
+      case 'notificaciones':
+        return <Notificaciones />;
+      case 'reportes':
+        return <Reportes />;
       case 'home':
       default:
         return (
@@ -92,7 +98,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   return (
     <div className="dashboard-container">
       {/* Header con mensaje de bienvenida */}
-      {(activeView === 'home' || activeView === 'ajustes' || activeView === 'evaluaciones') && (
+      {(activeView === 'home' ||
+        activeView === 'ajustes' ||
+        activeView === 'evaluaciones' ||
+        activeView === 'reportes') && (
         <header className="dashboard-header">
           <div className="welcome-message">
             <h1>Hola {getDisplayName()}, ¿qué quieres hacer hoy?</h1>

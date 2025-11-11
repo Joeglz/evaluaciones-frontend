@@ -1,0 +1,236 @@
+.notificaciones-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  min-height: 60vh;
+}
+
+.notificaciones-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notificaciones-header h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  color: #1b1b1f;
+}
+
+.notificaciones-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.filtro-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: #3d3d45;
+}
+
+.filtro-checkbox input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: #e12026;
+}
+
+.btn-recargar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  background-color: #e12026;
+  color: #ffffff;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  font-weight: 600;
+}
+
+.btn-recargar:hover:not(:disabled) {
+  background-color: #c71c21;
+  box-shadow: 0 6px 16px rgba(225, 32, 38, 0.25);
+}
+
+.btn-recargar:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.notificaciones-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notificaciones-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem 1rem;
+  border: 2px dashed rgba(225, 32, 38, 0.2);
+  border-radius: 16px;
+  color: #6a6a72;
+  background-color: rgba(225, 32, 38, 0.04);
+  text-align: center;
+}
+
+.placeholder-icon {
+  font-size: 2.5rem;
+  color: #e12026;
+}
+
+.notificacion-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notificacion-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.notificacion-item.pendiente {
+  border-left: 4px solid #e12026;
+}
+
+.notificacion-item.leida {
+  border-left: 4px solid #17a398;
+  background-color: rgba(23, 163, 152, 0.06);
+}
+
+.notificacion-estado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.estado-icono {
+  font-size: 1.5rem;
+}
+
+.estado-icono.leida {
+  color: #17a398;
+}
+
+.estado-icono.pendiente {
+  color: #e12026;
+}
+
+.notificacion-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.notificacion-titulo {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1b1b1f;
+}
+
+.notificacion-mensaje {
+  margin: 0;
+  color: #3d3d45;
+  line-height: 1.5;
+}
+
+.notificacion-detalles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: #5c5c63;
+}
+
+.notificacion-detalles .detalle strong {
+  color: #1b1b1f;
+}
+
+.notificacion-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-end;
+  min-width: 180px;
+}
+
+.btn-estado,
+.btn-eliminar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  font-weight: 600;
+}
+
+.btn-estado {
+  background-color: rgba(23, 163, 152, 0.12);
+  color: #12786f;
+}
+
+.btn-estado:hover {
+  background-color: rgba(23, 163, 152, 0.18);
+  box-shadow: 0 4px 12px rgba(23, 163, 152, 0.18);
+}
+
+.btn-eliminar {
+  background-color: rgba(225, 32, 38, 0.12);
+  color: #b1171b;
+}
+
+.btn-eliminar:hover {
+  background-color: rgba(225, 32, 38, 0.18);
+  box-shadow: 0 4px 12px rgba(225, 32, 38, 0.18);
+}
+
+@media (max-width: 768px) {
+  .notificaciones-container {
+    padding: 1rem;
+  }
+
+  .notificacion-item {
+    grid-template-columns: 1fr;
+  }
+
+  .notificacion-estado {
+    justify-content: flex-start;
+  }
+
+  .notificacion-acciones {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-estado,
+  .btn-eliminar {
+    width: 100%;
+  }
+}
+

@@ -15,12 +15,55 @@ import {
   FaCalendarAlt,
   FaClipboardList,
   FaEdit,
-  FaEraser
+  FaEraser,
+  FaChevronLeft,
+  FaChevronRight
 } from 'react-icons/fa';
-import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate } from '../services/api';
+import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, EvaluacionUsuario, ProgresoNivel, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Evaluaciones.css';
+
+const calcularResumenNiveles = (
+  evaluacionesLista: any[],
+  guardadasMap: Record<number, EvaluacionUsuario>
+) => {
+  const stats: Record<number, { total: number; completadas: number }> = {};
+
+  evaluacionesLista.forEach((evaluacion) => {
+    const nivel =
+      evaluacion.nivel_posicion_data?.nivel ??
+      evaluacion.nivel ??
+      null;
+
+    if (typeof nivel !== 'number') {
+      return;
+    }
+
+    if (!stats[nivel]) {
+      stats[nivel] = { total: 0, completadas: 0 };
+    }
+
+    stats[nivel].total += 1;
+
+    const evaluacionGuardada = guardadasMap[evaluacion.id];
+    const estado = (evaluacionGuardada?.estado || '').toLowerCase();
+    const estadoFirmas = (evaluacion.estado_firmas || '').toLowerCase();
+    const firmasCompletas = estadoFirmas === 'firmas_completas';
+
+    if (firmasCompletas && (estado === 'completada' || evaluacion.resultado !== null)) {
+      stats[nivel].completadas += 1;
+    }
+  });
+
+  const completados: Record<number, boolean> = {};
+  Object.entries(stats).forEach(([nivel, valores]) => {
+    const nivelNumero = Number(nivel);
+    completados[nivelNumero] = valores.total > 0 && valores.total === valores.completadas;
+  });
+
+  return { stats, completados };
+};
 
 type AreaWithSupervisores = Area & { supervisores?: Array<{ id: number }> };
 
@@ -48,25 +91,26 @@ const Evaluaciones: React.FC = () => {
   const [evaluacionesUsuario, setEvaluacionesUsuario] = useState<any[]>([]);
   const [evaluacionActual, setEvaluacionActual] = useState<any>(null);
   const [resultadosEvaluacion, setResultadosEvaluacion] = useState<any[]>([]);
+  const [evaluacionesUsuarioGuardadas, setEvaluacionesUsuarioGuardadas] = useState<Record<number, EvaluacionUsuario>>({});
   const [supervisorSeleccionado, setSupervisorSeleccionado] = useState<number | null>(null);
-  
-  // Referencias para los canvas de firmas
-  const empleadoCanvasRef = useRef<HTMLCanvasElement>(null);
-  const evaluadorCanvasRef = useRef<HTMLCanvasElement>(null);
-  const calidadCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState<{ [key: string]: boolean }>({});
-  const [hasSignature, setHasSignature] = useState<{ [key: string]: boolean }>({});
-  const [signatures, setSignatures] = useState<{ [key: string]: string | null }>({
-    empleado: null,
-    evaluador: null,
-    calidad: null
-  });
-  const [showFirmaModal, setShowFirmaModal] = useState<{ [key: string]: boolean }>({
-    empleado: false,
-    evaluador: false,
-    calidad: false
-  });
-  const [currentFirmaTipo, setCurrentFirmaTipo] = useState<string>('');
+  const [evaluacionModoLectura, setEvaluacionModoLectura] = useState(false);
+  const [evaluacionGuardadaInfo, setEvaluacionGuardadaInfo] = useState<EvaluacionUsuario | null>(null);
+  const [nivelesDisponibles, setNivelesDisponibles] = useState<number[]>([]);
+  const [nivelSeleccionado, setNivelSeleccionado] = useState<number | null>(null);
+  const [nivelesCompletos, setNivelesCompletos] = useState<Record<number, boolean>>({});
+  const [nivelesCompletosPorUsuario, setNivelesCompletosPorUsuario] = useState<Record<number, Record<number, boolean>>>({});
+  const [guardandoFirma, setGuardandoFirma] = useState(false);
+const [progresosNivel, setProgresosNivel] = useState<Record<number, Record<number, ProgresoNivel>>>({});
+const [nivelFiltroUsuarios, setNivelFiltroUsuarios] = useState<number | 'todos'>('todos');
+ 
+  // Referencia y estados para firmas dinámicas
+const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
+const [isDrawing, setIsDrawing] = useState(false);
+const [hasSignature, setHasSignature] = useState<Record<string, boolean>>({});
+const [signatures, setSignatures] = useState<Record<string, string | null>>({});
+const [firmaModalAbierta, setFirmaModalAbierta] = useState<{ tipo: string; nombre: string } | null>(null);
+const [firmaModalFirmante, setFirmaModalFirmante] = useState<number | null>(null);
+const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(null);
 
   // Estados para filtros y búsqueda
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,24 +137,20 @@ const Evaluaciones: React.FC = () => {
 
   // Configurar los canvas para dibujar
   useEffect(() => {
-    const configCanvas = (canvas: HTMLCanvasElement | null) => {
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.strokeStyle = '#e12026';
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-    };
-
-    configCanvas(empleadoCanvasRef.current);
-    configCanvas(evaluadorCanvasRef.current);
-    configCanvas(calidadCanvasRef.current);
+    const canvas = firmaCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.strokeStyle = '#e12026';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
   }, []);
 
-  // Funciones para dibujar en los canvas
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>, tipo: string) => {
-    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+  // Funciones para dibujar en el canvas de firmas dinámicas
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!firmaModalAbierta) return;
+    const canvas = firmaCanvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -119,13 +159,13 @@ const Evaluaciones: React.FC = () => {
 
     ctx.beginPath();
     ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    setIsDrawing({ ...isDrawing, [tipo]: true });
+    setIsDrawing(true);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>, tipo: string) => {
-    if (!isDrawing[tipo]) return;
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !firmaModalAbierta) return;
 
-    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+    const canvas = firmaCanvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -134,51 +174,72 @@ const Evaluaciones: React.FC = () => {
 
     ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
     ctx.stroke();
-    setHasSignature({ ...hasSignature, [tipo]: true });
+    setHasSignature(prev => ({
+      ...prev,
+      [firmaModalAbierta.tipo]: true
+    }));
   };
 
-  const stopDrawing = (tipo: string) => {
-    setIsDrawing({ ...isDrawing, [tipo]: false });
-    // Guardar la firma como imagen automáticamente
-    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
-    if (canvas && hasSignature[tipo]) {
+  const stopDrawing = () => {
+    if (!isDrawing || !firmaModalAbierta) return;
+    setIsDrawing(false);
+
+    const canvas = firmaCanvasRef.current;
+    if (canvas && hasSignature[firmaModalAbierta.tipo]) {
       const dataURL = canvas.toDataURL('image/png');
-      setSignatures({ ...signatures, [tipo]: dataURL });
+      setSignatures(prev => ({
+        ...prev,
+        [firmaModalAbierta.tipo]: dataURL
+      }));
     }
   };
 
-  const handleOpenFirmaModal = (tipo: string) => {
-    setCurrentFirmaTipo(tipo);
-    setShowFirmaModal({ ...showFirmaModal, [tipo]: true });
-    
-    // Cargar firma existente si hay una
-    if (signatures[tipo]) {
-      const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
-      if (canvas) {
+  const handleOpenFirmaModal = (firma: FirmaEvaluacion) => {
+    setFirmaModalAbierta({ tipo: firma.tipo_firma, nombre: firma.nombre });
+    if (firma.tipo_firma === 'empleado') {
+      setFirmaModalFirmante(selectedUser?.id ?? null);
+    } else if (firma.usuario) {
+      setFirmaModalFirmante(firma.usuario);
+    } else if (supervisorSeleccionado) {
+      setFirmaModalFirmante(supervisorSeleccionado);
+    } else if (supervisores.length > 0) {
+      setFirmaModalFirmante(supervisores[0].id);
+    } else {
+      setFirmaModalFirmante(null);
+    }
+    setTimeout(() => {
+      const canvas = firmaCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const dataURL = signatures[firma.tipo_firma] ?? firma.imagen ?? null;
+      if (dataURL) {
         const img = new Image();
         img.onload = () => {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-            setHasSignature({ ...hasSignature, [tipo]: true });
-          }
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          setHasSignature(prev => ({ ...prev, [firma.tipo_firma]: true }));
         };
-        img.src = signatures[tipo] || '';
+        img.src = dataURL;
+      } else {
+        setHasSignature(prev => ({ ...prev, [firma.tipo_firma]: false }));
       }
-    }
+    }, 0);
   };
 
-  const clearSignature = (tipo: string) => {
-    const canvas = tipo === 'empleado' ? empleadoCanvasRef.current : tipo === 'evaluador' ? evaluadorCanvasRef.current : calidadCanvasRef.current;
+  const clearSignature = () => {
+    if (!firmaModalAbierta) return;
+    const canvas = firmaCanvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasSignature({ ...hasSignature, [tipo]: false });
-    setSignatures({ ...signatures, [tipo]: null });
+    setHasSignature(prev => ({ ...prev, [firmaModalAbierta.tipo]: false }));
+    setSignatures(prev => ({ ...prev, [firmaModalAbierta.tipo]: null }));
   };
 
   useEffect(() => {
@@ -194,6 +255,29 @@ const Evaluaciones: React.FC = () => {
       setUsuariosSeleccionados(usuariosRegulares);
     }
   }, [searchTerm, usuariosRegulares]);
+
+  useEffect(() => {
+    if (!evaluacionActual || !evaluacionActual.firmas) {
+      setFirmaModalAbierta(null);
+      setFirmaModalFirmante(null);
+      setSignatures({});
+      setHasSignature({});
+      return;
+    }
+
+    const signaturesIniciales: Record<string, string | null> = {};
+    const hasIniciales: Record<string, boolean> = {};
+
+    evaluacionActual.firmas.forEach((firma: FirmaEvaluacion) => {
+      const imagen = firma.imagen ?? null;
+      const firmaAlmacenada = signatures[firma.tipo_firma] ?? imagen;
+      signaturesIniciales[firma.tipo_firma] = firmaAlmacenada;
+      hasIniciales[firma.tipo_firma] = Boolean(firmaAlmacenada) || Boolean(firma.esta_firmado);
+    });
+
+    setSignatures(signaturesIniciales);
+    setHasSignature(hasIniciales);
+  }, [evaluacionActual]);
 
   useEffect(() => {
     // Filtrar usuarios en la vista de usuarios cuando cambie el término de búsqueda
@@ -225,6 +309,72 @@ const Evaluaciones: React.FC = () => {
     }
   }, [searchTerm, currentView, usuarios, selectedArea, selectedGrupo, selectedPosicion]);
 
+  useEffect(() => {
+    if (currentView !== 'usuarios') return;
+
+    const usuariosPendientes = filteredUsuarios.filter(
+      (usuario) => !nivelesCompletosPorUsuario[usuario.id]
+    );
+
+    if (usuariosPendientes.length === 0) {
+      return;
+    }
+
+    let cancelado = false;
+
+    const cargarResumenes = async () => {
+      for (const usuario of usuariosPendientes) {
+        try {
+          const [evaluaciones, evaluacionesGuardadas] = await Promise.all([
+            apiService.getEvaluaciones({
+              area_id: usuario.areas[0],
+              posicion_id: usuario.posicion || undefined,
+              es_plantilla: false
+            }),
+            apiService.getEvaluacionesUsuario({
+              usuario: usuario.id
+            })
+          ]);
+
+          if (cancelado) {
+            return;
+          }
+
+          const guardadasMap: Record<number, EvaluacionUsuario> = {};
+          (evaluacionesGuardadas.results || []).forEach((registro) => {
+            guardadasMap[registro.evaluacion] = registro;
+          });
+
+          const { completados } = calcularResumenNiveles(evaluaciones.results || [], guardadasMap);
+
+          setNivelesCompletosPorUsuario((prev) => ({
+            ...prev,
+            [usuario.id]: completados
+          }));
+        } catch (prefetchError) {
+          console.error('Error al precargar resumen de niveles para el usuario', usuario.id, prefetchError);
+        }
+      }
+    };
+
+    cargarResumenes();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [currentView, filteredUsuarios, nivelesCompletosPorUsuario]);
+
+  useEffect(() => {
+    if (!selectedUser) {
+      return;
+    }
+
+    const resumen = nivelesCompletosPorUsuario[selectedUser.id];
+    if (resumen) {
+      setNivelesCompletos(resumen);
+    }
+  }, [selectedUser, nivelesCompletosPorUsuario]);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -252,7 +402,7 @@ const Evaluaciones: React.FC = () => {
   };
 
   // Navegación entre vistas
-const handleAreaClick = (area: Area) => {
+  const handleAreaClick = (area: Area) => {
   setSelectedArea(area as AreaWithSupervisores);
     setCurrentView('grupos');
   };
@@ -262,13 +412,21 @@ const handleAreaClick = (area: Area) => {
     setCurrentView('posiciones');
   };
 
-  const handleOnboardingClick = () => {
+  const handleOnboardingClick = (usuarioId?: number | null) => {
+    if (typeof usuarioId === 'number') {
+      setOnboardingUsuarioId(usuarioId);
+    } else if (selectedUser) {
+      setOnboardingUsuarioId(selectedUser.id);
+    } else {
+      setOnboardingUsuarioId(null);
+    }
     setCurrentView('onboarding');
   };
 
   const handlePosicionClick = (posicion: Posicion) => {
     setSelectedPosicion(posicion);
     setCurrentView('usuarios');
+    setNivelFiltroUsuarios('todos');
     
     // Filtrar usuarios que tengan la posición seleccionada, pertenezcan al área, grupo y sean usuarios regulares
     const usuariosFiltrados = usuarios.filter(user => {
@@ -279,6 +437,7 @@ const handleAreaClick = (area: Area) => {
       return tienePosicion && tieneArea && tieneGrupo && esUsuarioRegular;
     });
     setFilteredUsuarios(usuariosFiltrados);
+    loadProgresosNivel(posicion.id);
   };
 
   const handleUserClick = (user: User) => {
@@ -291,17 +450,100 @@ const handleAreaClick = (area: Area) => {
     try {
       setLoading(true);
       // Obtener evaluaciones que coincidan con el área y posición del usuario
-      const evaluaciones = await apiService.getEvaluaciones({
-        area_id: user.areas[0], // Usar la primera área del usuario
-        posicion_id: user.posicion || undefined
+      const [evaluaciones, evaluacionesGuardadas] = await Promise.all([
+        apiService.getEvaluaciones({
+          area_id: user.areas[0], // Usar la primera área del usuario
+          posicion_id: user.posicion || undefined,
+          es_plantilla: false
+        }),
+        apiService.getEvaluacionesUsuario({
+          usuario: user.id
+        })
+      ]);
+
+      const guardadasMap: Record<number, EvaluacionUsuario> = {};
+      (evaluacionesGuardadas.results || []).forEach((registro) => {
+        guardadasMap[registro.evaluacion] = registro;
       });
+
       setEvaluacionesUsuario(evaluaciones.results);
+      setEvaluacionesUsuarioGuardadas(guardadasMap);
+
+      const nivelesSet = new Set<number>();
+      (evaluaciones.results || []).forEach((evaluacionItem: any) => {
+        const nivelItem =
+          evaluacionItem.nivel_posicion_data?.nivel ??
+          evaluacionItem.nivel ??
+          null;
+        if (typeof nivelItem === 'number') {
+          nivelesSet.add(nivelItem);
+        }
+      });
+
+      const nivelesOrdenados = Array.from(nivelesSet).sort((a, b) => a - b);
+      setNivelesDisponibles(nivelesOrdenados);
+      setNivelSeleccionado((nivelPrevio) => {
+        if (nivelPrevio && nivelesOrdenados.includes(nivelPrevio)) {
+          return nivelPrevio;
+        }
+        return nivelesOrdenados.length > 0 ? nivelesOrdenados[0] : null;
+      });
+ 
+      const { completados } = calcularResumenNiveles(evaluaciones.results || [], guardadasMap);
+      setNivelesCompletos(completados);
+      setNivelesCompletosPorUsuario((prev) => ({
+        ...prev,
+        [user.id]: completados
+      }));
     } catch (error: any) {
       console.error('Error loading evaluaciones:', error);
       showError('Error al cargar las evaluaciones del usuario');
       setEvaluacionesUsuario([]);
+      setEvaluacionesUsuarioGuardadas({});
+      setNivelesDisponibles([]);
+      setNivelSeleccionado(null);
+      setNivelesCompletos({});
+      setNivelesCompletosPorUsuario((prev) => {
+        if (!(user.id in prev)) return prev;
+        const actualizado = { ...prev };
+        delete actualizado[user.id];
+        return actualizado;
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadProgresosNivel = async (posicionId?: number | null) => {
+    try {
+      const params = posicionId ? { posicion: posicionId } : undefined;
+      const progresos = await apiService.getProgresosNivel(params);
+      const progresosAgrupados: Record<number, Record<number, ProgresoNivel>> = {};
+      const completadosAgrupados: Record<number, Record<number, boolean>> = {};
+
+      progresos.forEach((progreso) => {
+        if (!progresosAgrupados[progreso.usuario]) {
+          progresosAgrupados[progreso.usuario] = {};
+        }
+        progresosAgrupados[progreso.usuario][progreso.nivel] = progreso;
+
+        if (!completadosAgrupados[progreso.usuario]) {
+          completadosAgrupados[progreso.usuario] = {};
+        }
+        completadosAgrupados[progreso.usuario][progreso.nivel] = progreso.completado;
+      });
+
+      setProgresosNivel((prev) => ({
+        ...prev,
+        ...progresosAgrupados
+      }));
+
+      setNivelesCompletosPorUsuario((prev) => ({
+        ...prev,
+        ...completadosAgrupados
+      }));
+    } catch (error) {
+      console.error('Error al cargar progresos de nivel:', error);
     }
   };
 
@@ -309,6 +551,16 @@ const handleAreaClick = (area: Area) => {
     try {
       setLoading(true);
       setEvaluacionActual(evaluacion);
+      setEvaluacionModoLectura(false);
+      setEvaluacionGuardadaInfo(null);
+
+      const nivelEvaluacion =
+        evaluacion.nivel ??
+        evaluacion.nivel_posicion_data?.nivel ??
+        null;
+      if (typeof nivelEvaluacion === 'number') {
+        setNivelSeleccionado(nivelEvaluacion);
+      }
       
       // Cargar supervisores disponibles
       const supervisoresData = await apiService.getUsers({ 
@@ -336,7 +588,8 @@ const handleAreaClick = (area: Area) => {
       // Inicializar resultados vacíos para cada punto de evaluación
       const resultadosIniciales = evaluacion.puntos_evaluacion?.map((punto: any) => ({
         punto_evaluacion: punto.id,
-        puntuacion: null
+        puntuacion: null,
+        observaciones: ''
       })) || [];
       setResultadosEvaluacion(resultadosIniciales);
       
@@ -349,7 +602,40 @@ const handleAreaClick = (area: Area) => {
     }
   };
 
+  const verEvaluacionGuardada = (evaluacion: any, detalle: EvaluacionUsuario) => {
+    setEvaluacionActual(evaluacion);
+    setEvaluacionModoLectura(true);
+    setEvaluacionGuardadaInfo(detalle);
+    setSupervisorSeleccionado(detalle.supervisor || null);
+
+    const nivelEvaluacion =
+      evaluacion.nivel ??
+      evaluacion.nivel_posicion_data?.nivel ??
+      null;
+    if (typeof nivelEvaluacion === 'number') {
+      setNivelSeleccionado(nivelEvaluacion);
+    }
+
+    const resultadosConsolidados =
+      evaluacion.puntos_evaluacion?.map((punto: any) => {
+        const resultado = detalle.resultados_puntos.find(
+          (registro) => registro.punto_evaluacion === punto.id
+        );
+        return {
+          punto_evaluacion: punto.id,
+          puntuacion: resultado?.puntuacion ?? null,
+          observaciones: resultado?.observaciones ?? ''
+        };
+      }) ?? [];
+
+    setResultadosEvaluacion(resultadosConsolidados);
+    setCurrentView('usuario-evaluacion');
+  };
+
   const handlePuntuacionChange = (puntoId: number, puntuacion: number) => {
+    if (evaluacionModoLectura) {
+      return;
+    }
     setResultadosEvaluacion(prev => 
       prev.map(resultado => 
         resultado.punto_evaluacion === puntoId 
@@ -359,10 +645,149 @@ const handleAreaClick = (area: Area) => {
     );
   };
 
+  const puedeGuardarFirma = () => {
+    if (!firmaModalAbierta) {
+      return false;
+    }
+
+    if (firmaModalAbierta.tipo === 'empleado') {
+      return Boolean(hasSignature[firmaModalAbierta.tipo]);
+    }
+
+    return Boolean(firmaModalFirmante);
+  };
+
+  const handleGuardarFirma = async () => {
+    if (!firmaModalAbierta || !evaluacionActual) {
+      return;
+    }
+
+    const tipoFirma = firmaModalAbierta.tipo;
+    const esFirmaEmpleado = tipoFirma === 'empleado';
+
+    if (esFirmaEmpleado && !selectedUser) {
+      showError('No se pudo identificar al empleado para asignar la firma.');
+      return;
+    }
+
+    if (!esFirmaEmpleado && !firmaModalFirmante) {
+      showError('Selecciona a la persona que debe firmar.');
+      return;
+    }
+
+    const canvas = firmaCanvasRef.current;
+    let signatureData: string | null = null;
+    if (hasSignature[tipoFirma] && canvas) {
+      signatureData = canvas.toDataURL('image/png');
+    } else if (signatures[tipoFirma]) {
+      signatureData = signatures[tipoFirma];
+    }
+
+    if (esFirmaEmpleado && !signatureData) {
+      showError('Debes capturar la firma del empleado.');
+      return;
+    }
+
+    try {
+      setGuardandoFirma(true);
+
+      const payload: {
+        tipo_firma: string;
+        nombre: string;
+        usuario?: number | null;
+        imagen?: string;
+      } = {
+        tipo_firma: tipoFirma,
+        nombre: firmaModalAbierta.nombre,
+      };
+
+      if (esFirmaEmpleado) {
+        payload.usuario = selectedUser?.id ?? null;
+      } else if (firmaModalFirmante) {
+        payload.usuario = firmaModalFirmante;
+      }
+
+      if (signatureData) {
+        payload.imagen = signatureData;
+      }
+
+      const firmaActualizada = await apiService.firmarEvaluacion(evaluacionActual.id, payload);
+
+      setEvaluacionActual((prev: any) => {
+        if (!prev) return prev;
+
+        const firmasActualizadas = prev.firmas.map((firma: FirmaEvaluacion) =>
+          firma.tipo_firma === firmaActualizada.tipo_firma
+            ? { ...firma, ...firmaActualizada }
+            : firma
+        );
+
+        const totalFirmas = firmasActualizadas.length;
+        const firmasCompletas = firmasActualizadas.filter(
+          (firma: FirmaEvaluacion) => firma.esta_firmado
+        ).length;
+
+        let estadoFirmas = 'pendiente_firmas';
+        if (totalFirmas > 0 && firmasCompletas === totalFirmas) {
+          estadoFirmas = 'firmas_completas';
+        } else if (firmasCompletas > 0) {
+          estadoFirmas = 'en_proceso';
+        }
+
+        const estadoFirmasDisplayMap: Record<string, string> = {
+          pendiente_firmas: 'Pendiente de firmas',
+          en_proceso: 'En proceso de firmas',
+          firmas_completas: 'Firmas completas',
+        };
+
+        return {
+          ...prev,
+          firmas: firmasActualizadas,
+          estado_firmas: estadoFirmas,
+          estado_firmas_display: estadoFirmasDisplayMap[estadoFirmas] ?? prev.estado_firmas_display,
+        };
+      });
+
+      setSignatures((prev) => ({
+        ...prev,
+        [firmaActualizada.tipo_firma]: signatureData ?? firmaActualizada.imagen ?? null,
+      }));
+
+      setHasSignature((prev) => ({
+        ...prev,
+        [firmaActualizada.tipo_firma]: Boolean(signatureData),
+      }));
+
+      if (selectedPosicion?.id) {
+        await loadProgresosNivel(selectedPosicion.id);
+      } else {
+        await loadProgresosNivel();
+      }
+
+      setIsDrawing(false);
+      setFirmaModalAbierta(null);
+      setFirmaModalFirmante(null);
+
+      const mensajeExito = firmaActualizada.esta_firmado
+        ? 'Firma guardada correctamente.'
+        : 'Firmante asignado y marcado como pendiente.';
+      showSuccess(mensajeExito);
+    } catch (error: any) {
+      console.error('Error al guardar la firma', error);
+      showError(error.message || 'Error al guardar la firma');
+    } finally {
+      setGuardandoFirma(false);
+    }
+  };
 
   const guardarEvaluacion = async () => {
     if (!selectedUser || !evaluacionActual || !supervisorSeleccionado) {
       showError('Por favor selecciona un supervisor');
+      return;
+    }
+
+    if (evaluacionesUsuarioGuardadas[evaluacionActual.id]) {
+      showError('Esta evaluación ya tiene un resultado guardado. Utiliza el botón "Ver" para consultarlo.');
       return;
     }
 
@@ -375,17 +800,28 @@ const handleAreaClick = (area: Area) => {
 
     try {
       setLoading(true);
-      
-      // Aquí iría la lógica para guardar la evaluación
-      // Por ahora solo mostramos un mensaje de éxito
+      await apiService.createEvaluacionUsuario({
+        evaluacion: evaluacionActual.id,
+        usuario: selectedUser.id,
+        supervisor: supervisorSeleccionado,
+        resultados_puntos: resultadosEvaluacion.map((resultado) => ({
+          punto_evaluacion: resultado.punto_evaluacion,
+          puntuacion: resultado.puntuacion,
+          observaciones: resultado.observaciones || ''
+        }))
+      });
+
       showSuccess('Evaluación guardada exitosamente');
-      
-      // Volver a la vista de detalle del usuario
+      await loadEvaluacionesUsuario(selectedUser);
+      if (selectedPosicion?.id) {
+        await loadProgresosNivel(selectedPosicion.id);
+      } else {
+        await loadProgresosNivel();
+      }
       setCurrentView('usuario-detalle');
-      
     } catch (error: any) {
       console.error('Error guardando evaluación:', error);
-      showError('Error al guardar la evaluación');
+      showError(error.message || 'Error al guardar la evaluación');
     } finally {
       setLoading(false);
     }
@@ -455,10 +891,30 @@ const handleAreaClick = (area: Area) => {
         });
         break;
       case 'onboarding':
-        setCurrentView('grupos');
+        if (onboardingUsuarioId) {
+          const usuarioSeleccionado =
+            selectedUser && selectedUser.id === onboardingUsuarioId
+              ? selectedUser
+              : usuarios.find((user) => user.id === onboardingUsuarioId) || selectedUser;
+
+          if (usuarioSeleccionado) {
+            setSelectedUser(usuarioSeleccionado);
+            setCurrentView('usuario-detalle');
+          } else {
+            setCurrentView('grupos');
+          }
+        } else {
+          setCurrentView('grupos');
+        }
+        if (selectedPosicion?.id) {
+          loadProgresosNivel(selectedPosicion.id);
+        } else {
+          loadProgresosNivel();
+        }
+        setOnboardingUsuarioId(null);
         break;
       case 'lista-asistencia-form':
-        setCurrentView('onboarding');
+        setCurrentView(onboardingUsuarioId ? 'onboarding' : 'grupos');
         setFormData({
           nombre: '',
           supervisor: null,
@@ -471,6 +927,11 @@ const handleAreaClick = (area: Area) => {
         setUsuariosSeleccionados([]);
         setIsEditing(false);
         setEditingListaId(null);
+        if (selectedPosicion?.id) {
+          loadProgresosNivel(selectedPosicion.id);
+        } else {
+          loadProgresosNivel();
+        }
         break;
     }
   };
@@ -571,6 +1032,11 @@ const handleAreaClick = (area: Area) => {
   const renderGrupos = () => {
     const gruposDelArea = grupos.filter(grupo => grupo.area === selectedArea?.id);
     
+    const nivelActual =
+      evaluacionActual?.nivel ??
+      evaluacionActual?.nivel_posicion_data?.nivel ??
+      null;
+    
     return (
       <div className="evaluaciones-section">
         <div className="section-header">
@@ -581,7 +1047,7 @@ const handleAreaClick = (area: Area) => {
           {/* Botón fijo de ONBOARDING */}
           <div 
             className="grupo-card onboarding-card"
-            onClick={handleOnboardingClick}
+            onClick={() => handleOnboardingClick(null)}
           >
             <div className="card-content">
               <h3>ONBOARDING</h3>
@@ -648,19 +1114,62 @@ const handleAreaClick = (area: Area) => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <div className="nivel-filter">
+              <label htmlFor="nivel-filter-select">Nivel</label>
+              <select
+                id="nivel-filter-select"
+                value={nivelFiltroUsuarios === 'todos' ? 'todos' : nivelFiltroUsuarios.toString()}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === 'todos') {
+                    setNivelFiltroUsuarios('todos');
+                  } else {
+                    const parsed = parseInt(value, 10);
+                    setNivelFiltroUsuarios(Number.isNaN(parsed) ? 'todos' : parsed);
+                  }
+                }}
+              >
+                <option value="todos">Todos los niveles</option>
+                {[1, 2, 3, 4].map((nivel) => (
+                  <option key={nivel} value={nivel}>
+                    Nivel {nivel}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
         
         <div className="usuarios-list">
-          {filteredUsuarios.length > 0 ? (
-            filteredUsuarios.map((user) => (
+          {(() => {
+            const usuariosPorNivel = filteredUsuarios.filter((user) => {
+              if (nivelFiltroUsuarios === 'todos') {
+                return true;
+              }
+              const progresoUsuario = progresosNivel[user.id];
+              if (!progresoUsuario) {
+                return false;
+              }
+              const progresoNivel = progresoUsuario[nivelFiltroUsuarios];
+              return progresoNivel ? progresoNivel.completado : false;
+            });
+
+            return usuariosPorNivel.length > 0 ? (
+              usuariosPorNivel.map((user) => (
               <div 
                 key={user.id} 
                 className="usuario-item clickeable"
                 onClick={() => handleUserClick(user)}
               >
                 <div className="usuario-avatar">
-                  <FaUsers />
+                  {user.profile_photo ? (
+                    <img
+                      src={getMediaUrl(user.profile_photo)}
+                      alt={`Foto de ${user.full_name}`}
+                    />
+                  ) : (
+                    <FaUsers />
+                  )}
                 </div>
                 <div className="usuario-info">
                   <h3>{user.full_name}</h3>
@@ -668,23 +1177,33 @@ const handleAreaClick = (area: Area) => {
                   {user.fecha_ingreso && <p className="fecha-ingreso">{new Date(user.fecha_ingreso).toLocaleDateString('es-ES')}</p>}
                 </div>
                 <div className="usuario-cuadro">
-                  <div className="cuadro-item cuadro-verde"></div>
-                  <div className="cuadro-item"></div>
-                  <div className="cuadro-item"></div>
-                  <div className="cuadro-item"></div>
+                  {[4, 1, 3, 2].map((nivel) => {
+                    const resumenUsuario = nivelesCompletosPorUsuario[user.id] || {};
+                    const completado = Boolean(resumenUsuario[nivel]);
+                    const esActivo = selectedUser?.id === user.id && nivelSeleccionado === nivel;
+                    const clases = [
+                      'cuadro-item',
+                      completado ? 'cuadro-completado' : '',
+                      esActivo ? 'cuadro-activo' : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    return <div key={nivel} className={clases}></div>;
+                  })}
                 </div>
                 <div className="usuario-arrow">
                   <FaArrowLeft style={{ transform: 'rotate(180deg)' }} />
                 </div>
               </div>
-            ))
-          ) : (
-          <div className="no-results">
-            <FaUsers />
-            <h3>No hay usuarios asignados</h3>
-            <p>No se encontraron usuarios asignados para esta área, grupo y posición</p>
-          </div>
-          )}
+              ))
+            ) : (
+              <div className="no-results">
+                <FaUsers />
+                <h3>No hay usuarios asignados</h3>
+                <p>No se encontraron usuarios asignados para esta área, grupo y posición</p>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -693,17 +1212,81 @@ const handleAreaClick = (area: Area) => {
   const renderUsuarioDetalle = () => {
     if (!selectedUser) return null;
 
+    const nivelActual = nivelSeleccionado;
+    const fechaActual = new Date().toLocaleDateString('es-ES');
+    const resumenActual = selectedUser
+      ? (nivelesCompletosPorUsuario[selectedUser.id] || nivelesCompletos)
+      : nivelesCompletos;
+
+    const indiceNivelActual = nivelActual
+      ? nivelesDisponibles.findIndex((nivel) => nivel === nivelActual)
+      : -1;
+    const hayNivelAnterior = indiceNivelActual > 0;
+    const hayNivelSiguiente =
+      indiceNivelActual !== -1 && indiceNivelActual < nivelesDisponibles.length - 1;
+
+    const cambiarNivel = (direccion: 'anterior' | 'siguiente') => {
+      if (nivelActual === null) return;
+      const indiceActual = nivelesDisponibles.findIndex((nivel) => nivel === nivelActual);
+      if (indiceActual === -1) return;
+      const nuevoIndice = direccion === 'anterior' ? indiceActual - 1 : indiceActual + 1;
+      if (nuevoIndice < 0 || nuevoIndice >= nivelesDisponibles.length) return;
+      setNivelSeleccionado(nivelesDisponibles[nuevoIndice]);
+    };
+
+    const evaluacionesDelNivel = evaluacionesUsuario.filter((evaluacion) => {
+      if (nivelActual === null) {
+        return true;
+      }
+      const nivelEvaluacion =
+        evaluacion.nivel_posicion_data?.nivel ??
+        evaluacion.nivel ??
+        null;
+      return nivelEvaluacion === nivelActual;
+    });
+
+    const isNivelCompleto = (nivel: number): boolean => {
+      const evaluacionesNivel = evaluacionesUsuario.filter((evaluacion) => {
+        const nivelEvaluacion =
+          evaluacion.nivel_posicion_data?.nivel ??
+          evaluacion.nivel ??
+          null;
+        return nivelEvaluacion === nivel;
+      });
+
+      if (evaluacionesNivel.length > 0) {
+        return evaluacionesNivel.every((evaluacion) => {
+          const registro = evaluacionesUsuarioGuardadas[evaluacion.id];
+          const estado = (registro?.estado || '').toLowerCase();
+          const estadoFirmas = (evaluacion.estado_firmas || '').toLowerCase();
+          const firmasCompletas = estadoFirmas === 'firmas_completas';
+          return (
+            firmasCompletas &&
+            (estado === 'completada' || evaluacion.resultado !== null)
+          );
+        });
+      }
+
+      return Boolean(resumenActual[nivel]);
+    };
+
     return (
       <div className="evaluaciones-section">
         <div className="usuario-detalle-header">
           <div className="usuario-info-header">
             <div className="usuario-avatar-large">
-              <FaUsers />
+              {selectedUser.profile_photo ? (
+                <img
+                  src={getMediaUrl(selectedUser.profile_photo)}
+                  alt={`Foto de ${selectedUser.full_name}`}
+                />
+              ) : (
+                <FaUsers />
+              )}
             </div>
             <div className="usuario-details">
               <h2>{selectedUser.full_name}</h2>
               <p className="usuario-id">#{selectedUser.numero_empleado || selectedUser.id}</p>
-              <p className="usuario-fecha">{new Date().toLocaleDateString('es-ES')}</p>
             </div>
             <div className="usuario-actions">
               <button className="action-btn">
@@ -713,15 +1296,50 @@ const handleAreaClick = (area: Area) => {
                 <FaPrint />
               </button>
             </div>
-            <div className="usuario-status">
-              <div className="status-grid">
-                <div className="status-item active"></div>
-                <div className="status-item"></div>
-                <div className="status-item"></div>
-                <div className="status-item"></div>
+            <div className="usuario-controles">
+                  <button
+                    className="btn-onboarding"
+                    type="button"
+                    onClick={() => handleOnboardingClick(selectedUser?.id ?? null)}
+                  >
+                Onboarding
+              </button>
+              <span className="usuario-fecha">{fechaActual}</span>
+              <div className="nivel-navegacion">
+                <button
+                  type="button"
+                  className="nivel-arrow"
+                  onClick={() => cambiarNivel('anterior')}
+                  disabled={!hayNivelAnterior}
+                  aria-label="Nivel anterior"
+                >
+                  <FaChevronLeft />
+                </button>
+                <div className="status-grid">
+                  {[4, 1, 3, 2].map((nivel) => (
+                    <div
+                      key={nivel}
+                      className={`status-item nivel-${nivel} ${
+                        isNivelCompleto(nivel) ? 'completed' : ''
+                      } ${nivelActual === nivel ? 'active' : ''}`}
+                      aria-label={`Nivel ${nivel}${
+                        nivelActual === nivel ? ' seleccionado' : ''
+                      }`}
+                    />
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="nivel-arrow"
+                  onClick={() => cambiarNivel('siguiente')}
+                  disabled={!hayNivelSiguiente}
+                  aria-label="Nivel siguiente"
+                >
+                  <FaChevronRight />
+                </button>
               </div>
-              <div className="status-arrow">
-                <FaArrowLeft style={{ transform: 'rotate(180deg)' }} />
+              <div className="nivel-indicador">
+                {nivelActual ? `Nivel ${nivelActual}` : 'Sin nivel'}
               </div>
             </div>
           </div>
@@ -729,46 +1347,65 @@ const handleAreaClick = (area: Area) => {
 
         <div className="usuario-info-content">
           <div className="info-section">
-            <h3>Información del Usuario</h3>
-            <div className="info-grid">
-              <div className="info-item">
-                <strong>Email:</strong> {selectedUser.email}
-              </div>
-              <div className="info-item">
-                <strong>Rol:</strong> {selectedUser.role_display}
-              </div>
-              <div className="info-item">
-                <strong>Número de Empleado:</strong> {selectedUser.numero_empleado || 'No asignado'}
-              </div>
-              <div className="info-item">
-                <strong>Fecha de Ingreso:</strong> {selectedUser.fecha_ingreso ? new Date(selectedUser.fecha_ingreso).toLocaleDateString('es-ES') : 'No asignada'}
-              </div>
-            </div>
-          </div>
-
-          <div className="info-section">
             <h3>Evaluaciones Asignadas</h3>
             {loading ? (
               <div className="loading-message">
                 <p>Cargando evaluaciones...</p>
               </div>
-            ) : evaluacionesUsuario.length > 0 ? (
+            ) : evaluacionesDelNivel.length > 0 ? (
               <div className="evaluaciones-list">
-                {evaluacionesUsuario.map((evaluacion) => (
-                  <div key={evaluacion.id} className="evaluacion-item-simple">
-                    <div className="evaluacion-content">
-                      <h4>{evaluacion.nombre}</h4>
-                      <div className="evaluacion-actions">
-                        <button 
-                          className="btn btn-primary btn-sm"
-                          onClick={() => iniciarEvaluacion(evaluacion)}
-                        >
-                          Evaluar
-                        </button>
+                {evaluacionesDelNivel.map((evaluacion) => {
+                  const evaluacionGuardada = evaluacionesUsuarioGuardadas[evaluacion.id];
+                  const estadoFirmas = evaluacion.estado_firmas || 'pendiente_firmas';
+                  const textoEstadoFirmas = evaluacion.estado_firmas_display || 'Pendiente de firma';
+                  const evaluacionPendienteFirmas = estadoFirmas !== 'firmas_completas';
+                  const estaCompletada = Boolean(evaluacionGuardada);
+                  const estaPendienteFirmas = estaCompletada && evaluacionPendienteFirmas;
+                  return (
+                    <div
+                      key={evaluacion.id}
+                      className={`evaluacion-item-simple ${estaCompletada ? 'completada' : 'pendiente'}`}
+                    >
+                      <div className="evaluacion-content">
+                        <div className="evaluacion-header">
+                          <h4>{evaluacion.nombre}</h4>
+                          <span
+                            className={`evaluacion-status ${
+                              estaPendienteFirmas
+                                ? 'status-pendiente-firmas'
+                                : estaCompletada
+                                ? 'status-completada'
+                                : 'status-pendiente'
+                            }`}
+                          >
+                            {estaPendienteFirmas
+                              ? textoEstadoFirmas
+                              : estaCompletada
+                              ? 'Completada'
+                              : 'Pendiente'}
+                          </span>
+                        </div>
+                        <div className="evaluacion-actions">
+                          {estaCompletada ? (
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => verEvaluacionGuardada(evaluacion, evaluacionGuardada)}
+                            >
+                              Ver
+                            </button>
+                          ) : (
+                            <button 
+                              className="btn btn-primary btn-sm"
+                              onClick={() => iniciarEvaluacion(evaluacion)}
+                            >
+                              Evaluar
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="no-evaluations">
@@ -784,11 +1421,20 @@ const handleAreaClick = (area: Area) => {
   const renderUsuarioEvaluacion = () => {
     if (!selectedUser || !evaluacionActual) return null;
 
+    const nivelActual =
+      evaluacionActual.nivel ??
+      evaluacionActual.nivel_posicion_data?.nivel ??
+      null;
+    const resultadoFinalGuardado = evaluacionGuardadaInfo?.resultado_final ?? null;
+    const fechaCompletadaGuardada = evaluacionGuardadaInfo?.fecha_completada
+      ? new Date(evaluacionGuardadaInfo.fecha_completada).toLocaleString('es-ES')
+      : null;
+
     return (
       <div className="evaluaciones-section">
 
         <div className="evaluation-content">
-          <div className="evaluation-form">
+          <div className={`evaluation-form ${evaluacionModoLectura ? 'read-only' : ''}`}>
             <div className="form-section">
               <h4>{evaluacionActual.nombre}</h4>
               <div className="evaluation-info-table-container">
@@ -820,11 +1466,11 @@ const handleAreaClick = (area: Area) => {
                               { pos: 3, nivel: 3 }, // Inferior izquierda
                               { pos: 4, nivel: 2 }  // Inferior derecha
                             ].map(({ pos, nivel }) => (
-                              <div 
-                                key={pos} 
-                                className={`status-item ${evaluacionActual.nivel === nivel ? 'active' : ''}`}
-                              >
-                              </div>
+                              <div
+                                key={pos}
+                                className={`status-item nivel-${nivel} ${nivelActual === nivel ? 'active' : ''}`}
+                                aria-label={`Nivel ${nivel}${nivelActual === nivel ? ' seleccionado' : ''}`}
+                              />
                             ))}
                           </div>
                         </div>
@@ -836,6 +1482,20 @@ const handleAreaClick = (area: Area) => {
                   </tbody>
                 </table>
               </div>
+
+            {evaluacionGuardadaInfo && (
+              <div className="evaluation-result-summary">
+                <span className="summary-badge">
+                  Resultado final:{' '}
+                  {resultadoFinalGuardado !== null ? `${resultadoFinalGuardado}%` : 'Sin resultado'}
+                </span>
+                {fechaCompletadaGuardada && (
+                  <span className="summary-badge">
+                    Registrado: {fechaCompletadaGuardada}
+                  </span>
+                )}
+              </div>
+            )}
             </div>
 
             <div className="form-section">
@@ -845,6 +1505,7 @@ const handleAreaClick = (area: Area) => {
                   value={supervisorSeleccionado || ''}
                   onChange={(e) => setSupervisorSeleccionado(parseInt(e.target.value) || null)}
                   className="form-control"
+                  disabled={evaluacionModoLectura}
                 >
                   <option value="">Selecciona un supervisor</option>
                   {supervisores.map(supervisor => (
@@ -879,7 +1540,11 @@ const handleAreaClick = (area: Area) => {
                           <td 
                             key={puntuacion}
                             className={`punto-calificacion ${resultado?.puntuacion === puntuacion ? 'selected' : ''}`}
-                            onClick={() => handlePuntuacionChange(punto.id, puntuacion)}
+                            onClick={() => {
+                              if (!evaluacionModoLectura) {
+                                handlePuntuacionChange(punto.id, puntuacion);
+                              }
+                            }}
                           >
                             <label className="puntuacion-option">
                                 <input
@@ -888,6 +1553,7 @@ const handleAreaClick = (area: Area) => {
                                   value={puntuacion}
                                   checked={resultado?.puntuacion === puntuacion}
                                   onChange={() => handlePuntuacionChange(punto.id, puntuacion)}
+                                  disabled={evaluacionModoLectura}
                                 />
                               {resultado?.puntuacion === puntuacion && (
                                 <span className="checkmark">✓</span>
@@ -941,7 +1607,9 @@ const handleAreaClick = (area: Area) => {
                   const puntosObtenidos = resultadosEvaluacion.reduce((sum, resultado) => {
                     return sum + (resultado.puntuacion || 0);
                   }, 0);
-                  const resultado = (puntosObtenidos / 17) * 80;
+                  const divisor = evaluacionActual.formula_divisor ?? (evaluacionActual.puntos_evaluacion?.length || 1);
+                  const multiplicador = evaluacionActual.formula_multiplicador ?? 100;
+                  const resultado = divisor > 0 ? (puntosObtenidos / divisor) * multiplicador : 0;
                   return (
                     <div className="resultado-content">
                       <div className="resultado-formula">
@@ -950,8 +1618,10 @@ const handleAreaClick = (area: Area) => {
                       </div>
                       <div className="resultado-formula">
                         <span className="resultado-label">Fórmula:</span>
-                        <span className="resultado-value">( {puntosObtenidos} / 17 ) * 80 = {resultado.toFixed(2)}%</span>
-                      </div>
+                        <span className="resultado-value">
+                          ( {puntosObtenidos} / {divisor} ) * {multiplicador} = {resultado.toFixed(2)}%
+                        </span>
+                    </div>
                       <div className="resultado-final">
                         <strong>Resultado: {resultado.toFixed(2)}%</strong>
                       </div>
@@ -974,106 +1644,164 @@ const handleAreaClick = (area: Area) => {
             <div className="form-section">
               <h4>Firmas</h4>
               <div className="firmas-container">
-                {['empleado', 'evaluador', 'calidad'].map((tipo) => {
-                  const tipoLabel = tipo === 'empleado' ? 'Empleado' : tipo === 'evaluador' ? 'Evaluador' : 'Calidad';
-                  
-                  return (
-                    <div key={tipo} className="firma-item">
-                      <label className="firma-label">{tipoLabel}</label>
-                      {signatures[tipo] ? (
-                        <div className="firma-preview-container">
-                          <div className="firma-preview">
-                            <img src={signatures[tipo] || ''} alt={`Firma ${tipoLabel}`} />
+                {evaluacionActual.firmas && evaluacionActual.firmas.length > 0 ? (
+                  evaluacionActual.firmas.map((firma: FirmaEvaluacion) => {
+                    const slug = firma.tipo_firma;
+                    const nombreFirma = firma.nombre || firma.tipo_firma_display || slug;
+                    const tieneFirma = Boolean(signatures[slug]);
+
+                    return (
+                      <div key={slug} className="firma-item">
+                        <label className="firma-label">{nombreFirma}</label>
+                        <span className={`firma-estado ${firma.esta_firmado ? 'firmada' : 'pendiente'}`}>
+                          {firma.estado_display || (firma.esta_firmado ? `Firmada por ${firma.usuario_nombre}` : 'Pendiente')}
+                        </span>
+                        {tieneFirma ? (
+                          <div className="firma-preview-container">
+                            <div className="firma-preview">
+                              <img
+                                src={signatures[slug] || firma.imagen || ''}
+                                alt={`Firma ${nombreFirma}`}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-editar-firma"
+                              onClick={() => handleOpenFirmaModal(firma)}
+                            >
+                              <FaEdit /> Editar Firma
+                            </button>
                           </div>
+                        ) : (
                           <button
                             type="button"
-                            className="btn-editar-firma"
-                            onClick={() => handleOpenFirmaModal(tipo)}
+                            className="btn-agregar-firma"
+                            onClick={() => handleOpenFirmaModal(firma)}
                           >
-                            <FaEdit /> Editar Firma
+                            <FaPlus /> Agregar Firma
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn-agregar-firma"
-                          onClick={() => handleOpenFirmaModal(tipo)}
-                        >
-                          <FaPlus /> Agregar Firma
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="field-helper">
+                    Esta evaluación no tiene firmas configuradas.
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Modal de Firma */}
-            {showFirmaModal.empleado || showFirmaModal.evaluador || showFirmaModal.calidad ? (
-              <div className="modal-overlay" onClick={() => setShowFirmaModal({ empleado: false, evaluador: false, calidad: false })}>
+            {firmaModalAbierta && (
+              <div className="modal-overlay" onClick={() => {
+                setIsDrawing(false);
+                setFirmaModalAbierta(null);
+                setFirmaModalFirmante(null);
+              }}>
                 <div className="modal modal-firma" onClick={(e) => e.stopPropagation()}>
                   <div className="modal-header">
-                    <h3>Firma - {currentFirmaTipo === 'empleado' ? 'Empleado' : currentFirmaTipo === 'evaluador' ? 'Evaluador' : 'Calidad'}</h3>
+                    <h3>Firma - {firmaModalAbierta.nombre}</h3>
                     <button 
                       className="modal-close"
-                      onClick={() => setShowFirmaModal({ empleado: false, evaluador: false, calidad: false })}
+                      onClick={() => {
+                        setIsDrawing(false);
+                        setFirmaModalAbierta(null);
+                        setFirmaModalFirmante(null);
+                      }}
                     >
                       ×
                     </button>
                   </div>
                   <div className="modal-body">
+                    {firmaModalAbierta.tipo === 'empleado' ? (
+                      <div className="firma-firmante-info">
+                        Firmante: <strong>{selectedUser?.full_name || 'Empleado'}</strong>
+                      </div>
+                    ) : (
+                      <div className="firma-firmante-select">
+                        <label>Selecciona firmante</label>
+                        {supervisores.length > 0 ? (
+                          <select
+                            value={firmaModalFirmante ?? ''}
+                            onChange={(e) =>
+                              setFirmaModalFirmante(e.target.value ? parseInt(e.target.value, 10) : null)
+                            }
+                          >
+                            <option value="">Selecciona un firmante</option>
+                            {supervisores
+                              .filter((supervisor) => supervisor.role !== 'USUARIO')
+                              .map((supervisor) => (
+                                <option key={supervisor.id} value={supervisor.id}>
+                                  {supervisor.full_name}
+                                </option>
+                              ))}
+                          </select>
+                        ) : (
+                          <div className="firma-firmante-info">
+                            No hay supervisores disponibles para firmar.
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="firma-canvas-wrapper">
                       <canvas
-                        ref={currentFirmaTipo === 'empleado' ? empleadoCanvasRef : currentFirmaTipo === 'evaluador' ? evaluadorCanvasRef : calidadCanvasRef}
+                        ref={firmaCanvasRef}
                         width={600}
                         height={250}
                         className="firma-canvas"
-                        onMouseDown={(e) => startDrawing(e, currentFirmaTipo)}
-                        onMouseMove={(e) => draw(e, currentFirmaTipo)}
-                        onMouseUp={() => stopDrawing(currentFirmaTipo)}
-                        onMouseLeave={() => stopDrawing(currentFirmaTipo)}
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
                       />
                     </div>
                     <div className="firma-controls">
                       <button
                         type="button"
                         className="btn-clear-firma"
-                        onClick={() => clearSignature(currentFirmaTipo)}
-                        disabled={!hasSignature[currentFirmaTipo]}
+                        onClick={clearSignature}
+                        disabled={!firmaModalAbierta || !hasSignature[firmaModalAbierta.tipo]}
                       >
                         <FaEraser /> Limpiar
                       </button>
                       <button
                         type="button"
                         className="btn-guardar-firma"
-                        onClick={() => {
-                          stopDrawing(currentFirmaTipo);
-                          setShowFirmaModal({ empleado: false, evaluador: false, calidad: false });
+                        onClick={async () => {
+                          stopDrawing();
+                          await handleGuardarFirma();
                         }}
-                        disabled={!hasSignature[currentFirmaTipo]}
+                        disabled={guardandoFirma || !puedeGuardarFirma()}
                       >
-                        <FaSave /> Guardar Firma
+                        <FaSave /> {guardandoFirma ? 'Guardando...' : 'Guardar Firma'}
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
-            ) : null}
+            )}
 
             <div className="evaluation-actions">
               <button 
                 className="btn btn-secondary"
-                onClick={() => setCurrentView('usuario-detalle')}
+                onClick={() => {
+                  setEvaluacionModoLectura(false);
+                  setEvaluacionGuardadaInfo(null);
+                  setCurrentView('usuario-detalle');
+                }}
               >
-                Cancelar
+                {evaluacionModoLectura ? 'Volver' : 'Cancelar'}
               </button>
-              <button 
-                className="btn btn-primary"
-                onClick={guardarEvaluacion}
-                disabled={loading}
-              >
-                {loading ? 'Guardando...' : 'Guardar Evaluación'}
-              </button>
+              {!evaluacionModoLectura && (
+                <button 
+                  className="btn btn-primary"
+                  onClick={guardarEvaluacion}
+                  disabled={loading}
+                >
+                  {loading ? 'Guardando...' : 'Guardar Evaluación'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1083,11 +1811,28 @@ const handleAreaClick = (area: Area) => {
 
   const renderOnboarding = () => {
     const listasDelArea = listasAsistencia.filter(lista => lista.area === selectedArea?.id);
+    const usuarioOnboarding = onboardingUsuarioId
+      ? usuarios.find((user) => user.id === onboardingUsuarioId) || null
+      : null;
+    const listasFiltradas = listasDelArea.filter(lista => {
+      if (!usuarioOnboarding) {
+        return true;
+      }
+      return lista.usuarios_regulares.includes(usuarioOnboarding.id);
+    });
     
     return (
       <div className="evaluaciones-section">
         <div className="section-header">
-          <h2>ONBOARDING - {selectedArea?.name}</h2>
+          <h2>
+            ONBOARDING - {selectedArea?.name}
+            {usuarioOnboarding ? ` / ${usuarioOnboarding.full_name}` : ''}
+          </h2>
+          {usuarioOnboarding && (
+            <p className="onboarding-subtitle">
+              Listas de asistencia en las que participa el empleado seleccionado.
+            </p>
+          )}
         </div>
         
         <div className="onboarding-actions">
@@ -1115,8 +1860,8 @@ const handleAreaClick = (area: Area) => {
         </div>
         
         <div className="listas-grid">
-          {listasDelArea.length > 0 ? (
-            listasDelArea.map((lista) => (
+          {listasFiltradas.length > 0 ? (
+            listasFiltradas.map((lista) => (
               <div 
                 key={lista.id} 
                 className="lista-card-simple"
@@ -1131,7 +1876,11 @@ const handleAreaClick = (area: Area) => {
             <div className="no-results">
               <FaClipboardList />
               <h3>No hay listas de asistencia</h3>
-              <p>No se encontraron listas de asistencia para esta área</p>
+              <p>
+                {usuarioOnboarding
+                  ? 'Este empleado no está asignado a listas de asistencia en esta área.'
+                  : 'No se encontraron listas de asistencia para esta área.'}
+              </p>
             </div>
           )}
         </div>
