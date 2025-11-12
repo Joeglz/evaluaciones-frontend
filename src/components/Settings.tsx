@@ -100,16 +100,6 @@ const Settings: React.FC = () => {
                 </div>
               </div>
 
-              <div className="settings-card settings-card-disabled">
-                <div className="settings-card-icon">
-                  <FaCog />
-                </div>
-                <div className="settings-card-content">
-                  <h3>Configuración General</h3>
-                  <p>Configuraciones avanzadas del sistema</p>
-                  <span className="coming-soon">Próximamente</span>
-                </div>
-              </div>
             </div>
           </div>
         );

@@ -204,14 +204,15 @@
   background: #e12026;
   border: none;
   border-radius: 8px;
-  padding: 1rem 1.5rem;
+  padding: 1rem 3.5rem 1rem 1.5rem;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   min-height: 60px;
+  text-align: center;
 }
 
 .grupo-card:hover {
@@ -283,6 +284,13 @@
 
 /* Texto para áreas y grupos (blanco) */
 .area-card .card-content h3,
+.grupo-card .card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
 .grupo-card .card-content h3 {
   color: white;
   font-size: 1.1rem;
@@ -328,7 +336,10 @@
   color: white;
   font-size: 1.2rem;
   font-weight: bold;
-  margin-left: 1rem;
+  position: absolute;
+  right: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .posicion-card::after {

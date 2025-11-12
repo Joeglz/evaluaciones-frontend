@@ -112,6 +112,7 @@ export interface User {
   areas: number[];
   areas_list: string[];
   posicion: number | null;
+  posicion_name?: string | null;
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;
@@ -315,6 +316,23 @@ export interface FirmaEvaluacion {
   updated_at: string;
 }
 
+export interface FirmaEvaluacionUsuario {
+  id: number;
+  evaluacion_usuario: number;
+  firma: number;
+  tipo_firma: string;
+  tipo_firma_display: string;
+  nombre: string;
+  usuario: number | null;
+  usuario_nombre: string;
+  esta_firmado: boolean;
+  estado_display: string;
+  fecha_firma: string | null;
+  imagen: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ResultadoEvaluacionDetalle {
   id: number;
   evaluacion_usuario: number;
@@ -348,6 +366,9 @@ export interface EvaluacionUsuario {
   resultado_final: number | null;
   observaciones: string;
   resultados_puntos: ResultadoEvaluacionDetalle[];
+  firmas_usuario: FirmaEvaluacionUsuario[];
+  estado_firmas_usuario: string;
+  estado_firmas_usuario_display: string;
   created_at: string;
   updated_at: string;
 }
@@ -1183,11 +1204,11 @@ class ApiService {
     });
   }
 
-  async firmarEvaluacion(
-    evaluacionId: number,
-    data: { tipo_firma: string; nombre: string; imagen?: string; usuario?: number | null }
-  ): Promise<FirmaEvaluacion> {
-    return this.request<FirmaEvaluacion>(`/users/evaluaciones/${evaluacionId}/firmar/`, {
+  async firmarEvaluacionUsuario(
+    evaluacionUsuarioId: number,
+    data: { tipo_firma: string; nombre?: string; imagen?: string; usuario?: number | null }
+  ): Promise<FirmaEvaluacionUsuario> {
+    return this.request<FirmaEvaluacionUsuario>(`/users/evaluaciones-usuario/${evaluacionUsuarioId}/firmar/`, {
       method: 'POST',
       body: JSON.stringify(data),
     });

@@ -864,6 +864,75 @@
   flex-wrap: wrap;
 }
 
+.modal-user-detail {
+  max-width: 560px;
+  align-items: center;
+  text-align: center;
+}
+
+.user-detail-info h2 {
+  margin-bottom: 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.user-detail-username {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.user-detail-meta {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.user-detail-grid {
+  width: 100%;
+  margin: 1.5rem 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.user-detail-field {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1rem;
+  text-align: left;
+}
+
+.user-detail-field .label {
+  display: block;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+.user-detail-field .value {
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.user-detail-field .areas-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.user-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
 /* Responsive para modal */
 @media (max-width: 768px) {
   .modal-content {
@@ -1110,8 +1179,23 @@
 
 .step-modal__progress {
   display: flex;
-  gap: 0.5rem;
   justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.step-modal__global-error {
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: rgba(225, 32, 38, 0.1);
+  border: 1px solid rgba(225, 32, 38, 0.3);
+  color: #8f1d1d;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
 
 .progress-chip {

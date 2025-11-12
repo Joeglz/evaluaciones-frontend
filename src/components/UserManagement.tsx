@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FaPlus, 
   FaEdit, 
@@ -44,13 +44,17 @@ const UserManagement: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   
   // Estados para errores de formularios
-  const [createErrors, setCreateErrors] = useState<Record<string, string[]>>({});
-  const [editErrors, setEditErrors] = useState<Record<string, string[]>>({});
+  type ValidationErrors = Record<string, string[]> & {
+    detail?: string | string[];
+    non_field_errors?: string[];
+    __all__?: string[];
+  };
+
+  const [createErrors, setCreateErrors] = useState<ValidationErrors>({});
+  const [editErrors, setEditErrors] = useState<ValidationErrors>({});
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string[]>>({});
   
   // Estados para modales
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
@@ -266,21 +270,6 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const closeCreateModal = () => {
-    setShowCreateModal(false);
-    clearCreateProfilePhoto();
-  };
-
-  const closeEditModal = () => {
-    setShowEditModal(false);
-    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
-      URL.revokeObjectURL(editProfilePhotoPreview);
-    }
-    setEditProfilePhotoFile(null);
-    setEditProfilePhotoPreview(null);
-    setRemoveProfilePhoto(false);
-  };
-
   const loadPosiciones = async () => {
     try {
       const response = await apiService.getPosiciones({ is_active: true });
@@ -321,7 +310,6 @@ const UserManagement: React.FC = () => {
     });
     setCreateErrors({});
     clearCreateProfilePhoto();
-    setShowCreateModal(true);
   };
 
   const startEditUser = (user: User) => {
@@ -421,115 +409,6 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateErrors({});
-
-    try {
-      let payload: UserCreate | FormData;
-
-      if (createProfilePhotoFile) {
-        const formData = new FormData();
-        formData.append('username', createForm.username);
-        formData.append('email', createForm.email);
-        formData.append('first_name', createForm.first_name || '');
-        formData.append('last_name', createForm.last_name || '');
-        formData.append('password', createForm.password);
-        formData.append('password_confirm', createForm.password_confirm);
-        formData.append('role', createForm.role);
-        formData.append('is_active', createForm.is_active ? 'true' : 'false');
-
-        if (createForm.numero_empleado) {
-          formData.append('numero_empleado', createForm.numero_empleado);
-        }
-        if (createForm.fecha_ingreso) {
-          formData.append('fecha_ingreso', createForm.fecha_ingreso);
-        }
-        if (createForm.posicion !== null) {
-          formData.append('posicion', String(createForm.posicion));
-        }
-        if (createForm.grupo !== null) {
-          formData.append('grupo', String(createForm.grupo));
-        }
-        if (createForm.areas.length > 0) {
-          createForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
-        }
-
-        formData.append('profile_photo', createProfilePhotoFile);
-        payload = formData;
-      } else {
-        payload = createForm;
-      }
-
-      await apiService.createUser(payload);
-      closeCreateModal();
-      resetCreateForm();
-      loadUsers();
-      alert('Usuario creado exitosamente');
-    } catch (err: any) {
-      const validationErrors = handleValidationErrors(err);
-      setCreateErrors(validationErrors);
-    }
-  };
-
-  const handleUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUser) return;
-
-    setEditErrors({});
-
-    try {
-      let payload: UserUpdate | FormData;
-
-      if (editProfilePhotoFile) {
-        const formData = new FormData();
-        formData.append('username', editForm.username);
-        formData.append('email', editForm.email);
-        formData.append('first_name', editForm.first_name || '');
-        formData.append('last_name', editForm.last_name || '');
-        formData.append('role', editForm.role);
-        formData.append('is_active', editForm.is_active ? 'true' : 'false');
-
-        if (editForm.numero_empleado) {
-          formData.append('numero_empleado', editForm.numero_empleado);
-        } else {
-          formData.append('numero_empleado', '');
-        }
-
-        if (editForm.fecha_ingreso) {
-          formData.append('fecha_ingreso', editForm.fecha_ingreso);
-        } else {
-          formData.append('fecha_ingreso', '');
-        }
-
-        if (editForm.posicion !== null) {
-          formData.append('posicion', String(editForm.posicion));
-        }
-        if (editForm.grupo !== null) {
-          formData.append('grupo', String(editForm.grupo));
-        }
-        if (editForm.areas.length > 0) {
-          editForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
-        }
-
-        formData.append('remove_profile_photo', removeProfilePhoto ? 'true' : 'false');
-        formData.append('profile_photo', editProfilePhotoFile);
-        payload = formData;
-      } else {
-        payload = { ...editForm, remove_profile_photo: removeProfilePhoto };
-      }
-
-      await apiService.updateUser(selectedUser.id, payload);
-      closeEditModal();
-      setSelectedUser(null);
-      loadUsers();
-      alert('Usuario actualizado exitosamente');
-    } catch (err: any) {
-      const validationErrors = handleValidationErrors(err);
-      setEditErrors(validationErrors);
-    }
-  };
-
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
@@ -579,31 +458,6 @@ const UserManagement: React.FC = () => {
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     }
-  };
-
-  const openEditModal = (user: User) => {
-    setSelectedUser(user);
-    setEditErrors({}); // Limpiar errores previos
-    setEditForm({
-      username: user.username,
-      email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      role: user.role,
-      areas: user.areas,
-      posicion: user.posicion,
-      grupo: user.grupo,
-      numero_empleado: user.numero_empleado,
-      fecha_ingreso: user.fecha_ingreso,
-      is_active: user.is_active
-    });
-    if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
-      URL.revokeObjectURL(editProfilePhotoPreview);
-    }
-    setEditProfilePhotoFile(null);
-    setEditProfilePhotoPreview(user.profile_photo ? getMediaUrl(user.profile_photo) : null);
-    setRemoveProfilePhoto(false);
-    setShowEditModal(true);
   };
 
   const openPasswordModal = (user: User) => {
@@ -677,6 +531,40 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const getUserPositionName = (user: User): string => {
+    const posicion = posiciones.find((pos) => pos.id === user.posicion);
+    if (posicion) {
+      return posicion.name;
+    }
+    if (user.posicion_name) {
+      return user.posicion_name;
+    }
+    return 'Sin posición';
+  };
+
+  const filteredUsersList = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return users;
+    }
+
+    return users.filter((user) => {
+      const hayNumeroEmpleado = user.numero_empleado ? `#${user.numero_empleado}` : '';
+      const posicionNombre = getUserPositionName(user);
+      const areasTexto = (user.areas_list || []).join(' ').toLowerCase();
+
+      return (
+        user.full_name.toLowerCase().includes(term) ||
+        user.username.toLowerCase().includes(term) ||
+        (user.email || '').toLowerCase().includes(term) ||
+        user.role_display.toLowerCase().includes(term) ||
+        hayNumeroEmpleado.toLowerCase().includes(term) ||
+        posicionNombre.toLowerCase().includes(term) ||
+        areasTexto.includes(term)
+      );
+    });
+  }, [users, searchTerm, posiciones]);
+
   const FieldError: React.FC<{ errors: string[] | undefined }> = ({ errors }) => {
     if (!errors || errors.length === 0) return null;
     
@@ -689,6 +577,79 @@ const UserManagement: React.FC = () => {
         ))}
       </div>
     );
+  };
+
+  const renderGlobalErrors = (errors: ValidationErrors | undefined, details?: string | string[]) => {
+    const nonFieldErrors = errors?.non_field_errors || errors?.__all__ || [];
+    const detailArray = Array.isArray(details) ? details : details ? [details] : [];
+    const messages = [...nonFieldErrors, ...detailArray];
+
+    if (messages.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="step-modal__global-error">
+        {messages.map((message, index) => (
+          <span key={index}>{message}</span>
+        ))}
+      </div>
+    );
+  };
+
+  const getStepForErrors = (errors: ValidationErrors | undefined): number => {
+    if (!errors) {
+      return currentStep;
+    }
+
+    const step1Fields = new Set([
+      'username',
+      'email',
+      'first_name',
+      'last_name',
+      'password',
+      'password_confirm',
+      'profile_photo',
+    ]);
+    const step2Fields = new Set([
+      'role',
+      'numero_empleado',
+      'fecha_ingreso',
+      'is_active',
+    ]);
+    const step3Fields = new Set([
+      'areas',
+      'posicion',
+      'grupo',
+    ]);
+
+    const fieldKeys = Object.keys(errors).filter(
+      (key) => !['detail', 'non_field_errors', '__all__'].includes(key)
+    );
+
+    for (const key of fieldKeys) {
+      if (step1Fields.has(key)) {
+        return 1;
+      }
+    }
+
+    for (const key of fieldKeys) {
+      if (step2Fields.has(key)) {
+        return 2;
+      }
+    }
+
+    for (const key of fieldKeys) {
+      if (step3Fields.has(key)) {
+        return 3;
+      }
+    }
+
+    if (errors.non_field_errors || errors.__all__ || errors.detail) {
+      return 1;
+    }
+
+    return currentStep;
   };
 
   // Funciones de renderizado para cada paso
@@ -1024,6 +985,12 @@ const UserManagement: React.FC = () => {
   };
 
   const handleFinalSubmit = async () => {
+    if (isCreating) {
+      setCreateErrors({});
+    } else {
+      setEditErrors({});
+    }
+
     try {
       if (isCreating) {
         let payload: UserCreate | FormData;
@@ -1116,12 +1083,34 @@ const UserManagement: React.FC = () => {
       loadUsers();
     } catch (err: any) {
       console.error('Error al guardar usuario:', err);
-      if (err.response?.data) {
-        const errorData = err.response.data;
+
+      const errorData: ValidationErrors | undefined = err?.errorData || err?.response?.data;
+
+      if (errorData) {
         if (isCreating) {
           setCreateErrors(errorData);
         } else {
           setEditErrors(errorData);
+        }
+
+        const targetStep = getStepForErrors(errorData);
+        if (targetStep !== currentStep) {
+          setCurrentStep(targetStep);
+        }
+
+        const nonField = Array.isArray(errorData?.non_field_errors) ? errorData.non_field_errors : [];
+        const detailValue = errorData?.detail;
+        const detailList = Array.isArray(detailValue)
+          ? detailValue
+          : detailValue
+          ? [detailValue]
+          : [];
+        const messages = [...nonField, ...detailList];
+
+        if (messages.length > 0) {
+          messages.forEach((message) => showError(message));
+        } else {
+          showError('Corrige los campos marcados antes de continuar.');
         }
       } else {
         showError('Error al guardar el usuario');
@@ -1180,11 +1169,13 @@ const UserManagement: React.FC = () => {
             <tr>
               <th>Nombre</th>
               <th>Rol</th>
+              <th>Número de Empleado</th>
+              <th>Posición</th>
               <th>Áreas</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {filteredUsersList.map((user) => (
               <tr 
                 key={user.id} 
                 className="user-row"
@@ -1214,6 +1205,12 @@ const UserManagement: React.FC = () => {
                   </span>
                 </td>
                 <td>
+                  {user.numero_empleado ? `#${user.numero_empleado}` : 'Sin asignar'}
+                </td>
+                <td>
+                  {getUserPositionName(user)}
+                </td>
+                <td>
                   <div className="areas-list">
                     {user.areas_list && user.areas_list.length > 0 ? (
                       user.areas_list.map((areaName, index) => (
@@ -1232,731 +1229,84 @@ const UserManagement: React.FC = () => {
         </table>
       </div>
 
-      {/* Modal: Crear Usuario */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={closeCreateModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Crear Nuevo Usuario</h2>
-            <form onSubmit={handleCreateUser}>
-              <div className="modal-body">
-                <section className="modal-section">
-                  <h3>Datos Generales</h3>
-                  <div className="form-grid two-columns">
-                    <div className="form-group">
-                      <label>Usuario *</label>
-                      <input
-                        type="text"
-                        value={createForm.username}
-                        onChange={(e) => setCreateForm({...createForm, username: e.target.value})}
-                        required
-                        className={createErrors.username ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.username} />
-                    </div>
-                    <div className="form-group">
-                      <label>Email *</label>
-                      <input
-                        type="email"
-                        value={createForm.email}
-                        onChange={(e) => setCreateForm({...createForm, email: e.target.value})}
-                        required
-                        className={createErrors.email ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.email} />
-                    </div>
-                    <div className="form-group">
-                      <label>Nombre</label>
-                      <input
-                        type="text"
-                        value={createForm.first_name}
-                        onChange={(e) => setCreateForm({...createForm, first_name: e.target.value})}
-                        className={createErrors.first_name ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.first_name} />
-                    </div>
-                    <div className="form-group">
-                      <label>Apellido</label>
-                      <input
-                        type="text"
-                        value={createForm.last_name}
-                        onChange={(e) => setCreateForm({...createForm, last_name: e.target.value})}
-                        className={createErrors.last_name ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.last_name} />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="modal-section">
-                  <h3>Credenciales</h3>
-                  <div className="form-grid two-columns">
-                    <div className="form-group">
-                      <label>Contraseña *</label>
-                      <input
-                        type="password"
-                        value={createForm.password}
-                        onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
-                        required
-                        className={createErrors.password ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.password} />
-                    </div>
-                    <div className="form-group">
-                      <label>Confirmar Contraseña *</label>
-                      <input
-                        type="password"
-                        value={createForm.password_confirm}
-                        onChange={(e) => setCreateForm({...createForm, password_confirm: e.target.value})}
-                        required
-                        className={createErrors.password_confirm ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.password_confirm} />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="modal-section">
-                  <h3>Foto de Perfil</h3>
-                  <div className="photo-upload">
-                    <div className="photo-preview">
-                      {createProfilePhotoPreview ? (
-                        <img src={createProfilePhotoPreview} alt="Previsualización foto de perfil" />
-                      ) : (
-                        <div className="photo-placeholder">
-                          <FaUser />
-                        </div>
-                      )}
-                    </div>
-                    <div className="photo-actions">
-                      <label className="btn-upload">
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png"
-                          onChange={handleCreatePhotoChange}
-                        />
-                        Seleccionar foto
-                      </label>
-                      {createProfilePhotoPreview && (
-                        <button type="button" className="btn-link" onClick={clearCreateProfilePhoto}>
-                          Quitar foto
-                        </button>
-                      )}
-                    </div>
-                    <FieldError errors={createErrors.profile_photo} />
-                  </div>
-                </section>
-
-                <section className="modal-section">
-                  <h3>Asignación</h3>
-                  <div className="form-grid two-columns">
-                    <div className="form-group">
-                      <label>Rol *</label>
-                      <select
-                        value={createForm.role}
-                        onChange={(e) => setCreateForm({...createForm, role: e.target.value})}
-                        required
-                        className={createErrors.role ? 'field-error-input' : ''}
-                      >
-                        <option value="USUARIO">Usuario Regular</option>
-                        <option value="EVALUADOR">Evaluador</option>
-                        <option value="ADMIN">Administrador</option>
-                      </select>
-                      <FieldError errors={createErrors.role} />
-                    </div>
-                    <div className="form-group">
-                      <label>Posición</label>
-                      <select
-                        value={createForm.posicion || ''}
-                        onChange={(e) => setCreateForm({...createForm, posicion: e.target.value ? parseInt(e.target.value) : null})}
-                        className={createErrors.posicion ? 'field-error-input' : ''}
-                      >
-                        <option value="">Seleccionar posición</option>
-                        {posiciones.map((posicion) => (
-                          <option key={posicion.id} value={posicion.id}>
-                            {posicion.name} ({areas.find(a => a.id === posicion.area)?.name || 'Área no encontrada'})
-                          </option>
-                        ))}
-                      </select>
-                      <FieldError errors={createErrors.posicion} />
-                    </div>
-                    <div className="form-group">
-                      <label>Grupo</label>
-                      <select
-                        value={createForm.grupo || ''}
-                        onChange={(e) => setCreateForm({...createForm, grupo: e.target.value ? parseInt(e.target.value) : null})}
-                        className={createErrors.grupo ? 'field-error-input' : ''}
-                      >
-                        <option value="">Seleccionar grupo</option>
-                        {grupos.map((grupo) => (
-                          <option key={grupo.id} value={grupo.id}>
-                            {grupo.name} ({areas.find(a => a.id === grupo.area)?.name || 'Área no encontrada'})
-                          </option>
-                        ))}
-                      </select>
-                      <FieldError errors={createErrors.grupo} />
-                    </div>
-                    <div className="form-group">
-                      <label>Número de Empleado</label>
-                      <input
-                        type="text"
-                        value={createForm.numero_empleado || ''}
-                        onChange={(e) => setCreateForm({...createForm, numero_empleado: e.target.value || null})}
-                        className={createErrors.numero_empleado ? 'field-error-input' : ''}
-                        placeholder="Ej: EMP001"
-                      />
-                      <FieldError errors={createErrors.numero_empleado} />
-                    </div>
-                    <div className="form-group">
-                      <label>Fecha de Ingreso</label>
-                      <input
-                        type="date"
-                        value={createForm.fecha_ingreso || ''}
-                        onChange={(e) => setCreateForm({...createForm, fecha_ingreso: e.target.value || null})}
-                        className={createErrors.fecha_ingreso ? 'field-error-input' : ''}
-                      />
-                      <FieldError errors={createErrors.fecha_ingreso} />
-                    </div>
-                    <div className="form-group full-width">
-                      <label>Áreas Asignadas</label>
-                      <div className="areas-checkboxes">
-                        {areas.map((area) => (
-                          <label key={area.id} className="area-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={createForm.areas.includes(area.id)}
-                              onChange={(e) => handleAreaChange(area.id, e.target.checked, 'create')}
-                            />
-                            <span>{area.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <FieldError errors={createErrors.areas} />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="modal-section">
-                  <h3>Estado</h3>
-                  <div className="form-grid two-columns">
-                    <div className="form-group checkbox-group">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={createForm.is_active}
-                          onChange={(e) => setCreateForm({...createForm, is_active: e.target.checked})}
-                        />
-                        Usuario activo
-                      </label>
-                    </div>
-                  </div>
-                </section>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={closeCreateModal}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  Crear Usuario
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Editar Usuario */}
-      {showEditModal && selectedUser && (
-        <div className="modal-overlay" onClick={closeEditModal}>
-          <div className="modal-content modal-edit-user" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Editar Usuario</h2>
-              <button className="modal-close-btn" onClick={closeEditModal} title="Cerrar">
-                <FaTimes />
-              </button>
-            </div>
-            <form onSubmit={handleUpdateUser}>
-              <div className="modal-body edit-user-body">
-                <aside className="edit-user-sidebar">
-                  <div className="photo-preview large">
-                    {editProfilePhotoPreview ? (
-                      <img src={editProfilePhotoPreview} alt="Previsualización foto de perfil" />
-                    ) : (
-                      <div className="photo-placeholder">
-                        <FaUser />
-                      </div>
-                    )}
-                  </div>
-                  <div className="photo-actions column">
-                    <label className="btn-upload full">
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png"
-                        onChange={handleEditPhotoChange}
-                      />
-                      Cambiar foto
-                    </label>
-                    {editProfilePhotoFile && (
-                      <button type="button" className="btn-link" onClick={clearEditProfilePhotoSelection}>
-                        Cancelar selección
-                      </button>
-                    )}
-                    {(editProfilePhotoPreview || selectedUser?.profile_photo) && !removeProfilePhoto && (
-                      <button type="button" className="btn-link" onClick={handleRemoveCurrentProfilePhoto}>
-                        Eliminar foto
-                      </button>
-                    )}
-                    {removeProfilePhoto && selectedUser?.profile_photo && (
-                      <button
-                        type="button"
-                        className="btn-link"
-                        onClick={() => {
-                          setRemoveProfilePhoto(false);
-                          setEditProfilePhotoPreview(getMediaUrl(selectedUser.profile_photo));
-                        }}
-                      >
-                        Restaurar foto
-                      </button>
-                    )}
-                    {removeProfilePhoto && (
-                      <p className="photo-remove-note">La foto actual se eliminará al guardar.</p>
-                    )}
-                    <FieldError errors={editErrors.profile_photo} />
-                  </div>
-                  <div className="sidebar-divider" />
-                  <div className="sidebar-status">
-                    <span>Estado</span>
-                    <label className="switch-label">
-                      <input
-                        type="checkbox"
-                        checked={editForm.is_active}
-                        onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
-                      />
-                      <span>{editForm.is_active ? 'Activo' : 'Inactivo'}</span>
-                    </label>
-                  </div>
-                  <div className="sidebar-summary">
-                    <p><strong>Usuario:</strong> {selectedUser.username}</p>
-                    <p><strong>Email:</strong> {selectedUser.email}</p>
-                  </div>
-                </aside>
-
-                <div className="edit-user-main">
-                  <section className="modal-section">
-                    <h3>Datos Generales</h3>
-                    <div className="form-grid two-columns">
-                      <div className="form-group">
-                        <label>Usuario *</label>
-                        <input
-                          type="text"
-                          value={editForm.username}
-                          onChange={(e) => setEditForm({...editForm, username: e.target.value})}
-                          required
-                        />
-                        <FieldError errors={editErrors.username} />
-                      </div>
-                      <div className="form-group">
-                        <label>Email *</label>
-                        <input
-                          type="email"
-                          value={editForm.email}
-                          onChange={(e) => setEditForm({...editForm, email: e.target.value})}
-                          required
-                        />
-                        <FieldError errors={editErrors.email} />
-                      </div>
-                      <div className="form-group">
-                        <label>Nombre</label>
-                        <input
-                          type="text"
-                          value={editForm.first_name}
-                          onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
-                        />
-                        <FieldError errors={editErrors.first_name} />
-                      </div>
-                      <div className="form-group">
-                        <label>Apellido</label>
-                        <input
-                          type="text"
-                          value={editForm.last_name}
-                          onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
-                        />
-                        <FieldError errors={editErrors.last_name} />
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="modal-section">
-                    <h3>Asignación</h3>
-                    <div className="form-grid two-columns">
-                      <div className="form-group">
-                        <label>Rol *</label>
-                        <select
-                          value={editForm.role}
-                          onChange={(e) => setEditForm({...editForm, role: e.target.value})}
-                          required
-                        >
-                          <option value="USUARIO">Usuario Regular</option>
-                          <option value="EVALUADOR">Evaluador</option>
-                          <option value="ADMIN">Administrador</option>
-                        </select>
-                        <FieldError errors={editErrors.role} />
-                      </div>
-                      <div className="form-group">
-                        <label>Posición</label>
-                        <select
-                          value={editForm.posicion || ''}
-                          onChange={(e) => setEditForm({...editForm, posicion: e.target.value ? parseInt(e.target.value) : null})}
-                        >
-                          <option value="">Seleccionar posición</option>
-                          {posiciones.map((posicion) => (
-                            <option key={posicion.id} value={posicion.id}>
-                              {posicion.name} ({areas.find(a => a.id === posicion.area)?.name || 'Área no encontrada'})
-                            </option>
-                          ))}
-                        </select>
-                        <FieldError errors={editErrors.posicion} />
-                      </div>
-                      <div className="form-group">
-                        <label>Grupo</label>
-                        <select
-                          value={editForm.grupo || ''}
-                          onChange={(e) => setEditForm({...editForm, grupo: e.target.value ? parseInt(e.target.value) : null})}
-                        >
-                          <option value="">Seleccionar grupo</option>
-                          {grupos.map((grupo) => (
-                            <option key={grupo.id} value={grupo.id}>
-                              {grupo.name} ({areas.find(a => a.id === grupo.area)?.name || 'Área no encontrada'})
-                            </option>
-                          ))}
-                        </select>
-                        <FieldError errors={editErrors.grupo} />
-                      </div>
-                      <div className="form-group">
-                        <label>Número de Empleado</label>
-                        <input
-                          type="text"
-                          value={editForm.numero_empleado || ''}
-                          onChange={(e) => setEditForm({...editForm, numero_empleado: e.target.value || null})}
-                          placeholder="Ej: EMP001"
-                        />
-                        <FieldError errors={editErrors.numero_empleado} />
-                      </div>
-                      <div className="form-group">
-                        <label>Fecha de Ingreso</label>
-                        <input
-                          type="date"
-                          value={editForm.fecha_ingreso || ''}
-                          onChange={(e) => setEditForm({...editForm, fecha_ingreso: e.target.value || null})}
-                        />
-                        <FieldError errors={editErrors.fecha_ingreso} />
-                      </div>
-                      <div className="form-group full-width">
-                        <label>Áreas Asignadas</label>
-                        <div className="areas-checkboxes">
-                          {areas.map((area) => (
-                            <label key={area.id} className="area-checkbox">
-                              <input
-                                type="checkbox"
-                                checked={editForm.areas.includes(area.id)}
-                                onChange={(e) => handleAreaChange(area.id, e.target.checked, 'edit')}
-                              />
-                              <span>{area.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <FieldError errors={editErrors.areas} />
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={closeEditModal}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  Guardar Cambios
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Cambiar Contraseña */}
-      {showPasswordModal && selectedUser && (
-        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Cambiar Contraseña</h2>
-            <p>Usuario: <strong>{selectedUser.username}</strong></p>
-            <form onSubmit={handleChangePassword}>
-              <div className="form-group">
-                <label>Nueva Contraseña *</label>
-                <input
-                  type="password"
-                  value={passwordForm.new_password}
-                  onChange={(e) => setPasswordForm({...passwordForm, new_password: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Confirmar Contraseña *</label>
-                <input
-                  type="password"
-                  value={passwordForm.new_password_confirm}
-                  onChange={(e) => setPasswordForm({...passwordForm, new_password_confirm: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowPasswordModal(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  Cambiar Contraseña
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Confirmar Eliminación */}
-      {showDeleteModal && selectedUser && (
-        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
-          <div className="modal-content modal-confirm" onClick={(e) => e.stopPropagation()}>
-            <h2>Confirmar Eliminación</h2>
-            <p>
-              ¿Estás seguro que deseas eliminar permanentemente al usuario <strong>{selectedUser.username}</strong>?
-            </p>
-            <p className="warning-text">
-              Esta acción no se puede deshacer.
-            </p>
-            
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowDeleteModal(false)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn-danger" onClick={handleDeleteUser}>
-                Eliminar Usuario
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Confirmar Desactivación/Activación */}
-      {showDeactivateModal && selectedUser && (
-        <div className="modal-overlay" onClick={() => setShowDeactivateModal(false)}>
-          <div className="modal-content modal-confirm" onClick={(e) => e.stopPropagation()}>
-            <h2>{selectedUser.is_active ? 'Confirmar Desactivación' : 'Confirmar Activación'}</h2>
-            <p>
-              ¿Estás seguro que deseas {selectedUser.is_active ? 'desactivar' : 'activar'} al usuario <strong>{selectedUser.username}</strong>?
-            </p>
-            
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowDeactivateModal(false)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn-primary" onClick={handleDeactivateUser}>
-                {selectedUser.is_active ? 'Desactivar' : 'Activar'} Usuario
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Detalles del Usuario */}
       {showUserDetailModal && selectedUser && (
         <div className="modal-overlay" onClick={() => setShowUserDetailModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Detalles del Usuario</h2>
-              <button 
-                className="modal-close-btn" 
-                onClick={() => setShowUserDetailModal(false)}
-                title="Cerrar"
-              >
-                <FaTimes />
-              </button>
-            </div>
-            
+          <div className="modal-content modal-user-detail" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close-btn"
+              onClick={() => setShowUserDetailModal(false)}
+              title="Cerrar"
+            >
+              <FaTimes />
+            </button>
+
             <div className="user-detail-avatar">
               {selectedUser.profile_photo ? (
-                <img
-                  src={getMediaUrl(selectedUser.profile_photo)}
-                  alt={`Foto de ${selectedUser.full_name}`}
-                />
+                <img src={getMediaUrl(selectedUser.profile_photo)} alt={`Foto de ${selectedUser.full_name}`} />
               ) : (
                 <FaUser />
               )}
             </div>
 
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Usuario</label>
-                <input
-                  type="text"
-                  value={selectedUser.username}
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={selectedUser.email}
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Nombre</label>
-                <input
-                  type="text"
-                  value={selectedUser.first_name || ''}
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Apellido</label>
-                <input
-                  type="text"
-                  value={selectedUser.last_name || ''}
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Rol</label>
-                <div className="role-display">
-                  <span className={`role-badge ${getRoleBadgeClass(selectedUser.role)}`}>
-                    {selectedUser.role_display}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="form-group">
-                <label>Posición</label>
-                <input
-                  type="text"
-                  value={selectedUser.posicion ? 
-                    `${areas.find(a => a.id === posiciones.find(p => p.id === selectedUser.posicion)?.area)?.name || 'Área no encontrada'} - ${posiciones.find(p => p.id === selectedUser.posicion)?.name || 'Posición no encontrada'}` :
-                    'Sin posición asignada'
-                  }
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Grupo</label>
-                <input
-                  type="text"
-                  value={selectedUser.grupo ? 
-                    grupos.find(g => g.id === selectedUser.grupo)?.name || 'Grupo no encontrado' :
-                    'Sin grupo asignado'
-                  }
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Número de Empleado</label>
-                <input
-                  type="text"
-                  value={selectedUser.numero_empleado || 'Sin número asignado'}
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Fecha de Ingreso</label>
-                <input
-                  type="text"
-                  value={selectedUser.fecha_ingreso ? 
-                    new Date(selectedUser.fecha_ingreso).toLocaleDateString('es-ES') : 
-                    'Sin fecha asignada'
-                  }
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Estado</label>
-                <div className="status-display">
-                  <span className={`status-badge ${selectedUser.is_active ? 'status-active' : 'status-inactive'}`}>
-                    {selectedUser.is_active ? 'Activo' : 'Inactivo'}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="form-group">
-                <label>Fecha de Registro</label>
-                <input
-                  type="text"
-                  value={new Date(selectedUser.date_joined).toLocaleDateString('es-ES')}
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Último Acceso</label>
-                <input
-                  type="text"
-                  value={selectedUser.last_login ? 
-                    new Date(selectedUser.last_login).toLocaleDateString('es-ES') : 
-                    'Nunca'
-                  }
-                  readOnly
-                  className="readonly-field"
-                />
-              </div>
-              
-              <div className="form-group full-width">
-                <label>Áreas Asignadas</label>
-                <div className="areas-display">
-                  {selectedUser.areas_list && selectedUser.areas_list.length > 0 ? (
-                    <div className="areas-list">
-                      {selectedUser.areas_list.map((areaName, index) => (
-                        <span key={index} className="area-badge">
-                          {areaName}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="no-areas">Sin áreas asignadas</span>
-                  )}
-                </div>
+            <div className="user-detail-info">
+              <h2>{selectedUser.full_name}</h2>
+              <span className="user-detail-username">@{selectedUser.username}</span>
+              <div className="user-detail-meta">
+                <span className={`role-badge ${getRoleBadgeClass(selectedUser.role)}`}>
+                  {selectedUser.role_display}
+                </span>
+                <span className={`status-badge ${selectedUser.is_active ? 'status-active' : 'status-inactive'}`}>
+                  {selectedUser.is_active ? 'Activo' : 'Inactivo'}
+                </span>
               </div>
             </div>
 
-            <div className="modal-actions">
-              <button 
-                className="btn-primary" 
+            <div className="user-detail-grid">
+              <div className="user-detail-field">
+                <span className="label">Número de empleado</span>
+                <span className="value">
+                  {selectedUser.numero_empleado ? `#${selectedUser.numero_empleado}` : 'Sin asignar'}
+                </span>
+              </div>
+
+              <div className="user-detail-field">
+                <span className="label">Correo electrónico</span>
+                <span className="value">{selectedUser.email}</span>
+              </div>
+
+              <div className="user-detail-field">
+                <span className="label">Posición</span>
+                <span className="value">{getUserPositionName(selectedUser)}</span>
+              </div>
+
+              <div className="user-detail-field">
+                <span className="label">Áreas</span>
+                <span className="value areas-value">
+                  {selectedUser.areas_list && selectedUser.areas_list.length > 0 ? (
+                    selectedUser.areas_list.map((area, index) => (
+                      <span key={index} className="area-badge">
+                        {area}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="no-areas">Sin áreas</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="modal-actions user-detail-actions">
+              <button
+                className="btn-secondary"
                 onClick={() => {
                   setShowUserDetailModal(false);
-                  startEditUser(selectedUser);
+                  openDeactivateModal(selectedUser);
                 }}
               >
-                <FaEdit /> Editar Usuario
+                {selectedUser.is_active ? <FaBan /> : <FaCheckCircle />} {selectedUser.is_active ? 'Desactivar' : 'Activar'}
               </button>
-              <button 
-                className="btn-secondary" 
+              <button
+                className="btn-secondary"
                 onClick={() => {
                   setShowUserDetailModal(false);
                   openPasswordModal(selectedUser);
@@ -1964,8 +1314,17 @@ const UserManagement: React.FC = () => {
               >
                 <FaKey /> Cambiar Contraseña
               </button>
-              <button 
-                className="btn-danger" 
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setShowUserDetailModal(false);
+                  startEditUser(selectedUser);
+                }}
+              >
+                <FaEdit /> Editar Usuario
+              </button>
+              <button
+                className="btn-danger"
                 onClick={() => {
                   setShowUserDetailModal(false);
                   openDeleteModal(selectedUser);
@@ -2020,6 +1379,10 @@ const UserManagement: React.FC = () => {
             </nav>
 
             <section className="step-modal__body">
+              {renderGlobalErrors(
+                isCreating ? createErrors : editErrors,
+                isCreating ? createErrors.detail : editErrors.detail
+              )}
               {currentStep === 1 && renderStep1()}
               {currentStep === 2 && renderStep2()}
               {currentStep === 3 && renderStep3()}

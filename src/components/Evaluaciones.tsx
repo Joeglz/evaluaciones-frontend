@@ -19,7 +19,7 @@ import {
   FaChevronLeft,
   FaChevronRight
 } from 'react-icons/fa';
-import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, EvaluacionUsuario, ProgresoNivel, getMediaUrl } from '../services/api';
+import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, FirmaEvaluacionUsuario, EvaluacionUsuario, ProgresoNivel, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Evaluaciones.css';
@@ -48,8 +48,8 @@ const calcularResumenNiveles = (
 
     const evaluacionGuardada = guardadasMap[evaluacion.id];
     const estado = (evaluacionGuardada?.estado || '').toLowerCase();
-    const estadoFirmas = (evaluacion.estado_firmas || '').toLowerCase();
-    const firmasCompletas = estadoFirmas === 'firmas_completas';
+    const estadoFirmasUsuario = (evaluacionGuardada?.estado_firmas_usuario || '').toLowerCase();
+    const firmasCompletas = estadoFirmasUsuario === 'firmas_completas';
 
     if (firmasCompletas && (estado === 'completada' || evaluacion.resultado !== null)) {
       stats[nivel].completadas += 1;
@@ -63,6 +63,37 @@ const calcularResumenNiveles = (
   });
 
   return { stats, completados };
+};
+
+const calcularEstadoFirmasUsuario = (firmas: FirmaEvaluacionUsuario[] | undefined) => {
+  if (!firmas || firmas.length === 0) {
+    return {
+      estado: 'pendiente_firmas',
+      display: 'Pendiente de firmas',
+    };
+  }
+
+  const total = firmas.length;
+  const firmadas = firmas.filter((firma) => firma.esta_firmado).length;
+
+  if (firmadas === total) {
+    return {
+      estado: 'firmas_completas',
+      display: 'Firmas completas',
+    };
+  }
+
+  if (firmadas > 0) {
+    return {
+      estado: 'en_proceso',
+      display: 'En proceso de firmas',
+    };
+  }
+
+  return {
+    estado: 'pendiente_firmas',
+    display: 'Pendiente de firmas',
+  };
 };
 
 type AreaWithSupervisores = Area & { supervisores?: Array<{ id: number }> };
@@ -108,6 +139,8 @@ const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
 const [isDrawing, setIsDrawing] = useState(false);
 const [hasSignature, setHasSignature] = useState<Record<string, boolean>>({});
 const [signatures, setSignatures] = useState<Record<string, string | null>>({});
+const [firmasUsuario, setFirmasUsuario] = useState<Record<string, FirmaEvaluacionUsuario | null>>({});
+const [firmasPendientes, setFirmasPendientes] = useState<Record<string, { imagen: string | null; usuario: number | null; usuarioNombre: string | null; nombre: string }>>({});
 const [firmaModalAbierta, setFirmaModalAbierta] = useState<{ tipo: string; nombre: string } | null>(null);
 const [firmaModalFirmante, setFirmaModalFirmante] = useState<number | null>(null);
 const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(null);
@@ -196,8 +229,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   const handleOpenFirmaModal = (firma: FirmaEvaluacion) => {
     setFirmaModalAbierta({ tipo: firma.tipo_firma, nombre: firma.nombre });
+    const firmaUsuario = firmasUsuario[firma.tipo_firma] ?? null;
+    const firmaPendiente = firmasPendientes[firma.tipo_firma] ?? null;
+
     if (firma.tipo_firma === 'empleado') {
       setFirmaModalFirmante(selectedUser?.id ?? null);
+    } else if (firmaPendiente?.usuario !== undefined && firmaPendiente?.usuario !== null) {
+      setFirmaModalFirmante(firmaPendiente.usuario);
+    } else if (firmaUsuario?.usuario) {
+      setFirmaModalFirmante(firmaUsuario.usuario);
     } else if (firma.usuario) {
       setFirmaModalFirmante(firma.usuario);
     } else if (supervisorSeleccionado) {
@@ -214,13 +254,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const dataURL = signatures[firma.tipo_firma] ?? firma.imagen ?? null;
+      const dataURL = signatures[firma.tipo_firma] ?? firmaUsuario?.imagen ?? firmaPendiente?.imagen ?? null;
       if (dataURL) {
         const img = new Image();
         img.onload = () => {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0);
-          setHasSignature(prev => ({ ...prev, [firma.tipo_firma]: true }));
+          setHasSignature(prev => ({ ...prev, [firma.tipo_firma]: Boolean(dataURL) }));
         };
         img.src = dataURL;
       } else {
@@ -240,6 +280,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(prev => ({ ...prev, [firmaModalAbierta.tipo]: false }));
     setSignatures(prev => ({ ...prev, [firmaModalAbierta.tipo]: null }));
+    setFirmasPendientes(prev => {
+      if (evaluacionGuardadaInfo) {
+        return prev;
+      }
+      const { [firmaModalAbierta.tipo]: _omit, ...rest } = prev;
+      return rest;
+    });
   };
 
   useEffect(() => {
@@ -262,22 +309,38 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       setFirmaModalFirmante(null);
       setSignatures({});
       setHasSignature({});
+      setFirmasUsuario({});
+      setFirmasPendientes({});
       return;
+    }
+
+    const firmasGuardadas = evaluacionGuardadaInfo?.firmas_usuario ?? [];
+    const firmasGuardadasMap: Record<string, FirmaEvaluacionUsuario> = {};
+    firmasGuardadas.forEach((firmaUsuario) => {
+      firmasGuardadasMap[firmaUsuario.tipo_firma] = firmaUsuario;
+    });
+
+    if (evaluacionGuardadaInfo) {
+      setFirmasPendientes({});
     }
 
     const signaturesIniciales: Record<string, string | null> = {};
     const hasIniciales: Record<string, boolean> = {};
+    const mapaFirmasUsuario: Record<string, FirmaEvaluacionUsuario | null> = {};
 
     evaluacionActual.firmas.forEach((firma: FirmaEvaluacion) => {
-      const imagen = firma.imagen ?? null;
-      const firmaAlmacenada = signatures[firma.tipo_firma] ?? imagen;
-      signaturesIniciales[firma.tipo_firma] = firmaAlmacenada;
-      hasIniciales[firma.tipo_firma] = Boolean(firmaAlmacenada) || Boolean(firma.esta_firmado);
+      const slug = firma.tipo_firma;
+      const firmaUsuario = firmasGuardadasMap[slug] ?? null;
+      mapaFirmasUsuario[slug] = firmaUsuario;
+      const imagen = firmaUsuario?.imagen ?? null;
+      signaturesIniciales[slug] = imagen;
+      hasIniciales[slug] = Boolean(firmaUsuario?.esta_firmado && imagen);
     });
 
+    setFirmasUsuario(mapaFirmasUsuario);
     setSignatures(signaturesIniciales);
     setHasSignature(hasIniciales);
-  }, [evaluacionActual]);
+  }, [evaluacionActual, evaluacionGuardadaInfo]);
 
   useEffect(() => {
     // Filtrar usuarios en la vista de usuarios cuando cambie el término de búsqueda
@@ -693,13 +756,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
       const payload: {
         tipo_firma: string;
-        nombre: string;
+        nombre?: string;
         usuario?: number | null;
         imagen?: string;
       } = {
         tipo_firma: tipoFirma,
-        nombre: firmaModalAbierta.nombre,
       };
+
+      const usuarioFirmanteId = esFirmaEmpleado
+        ? selectedUser?.id ?? null
+        : firmaModalFirmante ?? null;
 
       if (esFirmaEmpleado) {
         payload.usuario = selectedUser?.id ?? null;
@@ -711,41 +777,81 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         payload.imagen = signatureData;
       }
 
-      const firmaActualizada = await apiService.firmarEvaluacion(evaluacionActual.id, payload);
+      if (firmaModalAbierta.nombre) {
+        payload.nombre = firmaModalAbierta.nombre;
+      }
+
+      const obtenerNombreFirmante = () => {
+        if (esFirmaEmpleado) {
+          return selectedUser?.full_name || selectedUser?.username || null;
+        }
+        const supervisor = supervisores.find((sup) => sup.id === usuarioFirmanteId);
+        return supervisor?.full_name || supervisor?.username || null;
+      };
+
+      const firmanteNombre = obtenerNombreFirmante();
+
+      if (!evaluacionGuardadaInfo) {
+        setFirmasPendientes((prev) => ({
+          ...prev,
+          [tipoFirma]: {
+            imagen: signatureData ?? null,
+            usuario: usuarioFirmanteId,
+            usuarioNombre: firmanteNombre,
+            nombre: firmaModalAbierta.nombre,
+          },
+        }));
+
+        setSignatures((prev) => ({
+          ...prev,
+          [tipoFirma]: signatureData ?? null,
+        }));
+
+        setHasSignature((prev) => ({
+          ...prev,
+          [tipoFirma]: Boolean(signatureData),
+        }));
+
+        setIsDrawing(false);
+        setFirmaModalAbierta(null);
+        setFirmaModalFirmante(null);
+        const mensajeLocal = signatureData
+          ? 'Firma guardada localmente. Guarda la evaluación para registrarla definitivamente.'
+          : 'Asignación guardada localmente. Guarda la evaluación para registrar la firma.';
+        showSuccess(mensajeLocal);
+        return;
+      }
+
+      const firmaActualizada = await apiService.firmarEvaluacionUsuario(evaluacionGuardadaInfo.id, payload);
 
       setEvaluacionActual((prev: any) => {
         if (!prev) return prev;
 
         const firmasActualizadas = prev.firmas.map((firma: FirmaEvaluacion) =>
           firma.tipo_firma === firmaActualizada.tipo_firma
-            ? { ...firma, ...firmaActualizada }
+            ? {
+                ...firma,
+                nombre: firmaActualizada.nombre,
+                usuario: firmaActualizada.usuario,
+                usuario_nombre: firmaActualizada.usuario_nombre,
+              }
             : firma
         );
-
-        const totalFirmas = firmasActualizadas.length;
-        const firmasCompletas = firmasActualizadas.filter(
-          (firma: FirmaEvaluacion) => firma.esta_firmado
-        ).length;
-
-        let estadoFirmas = 'pendiente_firmas';
-        if (totalFirmas > 0 && firmasCompletas === totalFirmas) {
-          estadoFirmas = 'firmas_completas';
-        } else if (firmasCompletas > 0) {
-          estadoFirmas = 'en_proceso';
-        }
-
-        const estadoFirmasDisplayMap: Record<string, string> = {
-          pendiente_firmas: 'Pendiente de firmas',
-          en_proceso: 'En proceso de firmas',
-          firmas_completas: 'Firmas completas',
-        };
 
         return {
           ...prev,
           firmas: firmasActualizadas,
-          estado_firmas: estadoFirmas,
-          estado_firmas_display: estadoFirmasDisplayMap[estadoFirmas] ?? prev.estado_firmas_display,
         };
+      });
+
+      setFirmasUsuario((prev) => ({
+        ...prev,
+        [firmaActualizada.tipo_firma]: firmaActualizada,
+      }));
+
+      setFirmasPendientes((prev) => {
+        const { [firmaActualizada.tipo_firma]: _omit, ...rest } = prev;
+        return rest;
       });
 
       setSignatures((prev) => ({
@@ -755,8 +861,19 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
       setHasSignature((prev) => ({
         ...prev,
-        [firmaActualizada.tipo_firma]: Boolean(signatureData),
+        [firmaActualizada.tipo_firma]: Boolean(signatureData ?? firmaActualizada.imagen),
       }));
+
+      try {
+        const evaluacionUsuarioActualizada = await apiService.getEvaluacionUsuario(evaluacionGuardadaInfo.id);
+        setEvaluacionGuardadaInfo(evaluacionUsuarioActualizada);
+        setEvaluacionesUsuarioGuardadas((prev) => ({
+          ...prev,
+          [evaluacionUsuarioActualizada.evaluacion]: evaluacionUsuarioActualizada,
+        }));
+      } catch (detalleError) {
+        console.error('Error al actualizar la evaluación del usuario tras firmar', detalleError);
+      }
 
       if (selectedPosicion?.id) {
         await loadProgresosNivel(selectedPosicion.id);
@@ -780,6 +897,110 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
+  const registrarFirmasPendientes = async (evaluacionUsuarioId: number) => {
+    const combinadasPendientes: Record<
+      string,
+      { imagen: string | null; usuario: number | null; usuarioNombre: string | null; nombre: string }
+    > = { ...firmasPendientes };
+
+    if (evaluacionActual) {
+      evaluacionActual.firmas.forEach((firma: FirmaEvaluacion) => {
+        const slug = firma.tipo_firma;
+        if (!combinadasPendientes[slug]) {
+          const imagenExistente = signatures[slug] ?? null;
+          const firmaUsuario = firmasUsuario[slug] ?? null;
+          const yaFirmada = Boolean(firmaUsuario?.esta_firmado || firma.esta_firmado);
+          if (imagenExistente && !yaFirmada) {
+            const usuarioFirmanteId =
+              firmaUsuario?.usuario ??
+              firma.usuario ??
+              (slug === 'empleado' ? selectedUser?.id ?? null : null);
+            const usuarioFirmanteNombre =
+              firmaUsuario?.usuario_nombre ??
+              firma.usuario_nombre ??
+              (slug === 'empleado'
+                ? selectedUser?.full_name || selectedUser?.username || null
+                : null);
+
+            combinadasPendientes[slug] = {
+              imagen: imagenExistente,
+              usuario: usuarioFirmanteId,
+              usuarioNombre: usuarioFirmanteNombre,
+              nombre: firmaUsuario?.nombre || firma.nombre,
+            };
+          }
+        }
+      });
+    }
+
+    const pendientesEntries = Object.entries(combinadasPendientes);
+    if (pendientesEntries.length === 0) {
+      return;
+    }
+
+    const pendientesRestantes: typeof firmasPendientes = {};
+    const firmasActualizadas: Record<string, FirmaEvaluacionUsuario> = {};
+
+    for (const [tipo_firma, datos] of pendientesEntries) {
+      try {
+        const firmaActualizada = await apiService.firmarEvaluacionUsuario(evaluacionUsuarioId, {
+          tipo_firma,
+          nombre: datos.nombre,
+          usuario: datos.usuario ?? undefined,
+          imagen: datos.imagen || undefined,
+        });
+        firmasActualizadas[tipo_firma] = firmaActualizada;
+      } catch (error: any) {
+        console.error(`Error al registrar la firma pendiente ${tipo_firma}`, error);
+        showError(
+          error?.message
+            ? `Error al registrar la firma ${tipo_firma}: ${error.message}`
+            : `Error al registrar la firma ${tipo_firma}.`
+        );
+        // Continuar con las demás firmas
+        pendientesRestantes[tipo_firma] = datos;
+      }
+    }
+
+    if (Object.keys(firmasActualizadas).length > 0) {
+      setFirmasUsuario((prev) => ({
+        ...prev,
+        ...firmasActualizadas,
+      }));
+
+      setSignatures((prev) => {
+        const updated = { ...prev };
+        Object.entries(firmasActualizadas).forEach(([tipo, firma]) => {
+          updated[tipo] = firma.imagen ?? prev[tipo] ?? null;
+        });
+        return updated;
+      });
+
+      setHasSignature((prev) => {
+        const updated = { ...prev };
+        Object.entries(firmasActualizadas).forEach(([tipo, firma]) => {
+          updated[tipo] = Boolean(firma.imagen);
+        });
+        return updated;
+      });
+    }
+
+    setFirmasPendientes(pendientesRestantes);
+
+    if (Object.keys(pendientesRestantes).length === 0) {
+      try {
+        const evaluacionUsuarioActualizada = await apiService.getEvaluacionUsuario(evaluacionUsuarioId);
+        setEvaluacionGuardadaInfo(evaluacionUsuarioActualizada);
+        setEvaluacionesUsuarioGuardadas((prev) => ({
+          ...prev,
+          [evaluacionUsuarioActualizada.evaluacion]: evaluacionUsuarioActualizada,
+        }));
+      } catch (detalleError) {
+        console.error('Error al refrescar la evaluación del usuario tras registrar firmas pendientes', detalleError);
+      }
+    }
+  };
+
   const guardarEvaluacion = async () => {
     if (!selectedUser || !evaluacionActual || !supervisorSeleccionado) {
       showError('Por favor selecciona un supervisor');
@@ -800,7 +1021,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
     try {
       setLoading(true);
-      await apiService.createEvaluacionUsuario({
+      const evaluacionUsuarioCreada = await apiService.createEvaluacionUsuario({
         evaluacion: evaluacionActual.id,
         usuario: selectedUser.id,
         supervisor: supervisorSeleccionado,
@@ -810,6 +1031,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           observaciones: resultado.observaciones || ''
         }))
       });
+
+      if (evaluacionUsuarioCreada?.id) {
+        await registrarFirmasPendientes(evaluacionUsuarioCreada.id);
+      }
 
       showSuccess('Evaluación guardada exitosamente');
       await loadEvaluacionesUsuario(selectedUser);
@@ -870,8 +1095,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setSelectedPosicion(null);
         break;
       case 'usuario-detalle':
-        setCurrentView('usuarios');
+        if (selectedPosicion?.id) {
+          loadProgresosNivel(selectedPosicion.id);
+        } else {
+          loadProgresosNivel();
+        }
         setSelectedUser(null);
+        setCurrentView('usuarios');
         break;
       case 'usuario-evaluacion':
         setCurrentView('usuario-detalle');
@@ -879,16 +1109,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setResultadosEvaluacion([]);
         setSupervisorSeleccionado(null);
         // Limpiar firmas
-        setSignatures({
-          empleado: null,
-          evaluador: null,
-          calidad: null
-        });
-        setHasSignature({
-          empleado: false,
-          evaluador: false,
-          calidad: false
-        });
+        setSignatures({});
+        setHasSignature({});
+        setFirmasUsuario({});
+        setFirmasPendientes({});
+        if (selectedPosicion?.id) {
+          loadProgresosNivel(selectedPosicion.id);
+        } else {
+          loadProgresosNivel();
+        }
         break;
       case 'onboarding':
         if (onboardingUsuarioId) {
@@ -1246,6 +1475,14 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     });
 
     const isNivelCompleto = (nivel: number): boolean => {
+      if (!selectedUser) {
+        return false;
+      }
+
+      const evaluacionUsuarioCompletas = Object.values(evaluacionesUsuarioGuardadas).filter(
+        (registro) => registro.usuario === selectedUser.id
+      );
+
       const evaluacionesNivel = evaluacionesUsuario.filter((evaluacion) => {
         const nivelEvaluacion =
           evaluacion.nivel_posicion_data?.nivel ??
@@ -1256,13 +1493,20 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
       if (evaluacionesNivel.length > 0) {
         return evaluacionesNivel.every((evaluacion) => {
-          const registro = evaluacionesUsuarioGuardadas[evaluacion.id];
-          const estado = (registro?.estado || '').toLowerCase();
-          const estadoFirmas = (evaluacion.estado_firmas || '').toLowerCase();
-          const firmasCompletas = estadoFirmas === 'firmas_completas';
+          const registro = evaluacionUsuarioCompletas.find(
+            (detalle) => detalle.evaluacion === evaluacion.id
+          );
+
+          if (!registro) {
+            return false;
+          }
+
+          const estado = (registro.estado || '').toLowerCase();
+          const estadoFirmasUsuario = (registro.estado_firmas_usuario || '').toLowerCase();
+          const firmasCompletasUsuario = estadoFirmasUsuario === 'firmas_completas';
           return (
-            firmasCompletas &&
-            (estado === 'completada' || evaluacion.resultado !== null)
+            firmasCompletasUsuario &&
+            (estado === 'completada' || registro.resultado_final !== null)
           );
         });
       }
@@ -1356,15 +1600,21 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
               <div className="evaluaciones-list">
                 {evaluacionesDelNivel.map((evaluacion) => {
                   const evaluacionGuardada = evaluacionesUsuarioGuardadas[evaluacion.id];
-                  const estadoFirmas = evaluacion.estado_firmas || 'pendiente_firmas';
-                  const textoEstadoFirmas = evaluacion.estado_firmas_display || 'Pendiente de firma';
-                  const evaluacionPendienteFirmas = estadoFirmas !== 'firmas_completas';
-                  const estaCompletada = Boolean(evaluacionGuardada);
-                  const estaPendienteFirmas = estaCompletada && evaluacionPendienteFirmas;
+                  const evaluacionRegistrada = Boolean(evaluacionGuardada);
+                  const estadoFirmasUsuario = evaluacionGuardada?.estado_firmas_usuario || 'pendiente_firmas';
+                  const textoEstadoFirmasUsuario =
+                    evaluacionGuardada?.estado_firmas_usuario_display || 'Pendiente de firmas';
+                  const todasFirmasCompletas = estadoFirmasUsuario === 'firmas_completas';
+                  const estaCompletada =
+                    evaluacionRegistrada &&
+                    (evaluacionGuardada?.estado === 'completada' || todasFirmasCompletas);
+                  const estaPendienteFirmas = evaluacionRegistrada && !todasFirmasCompletas;
                   return (
                     <div
                       key={evaluacion.id}
-                      className={`evaluacion-item-simple ${estaCompletada ? 'completada' : 'pendiente'}`}
+                      className={`evaluacion-item-simple ${
+                        estaCompletada ? 'completada' : evaluacionRegistrada ? 'en-proceso' : 'pendiente'
+                      }`}
                     >
                       <div className="evaluacion-content">
                         <div className="evaluacion-header">
@@ -1373,13 +1623,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             className={`evaluacion-status ${
                               estaPendienteFirmas
                                 ? 'status-pendiente-firmas'
-                                : estaCompletada
+                              : estaCompletada
                                 ? 'status-completada'
                                 : 'status-pendiente'
                             }`}
                           >
                             {estaPendienteFirmas
-                              ? textoEstadoFirmas
+                              ? textoEstadoFirmasUsuario
                               : estaCompletada
                               ? 'Completada'
                               : 'Pendiente'}
@@ -1648,19 +1898,39 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                   evaluacionActual.firmas.map((firma: FirmaEvaluacion) => {
                     const slug = firma.tipo_firma;
                     const nombreFirma = firma.nombre || firma.tipo_firma_display || slug;
-                    const tieneFirma = Boolean(signatures[slug]);
+                    const firmaUsuario = firmasUsuario[slug] ?? null;
+                    const firmaPendiente = firmasPendientes[slug] ?? null;
+                    const firmaImagen = signatures[slug] ?? firmaUsuario?.imagen ?? firmaPendiente?.imagen ?? null;
+                    const tieneFirma = Boolean(firmaImagen);
+                    const estaFirmada = firmaUsuario?.esta_firmado ?? Boolean(firmaPendiente?.imagen);
+                    const firmanteNombre =
+                      firmaUsuario?.usuario_nombre ??
+                      firmaPendiente?.usuarioNombre ??
+                      firma.usuario_nombre ??
+                      null;
+                    const estadoDisplay =
+                      firmaUsuario?.estado_display ||
+                      (firmaPendiente
+                        ? firmaPendiente.imagen
+                          ? `Firma capturada (${firmaPendiente.usuarioNombre || 'sin firmante asignado'})`
+                          : firmaPendiente.usuarioNombre
+                            ? `Pendiente de firma de ${firmaPendiente.usuarioNombre}`
+                            : 'Pendiente de asignación'
+                        : firmanteNombre
+                          ? `Pendiente de firma de ${firmanteNombre}`
+                          : 'Pendiente de asignación');
 
                     return (
                       <div key={slug} className="firma-item">
                         <label className="firma-label">{nombreFirma}</label>
-                        <span className={`firma-estado ${firma.esta_firmado ? 'firmada' : 'pendiente'}`}>
-                          {firma.estado_display || (firma.esta_firmado ? `Firmada por ${firma.usuario_nombre}` : 'Pendiente')}
+                        <span className={`firma-estado ${estaFirmada ? 'firmada' : 'pendiente'}`}>
+                          {estadoDisplay}
                         </span>
                         {tieneFirma ? (
                           <div className="firma-preview-container">
                             <div className="firma-preview">
                               <img
-                                src={signatures[slug] || firma.imagen || ''}
+                                src={firmaImagen || ''}
                                 alt={`Firma ${nombreFirma}`}
                               />
                             </div>
