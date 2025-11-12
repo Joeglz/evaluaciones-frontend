@@ -175,7 +175,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   useEffect(() => {
     if (!isRegularUser) {
-      loadData();
+    loadData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRegularUser]);
@@ -1632,13 +1632,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             </div>
             <div className="usuario-controles">
               {!isRegularUser && (
-                <button
-                  className="btn-onboarding"
-                  type="button"
-                  onClick={() => handleOnboardingClick(selectedUser?.id ?? null)}
-                >
-                  Onboarding
-                </button>
+                  <button
+                    className="btn-onboarding"
+                    type="button"
+                    onClick={() => handleOnboardingClick(selectedUser?.id ?? null)}
+                  >
+                Onboarding
+              </button>
               )}
               <span className="usuario-fecha">{fechaActual}</span>
               <div className="nivel-navegacion">
@@ -1715,7 +1715,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             className={`evaluacion-status ${
                               estaPendienteFirmas
                                 ? 'status-pendiente-firmas'
-                              : estaCompletada
+                                : estaCompletada
                                 ? 'status-completada'
                                 : 'status-pendiente'
                             }`}
@@ -1736,7 +1736,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                               Ver
                             </button>
                           ) : (
-                            <button
+                            <button 
                               className={`btn btn-${isRegularUser ? 'secondary' : 'primary'} btn-sm`}
                               onClick={() => iniciarEvaluacion(evaluacion)}
                             >
@@ -2029,7 +2029,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     const puedeFirmarPendiente = esFirmanteActual && !estaFirmada;
                     const puedeEditarPorRol = !evaluacionModoLectura && !estadoEvaluacionCompletada;
                     const puedeEditarFirma = puedeFirmarPendiente || puedeEditarPorRol;
- 
+
                     return (
                       <div key={slug} className="firma-item">
                         <label className="firma-label">{nombreFirma}</label>
@@ -2045,24 +2045,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                               />
                             </div>
                             {puedeEditarFirma && (
-                              <button
-                                type="button"
-                                className="btn-editar-firma"
-                                onClick={() => handleOpenFirmaModal(firma)}
-                              >
-                                <FaEdit /> Editar Firma
-                              </button>
+                            <button
+                              type="button"
+                              className="btn-editar-firma"
+                              onClick={() => handleOpenFirmaModal(firma)}
+                            >
+                              <FaEdit /> Editar Firma
+                            </button>
                             )}
                           </div>
                         ) : (
                           puedeEditarFirma && (
-                            <button
-                              type="button"
-                              className="btn-agregar-firma"
-                              onClick={() => handleOpenFirmaModal(firma)}
-                            >
-                              <FaPlus /> Agregar Firma
-                            </button>
+                          <button
+                            type="button"
+                            className="btn-agregar-firma"
+                            onClick={() => handleOpenFirmaModal(firma)}
+                          >
+                            <FaPlus /> Agregar Firma
+                          </button>
                           )
                         )}
                       </div>

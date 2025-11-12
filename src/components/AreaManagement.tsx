@@ -13,7 +13,7 @@ import {
   FaChevronDown,
   FaChevronRight
 } from 'react-icons/fa';
-import { apiService, Area, GrupoNested, PosicionNested, NivelPosicion, Evaluacion, User, FirmaEvaluacion } from '../services/api';
+import { apiService, Area, GrupoNested, PosicionNested, NivelPosicion, Evaluacion, User, FirmaEvaluacion, PuntoEvaluacion, CriterioEvaluacion } from '../services/api';
 import './AreaManagement.css';
 
 const slugifyText = (value: string): string =>
@@ -83,6 +83,15 @@ const AreaManagement: React.FC = () => {
   const [eliminandoFirmaEvaluacionId, setEliminandoFirmaEvaluacionId] = useState<number | null>(null);
   const [editarFirmaNombre, setEditarFirmaNombre] = useState('');
   const [editarFirmaIdentificador, setEditarFirmaIdentificador] = useState('');
+  const [editarEvaluacionPuntos, setEditarEvaluacionPuntos] = useState<PuntoEvaluacion[]>([]);
+  const [editarEvaluacionCriterios, setEditarEvaluacionCriterios] = useState<CriterioEvaluacion[]>([]);
+  const [editarEvaluacionPaso, setEditarEvaluacionPaso] = useState<1 | 2 | 3 | 4>(1);
+  const pasosEdicionEvaluacion: Array<{ id: 1 | 2 | 3 | 4; titulo: string }> = [
+    { id: 1, titulo: 'Datos generales' },
+    { id: 2, titulo: 'Puntos de Evaluación' },
+    { id: 3, titulo: 'Criterios de Evaluación' },
+    { id: 4, titulo: 'Firmas' }
+  ];
   
   // Formularios
   const [createForm, setCreateForm] = useState({
@@ -492,6 +501,9 @@ const AreaManagement: React.FC = () => {
     setEditarEvaluacionMinimo(null);
     setEditarEvaluacionDivisor(17);
     setEditarEvaluacionMultiplicador(80);
+    setEditarEvaluacionPuntos([]);
+    setEditarEvaluacionCriterios([]);
+    setEditarEvaluacionPaso(1);
   };
 
   const handleModalPlantillaChange = async (value: string) => {
@@ -750,6 +762,8 @@ const AreaManagement: React.FC = () => {
         : 80
     );
     setEditarEvaluacionFirmas(evaluacion.firmas || []);
+    setEditarEvaluacionPuntos(evaluacion.puntos_evaluacion || []);
+    setEditarEvaluacionCriterios(evaluacion.criterios_evaluacion || []);
     setEditarFirmaNombre('');
     setEditarFirmaIdentificador('');
     return evaluacion;
@@ -759,6 +773,7 @@ const AreaManagement: React.FC = () => {
     try {
       setEditarEvaluacionError(null);
       setCargandoEvaluacionEdicion(true);
+      setEditarEvaluacionPaso(1);
       await cargarEvaluacionParaEdicion(evaluacionId);
       setEvaluacionEdicionContext({ evaluacionId, nivelId, posicionId });
       setShowEditarEvaluacionModal(true);
@@ -775,6 +790,8 @@ const AreaManagement: React.FC = () => {
     try {
       const evaluacion = await cargarEvaluacionParaEdicion(evaluacionEdicionContext.evaluacionId);
       setEditarEvaluacionFirmas(evaluacion.firmas || []);
+      setEditarEvaluacionPuntos(evaluacion.puntos_evaluacion || []);
+      setEditarEvaluacionCriterios(evaluacion.criterios_evaluacion || []);
     } catch (error) {
       console.error('Error al recargar datos de la evaluación:', error);
       setEditarEvaluacionError('No se pudieron actualizar las firmas de la evaluación.');
@@ -1092,6 +1109,219 @@ const AreaManagement: React.FC = () => {
     editarEvaluacionDivisor,
     editarEvaluacionMultiplicador
   );
+
+  const renderEditarEvaluacionStep = () => {
+    if (editarEvaluacionPaso === 1) {
+      return (
+        <div className="step-content step-general">
+          <div className="form-group">
+            <label>Nombre de la Evaluación *</label>
+            <input
+              type="text"
+              value={editarEvaluacionNombre}
+              onChange={(e) => {
+                setEditarEvaluacionNombre(e.target.value);
+                if (editarEvaluacionError) setEditarEvaluacionError(null);
+              }}
+              placeholder="Nombre de la evaluación"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Mínimo aprobatorio (%) *</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={editarEvaluacionMinimo ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                setEditarEvaluacionMinimo(value === '' ? null : Math.max(0, Math.min(100, parseInt(value, 10) || 0)));
+                if (editarEvaluacionError) setEditarEvaluacionError(null);
+              }}
+              placeholder="Ej. 70"
+            />
+          </div>
+
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Divisor de fórmula *</label>
+              <input
+                type="number"
+                min="1"
+                value={editarEvaluacionDivisor ?? ''}
+                onChange={(e) => {
+                  setEditarEvaluacionDivisor(
+                    e.target.value === '' ? null : Math.max(1, parseInt(e.target.value, 10) || 1)
+                  );
+                  if (editarEvaluacionError) setEditarEvaluacionError(null);
+                }}
+                placeholder="Ej. 17"
+              />
+            </div>
+            <div className="form-group">
+              <label>Multiplicador de fórmula *</label>
+              <input
+                type="number"
+                min="0"
+                value={editarEvaluacionMultiplicador ?? ''}
+                onChange={(e) => {
+                  setEditarEvaluacionMultiplicador(
+                    e.target.value === '' ? null : Math.max(0, parseInt(e.target.value, 10) || 0)
+                  );
+                  if (editarEvaluacionError) setEditarEvaluacionError(null);
+                }}
+                placeholder="Ej. 80"
+              />
+            </div>
+          </div>
+
+          <div className="formula-preview">
+            <span className="formula-label">Vista previa de fórmula</span>
+            <span className="formula-expression">
+              Resultado (%) = ( PUNTOS OBTENIDOS / {editarFormulaPreview.divisorTexto} ) *{' '}
+              {editarFormulaPreview.multiplicadorTexto}
+            </span>
+            {editarFormulaPreview.divisorParsed !== null &&
+              editarFormulaPreview.divisorParsed > 0 &&
+              editarFormulaPreview.multiplicadorParsed !== null && (
+                <span className="formula-hint">
+                  Ejemplo con 0 puntos: ( 0 / {editarFormulaPreview.divisorTexto} ) *{' '}
+                  {editarFormulaPreview.multiplicadorTexto} = 0.00%
+                </span>
+              )}
+          </div>
+        </div>
+      );
+    }
+
+    if (editarEvaluacionPaso === 2) {
+      return (
+        <div className="step-content step-list">
+          <div className="detail-section">
+            <h4>Puntos de Evaluación</h4>
+            {editarEvaluacionPuntos.length > 0 ? (
+              <div className="puntos-list">
+                {editarEvaluacionPuntos.slice().sort((a, b) => a.orden - b.orden).map((punto, index) => (
+                  <div key={punto.id} className="punto-item">
+                    <div className="punto-header">
+                      <span className="punto-orden">{index + 1}.</span>
+                      <span className="punto-pregunta">{punto.pregunta}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="no-items">
+                <p>No hay puntos de evaluación configurados.</p>
+              </div>
+            )}
+            <div className="field-helper">
+              Los puntos se gestionan desde la sección de plantillas.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (editarEvaluacionPaso === 3) {
+      return (
+        <div className="step-content step-list">
+          <div className="detail-section">
+            <h4>Criterios de Evaluación</h4>
+            {editarEvaluacionCriterios.length > 0 ? (
+              <div className="criterios-list">
+                {editarEvaluacionCriterios.slice().sort((a, b) => a.orden - b.orden).map((criterio, index) => (
+                  <div key={criterio.id} className="criterio-item">
+                    <div className="criterio-content">
+                      <span className="criterio-orden">{index + 1}.</span>
+                      <span className="criterio-texto">{criterio.criterio}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="no-items">
+                <p>No hay criterios de evaluación configurados.</p>
+              </div>
+            )}
+            <div className="field-helper">
+              Los criterios se gestionan desde la sección de plantillas.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="step-content step-firmas">
+        <div className="form-group">
+          <label>Firmas configuradas</label>
+          {editarEvaluacionFirmas.length === 0 ? (
+            <div className="field-helper">No hay firmas configuradas para esta evaluación.</div>
+          ) : (
+            <div className="firmas-edit-grid">
+              {editarEvaluacionFirmas.map((firma) => (
+                <div
+                  key={firma.id}
+                  className={`firma-edit-item ${firma.esta_firmado ? 'firmada' : 'pendiente'}`}
+                >
+                  <div className="firma-edit-info">
+                    <span className="firma-edit-nombre">{firma.nombre}</span>
+                    <span className="firma-edit-identificador">
+                      Identificador: {firma.tipo_firma}
+                    </span>
+                    <span className={`firma-edit-estado ${firma.esta_firmado ? 'firmada' : 'pendiente'}`}>
+                      {firma.estado_display || (firma.esta_firmado ? 'Firmada' : 'Pendiente')}
+                    </span>
+                  </div>
+                  {!firma.esta_firmado && firma.tipo_firma !== 'empleado' && (
+                    <button
+                      type="button"
+                      className="btn-icon btn-remove-firma"
+                      onClick={() => handleEliminarFirmaEdicion(firma)}
+                      disabled={eliminandoFirmaEvaluacionId === firma.id}
+                      title="Eliminar firma"
+                    >
+                      {eliminandoFirmaEvaluacionId === firma.id ? '...' : <FaTrash />}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label>Agregar nueva firma</label>
+          <div className="firma-extra-form">
+            <div className="firma-extra-inputs">
+              <input
+                type="text"
+                value={editarFirmaNombre}
+                onChange={(e) => setEditarFirmaNombre(e.target.value)}
+                placeholder="Nombre visible"
+              />
+              <input
+                type="text"
+                value={editarFirmaIdentificador}
+                onChange={(e) => setEditarFirmaIdentificador(slugifyText(e.target.value))}
+                placeholder="Identificador interno"
+              />
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleAgregarFirmaEdicion}
+              disabled={agregandoFirmaEvaluacion}
+            >
+              {agregandoFirmaEvaluacion ? 'Agregando...' : 'Agregar firma'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return <div className="area-management-loading">Cargando áreas...</div>;
@@ -1939,164 +2169,57 @@ const AreaManagement: React.FC = () => {
                 <div className="section-empty">Cargando información de la evaluación...</div>
               ) : (
                 <>
-                  <div className="form-group">
-                    <label>Nombre de la Evaluación *</label>
-                    <input
-                      type="text"
-                      value={editarEvaluacionNombre}
-                      onChange={(e) => {
-                        setEditarEvaluacionNombre(e.target.value);
-                        if (editarEvaluacionError) setEditarEvaluacionError(null);
-                      }}
-                      placeholder="Nombre de la evaluación"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Mínimo aprobatorio (%) *</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={editarEvaluacionMinimo ?? ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setEditarEvaluacionMinimo(value === '' ? null : Math.max(0, Math.min(100, parseInt(value, 10) || 0)));
-                        if (editarEvaluacionError) setEditarEvaluacionError(null);
-                      }}
-                      placeholder="Ej. 70"
-                    />
-                  </div>
-                  <div className="form-grid">
-                    <div className="form-group">
-                      <label>Divisor de fórmula *</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={editarEvaluacionDivisor ?? ''}
-                        onChange={(e) => {
-                          setEditarEvaluacionDivisor(
-                            e.target.value === '' ? null : Math.max(1, parseInt(e.target.value, 10) || 1)
-                          );
-                          if (editarEvaluacionError) setEditarEvaluacionError(null);
-                        }}
-                        placeholder="Ej. 17"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Multiplicador de fórmula *</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editarEvaluacionMultiplicador ?? ''}
-                        onChange={(e) => {
-                          setEditarEvaluacionMultiplicador(
-                            e.target.value === '' ? null : Math.max(0, parseInt(e.target.value, 10) || 0)
-                          );
-                          if (editarEvaluacionError) setEditarEvaluacionError(null);
-                        }}
-                        placeholder="Ej. 80"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="formula-preview">
-                    <span className="formula-label">Vista previa de fórmula</span>
-                    <span className="formula-expression">
-                      Resultado (%) = ( PUNTOS OBTENIDOS / {editarFormulaPreview.divisorTexto} ) *{' '}
-                      {editarFormulaPreview.multiplicadorTexto}
-                    </span>
-                    {editarFormulaPreview.divisorParsed !== null &&
-                      editarFormulaPreview.divisorParsed > 0 &&
-                      editarFormulaPreview.multiplicadorParsed !== null && (
-                        <span className="formula-hint">
-                          Ejemplo con 0 puntos: ( 0 / {editarFormulaPreview.divisorTexto} ) *{' '}
-                          {editarFormulaPreview.multiplicadorTexto} = 0.00%
-                        </span>
-                )}
-              </div>
-
-                  <div className="form-group">
-                    <label>Firmas configuradas</label>
-                    {editarEvaluacionFirmas.length === 0 ? (
-                      <div className="field-helper">
-                        No hay firmas configuradas para esta evaluación.
-                      </div>
-                    ) : (
-                      <div className="firmas-edit-grid">
-                        {editarEvaluacionFirmas.map((firma) => (
-                          <div
-                            key={firma.id}
-                            className={`firma-edit-item ${firma.esta_firmado ? 'firmada' : 'pendiente'}`}
-                          >
-                            <div className="firma-edit-info">
-                              <span className="firma-edit-nombre">{firma.nombre}</span>
-                              <span className="firma-edit-identificador">
-                                Identificador: {firma.tipo_firma}
-                              </span>
-                              <span className={`firma-edit-estado ${firma.esta_firmado ? 'firmada' : 'pendiente'}`}>
-                                {firma.estado_display || (firma.esta_firmado ? 'Firmada' : 'Pendiente')}
-                            </span>
-                          </div>
-                            {!firma.esta_firmado && firma.tipo_firma !== 'empleado' && (
-                              <button
-                                type="button"
-                                className="btn-icon btn-remove-firma"
-                                onClick={() => handleEliminarFirmaEdicion(firma)}
-                                disabled={eliminandoFirmaEvaluacionId === firma.id}
-                                title="Eliminar firma"
-                              >
-                                {eliminandoFirmaEvaluacionId === firma.id ? '...' : <FaTrash />}
-                              </button>
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                  <div className="form-group">
-                    <label>Agregar nueva firma</label>
-                    <div className="firma-extra-form">
-                      <div className="firma-extra-inputs">
-                        <input
-                          type="text"
-                          value={editarFirmaNombre}
-                          onChange={(e) => setEditarFirmaNombre(e.target.value)}
-                          placeholder="Nombre visible"
-                        />
-                        <input
-                          type="text"
-                          value={editarFirmaIdentificador}
-                          onChange={(e) => setEditarFirmaIdentificador(slugifyText(e.target.value))}
-                          placeholder="Identificador interno"
-                        />
-              </div>
+                  <div className="edit-evaluacion-steps">
+                    {pasosEdicionEvaluacion.map((paso) => (
                       <button
+                        key={paso.id}
                         type="button"
-                        className="btn-secondary"
-                        onClick={handleAgregarFirmaEdicion}
-                        disabled={agregandoFirmaEvaluacion}
+                        className={`step-pill ${editarEvaluacionPaso === paso.id ? 'active' : ''}`}
+                        onClick={() => setEditarEvaluacionPaso(paso.id)}
+                        disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
                       >
-                        {agregandoFirmaEvaluacion ? 'Agregando...' : 'Agregar firma'}
+                        <span className="step-number">{paso.id}</span>
+                        <span className="step-title">{paso.titulo}</span>
                       </button>
-            </div>
+                    ))}
                   </div>
+
+                  {renderEditarEvaluacionStep()}
                 </>
               )}
             </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={cerrarModalEditarEvaluacion}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleGuardarCambiosEvaluacion}
-                disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
-              >
-                {editarEvaluacionLoading ? 'Guardando...' : 'Guardar Cambios'}
-              </button>
+            <div className="modal-actions modal-actions-steps">
+              <div className="step-navigation">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setEditarEvaluacionPaso((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : prev))}
+                  disabled={editarEvaluacionPaso === 1 || editarEvaluacionLoading || cargandoEvaluacionEdicion}
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setEditarEvaluacionPaso((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev))}
+                  disabled={editarEvaluacionPaso === 4 || editarEvaluacionLoading || cargandoEvaluacionEdicion}
+                >
+                  Siguiente
+                </button>
+              </div>
+              <div className="primary-actions">
+                <button type="button" className="btn-secondary" onClick={cerrarModalEditarEvaluacion}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleGuardarCambiosEvaluacion}
+                  disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
+                >
+                  {editarEvaluacionLoading ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
