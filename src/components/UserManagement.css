@@ -189,8 +189,13 @@
   color: white;
 }
 
-.badge-evaluador {
+.badge-entrenador {
   background: #ff9800;
+  color: white;
+}
+
+.badge-supervisor {
+  background: #3b82f6;
   color: white;
 }
 
@@ -931,6 +936,12 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.75rem;
   width: 100%;
+}
+
+@media (max-width: 768px) {
+  .user-detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Responsive para modal */

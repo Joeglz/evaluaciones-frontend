@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FaUser, FaEdit, FaSave, FaTimes, FaSignature, FaEraser, FaCheck } from 'react-icons/fa';
+import React, { useState, useEffect } from 'react';
+import { FaUser, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import { apiService, getMediaUrl } from '../services/api';
@@ -17,8 +17,7 @@ const UserProfile: React.FC<UserProfileProps> = () => {
     first_name: '',
     last_name: '',
     email: '',
-    numero_empleado: '',
-    signature: null as File | null
+    numero_empleado: ''
   });
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
@@ -27,10 +26,7 @@ const UserProfile: React.FC<UserProfileProps> = () => {
   const [loading, setLoading] = useState(false);
   const { toasts, showSuccess, showError, removeToast } = useToast();
 
-  // Referencias para el canvas de firma
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasSignature, setHasSignature] = useState(false);
+  const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
     loadUserData();
@@ -44,21 +40,6 @@ useEffect(() => {
   };
 }, [profilePhotoPreview]);
 
-  useEffect(() => {
-    // Configurar el canvas para dibujar
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Configurar el estilo del pincel
-    ctx.strokeStyle = '#e12026';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-  }, []);
-
   const loadUserData = () => {
     const userData = localStorage.getItem('user');
     if (userData) {
@@ -69,8 +50,7 @@ useEffect(() => {
           first_name: parsedUser.first_name || '',
           last_name: parsedUser.last_name || '',
           email: parsedUser.email || '',
-          numero_empleado: parsedUser.numero_empleado || '',
-          signature: null
+          numero_empleado: parsedUser.numero_empleado || ''
         });
         setProfilePhotoFile(null);
         setProfilePhotoPreview(parsedUser.profile_photo ? getMediaUrl(parsedUser.profile_photo) : null);
@@ -157,118 +137,20 @@ const handleRemoveProfilePhoto = () => {
 };
 
 const startEditingProfile = () => {
+  if (!isAdmin) {
+    return;
+  }
   setIsEditing(true);
   setRemoveProfilePhoto(false);
   setProfilePhotoFile(null);
   setProfilePhotoPreview(user?.profile_photo ? getMediaUrl(user.profile_photo) : null);
 };
 
-  // Funciones para el canvas de firma
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    setIsDrawing(true);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    setHasSignature(true);
-  };
-
-  const clearSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasSignature(false);
-  };
-
-  const saveSignature = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    try {
-      setLoading(true);
-      
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          const file = new File([blob], 'signature.png', { type: 'image/png' });
-          
-          // Crear FormData solo con la firma
-          const signatureData = new FormData();
-          signatureData.append('signature', file);
-          
-          // Enviar solo la firma al backend
-          const response = await apiService.updateUserProfile(user.id, signatureData);
-          
-          // Actualizar datos locales
-          const updatedUser = {
-            ...user,
-            signature: response.signature
-          };
-          
-          setUser(updatedUser);
-          localStorage.setItem('user', JSON.stringify(updatedUser));
-          
-          // Limpiar formData.signature ya que ahora está guardada en user.signature
-          setFormData(prev => ({
-            ...prev,
-            signature: null
-          }));
-          
-          // Limpiar el canvas también
-          setHasSignature(false);
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.clearRect(0, 0, canvas.width, canvas.height);
-            }
-          }
-          
-          showSuccess('Firma guardada exitosamente');
-        }
-      }, 'image/png');
-      
-    } catch (error: any) {
-      console.error('Error saving signature:', error);
-      showError('Error al guardar la firma');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async () => {
+    if (!isAdmin) {
+      showError('Solo un administrador puede editar el perfil.');
+      return;
+    }
     try {
       setLoading(true);
       setErrors({});
@@ -311,27 +193,6 @@ const startEditingProfile = () => {
         submitData.append('remove_profile_photo', 'false');
       }
       
-      // Si hay una firma dibujada pero no guardada, guardarla automáticamente
-      if (hasSignature && !formData.signature) {
-        const canvas = canvasRef.current;
-        if (canvas) {
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const file = new File([blob], 'signature.png', { type: 'image/png' });
-              submitData.append('signature', file);
-              // Continuar con el envío
-              sendFormData(submitData);
-            }
-          }, 'image/png');
-          return; // Salir aquí, el envío continuará en el callback
-        }
-      }
-      
-      // Si ya hay una firma guardada o no hay firma, enviar directamente
-      if (formData.signature) {
-        submitData.append('signature', formData.signature);
-      }
-      
       await sendFormData(submitData);
       
     } catch (error: any) {
@@ -358,7 +219,6 @@ const startEditingProfile = () => {
         last_name: response.last_name,
         email: response.email,
         numero_empleado: response.numero_empleado,
-        signature: response.signature,
         profile_photo: response.profile_photo,
       };
       
@@ -403,7 +263,7 @@ const startEditingProfile = () => {
     <div className="user-profile-container">
       <div className="user-profile-header">
         <h1>Mi Perfil</h1>
-        <p>Gestiona tu información personal y firma digital</p>
+        <p>Gestiona tu información personal</p>
       </div>
 
       <div className="user-profile-content">
@@ -412,7 +272,7 @@ const startEditingProfile = () => {
           <div className="section-header">
             <FaUser className="section-icon" />
             <h2>Información Personal</h2>
-            {!isEditing && (
+            {!isEditing && isAdmin && (
               <button 
                 className="btn-edit"
                 onClick={startEditingProfile}
@@ -571,75 +431,7 @@ const startEditingProfile = () => {
             )}
           </div>
         </div>
-
-        {/* Firma Digital */}
-        <div className="profile-section">
-          <div className="section-header">
-            <FaSignature className="section-icon" />
-            <h2>Firma Digital</h2>
-          </div>
-
-          <div className="signature-section">
-            <div className="signature-canvas-container">
-              <div className="canvas-wrapper">
-                <canvas
-                  ref={canvasRef}
-                  width={400}
-                  height={200}
-                  className="signature-canvas"
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                />
-              </div>
-              
-              <div className="signature-controls">
-                <button 
-                  className="btn-clear"
-                  onClick={clearSignature}
-                  disabled={!hasSignature}
-                >
-                  <FaEraser /> Limpiar
-                </button>
-                
-                <button 
-                  className="btn-save-signature"
-                  onClick={saveSignature}
-                  disabled={!hasSignature || loading}
-                >
-                  <FaCheck /> {loading ? 'Guardando...' : 'Guardar Firma'}
-                </button>
-              </div>
-            </div>
-
-            {formData.signature && (
-              <div className="signature-preview">
-                <h3>Firma Guardada:</h3>
-                <div className="preview-container">
-                  <img 
-                    src={URL.createObjectURL(formData.signature)} 
-                    alt="Vista previa de la firma"
-                    className="signature-preview-img"
-                  />
-                </div>
-              </div>
-            )}
-
-            {user?.signature && (
-              <div className="current-signature">
-                <h3>Firma Actual:</h3>
-                <div className="signature-display">
-                  <img 
-                    src={getMediaUrl(user.signature)} 
-                    alt="Firma actual"
-                    className="signature-img"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        
       </div>
 
       {/* Toast Container */}

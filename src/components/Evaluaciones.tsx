@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   FaArrowLeft,
   FaUsers,
@@ -98,7 +98,12 @@ const calcularEstadoFirmasUsuario = (firmas: FirmaEvaluacionUsuario[] | undefine
 
 type AreaWithSupervisores = Area & { supervisores?: Array<{ id: number }> };
 
-const Evaluaciones: React.FC = () => {
+interface EvaluacionesProps {
+  userRole?: string;
+  currentUser?: Partial<User> | null;
+}
+
+const Evaluaciones: React.FC<EvaluacionesProps> = ({ userRole, currentUser }) => {
   // Hook para manejar toasts
   const { toasts, removeToast, showSuccess, showError } = useToast();
 
@@ -164,9 +169,30 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const [isEditing, setIsEditing] = useState(false);
   const [editingListaId, setEditingListaId] = useState<number | null>(null);
 
+  const effectiveUserRole = useMemo(() => userRole || currentUser?.role || 'USUARIO', [userRole, currentUser]);
+  const isRegularUser = effectiveUserRole === 'USUARIO';
+  const currentUserId = currentUser?.id ?? null;
+
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!isRegularUser) {
+      loadData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRegularUser]);
+
+  useEffect(() => {
+    const estadoGuardado = (evaluacionGuardadaInfo?.estado || '').toLowerCase();
+    const estadoFirmasGuardado = (evaluacionGuardadaInfo?.estado_firmas_usuario || '').toLowerCase();
+    const estadoFirmasActual = (evaluacionActual?.estado_firmas || '').toLowerCase();
+
+    if (
+      estadoGuardado === 'completada' ||
+      estadoFirmasGuardado === 'firmas_completas' ||
+      estadoFirmasActual === 'firmas_completas'
+    ) {
+      setEvaluacionModoLectura(true);
+    }
+  }, [evaluacionGuardadaInfo, evaluacionActual]);
 
   // Configurar los canvas para dibujar
   useEffect(() => {
@@ -454,8 +480,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       setPosiciones(posicionesData.results);
       setUsuarios(usuariosData.results);
       setUsuariosRegulares(usuariosData.results.filter(user => user.role === 'USUARIO'));
-      setSupervisores(usuariosData.results.filter(user => user.role === 'ADMIN' || user.role === 'EVALUADOR'));
-      setInstructores(usuariosData.results.filter(user => user.role === 'ADMIN' || user.role === 'EVALUADOR'));
+      const esRolSupervisor = (role?: string | null) =>
+        role === 'ADMIN' || role === 'ENTRENADOR' || role === 'SUPERVISOR';
+
+      setSupervisores(usuariosData.results.filter(user => esRolSupervisor(user.role)));
+      setInstructores(usuariosData.results.filter(user => esRolSupervisor(user.role)));
       setListasAsistencia(listasData.results);
     } catch (err: any) {
       setError(err.message);
@@ -513,12 +542,25 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     try {
       setLoading(true);
       // Obtener evaluaciones que coincidan con el área y posición del usuario
+      const areaId = Array.isArray(user.areas) && user.areas.length > 0 ? user.areas[0] : undefined;
+      const evaluacionesParams: {
+        area_id?: number;
+        posicion_id?: number;
+        es_plantilla: boolean;
+      } = {
+        es_plantilla: false,
+      };
+
+      if (areaId) {
+        evaluacionesParams.area_id = areaId;
+      }
+
+      if (user.posicion) {
+        evaluacionesParams.posicion_id = user.posicion;
+      }
+
       const [evaluaciones, evaluacionesGuardadas] = await Promise.all([
-        apiService.getEvaluaciones({
-          area_id: user.areas[0], // Usar la primera área del usuario
-          posicion_id: user.posicion || undefined,
-          es_plantilla: false
-        }),
+        apiService.getEvaluaciones(evaluacionesParams),
         apiService.getEvaluacionesUsuario({
           usuario: user.id
         })
@@ -577,10 +619,43 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
+  useEffect(() => {
+    if (!isRegularUser) {
+      return;
+    }
+
+    const initRegular = async () => {
+      try {
+        const usuarioDetalle = await apiService.getCurrentUser();
+        setSelectedUser(usuarioDetalle as any);
+        await loadEvaluacionesUsuario(usuarioDetalle as any);
+        setEvaluacionModoLectura(true);
+        setCurrentView('usuario-detalle');
+      } catch (initError) {
+        console.error('Error al cargar evaluaciones del usuario', initError);
+        showError('No se pudieron cargar tus evaluaciones');
+      }
+    };
+
+    initRegular();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRegularUser]);
+
   const loadProgresosNivel = async (posicionId?: number | null) => {
     try {
       const params = posicionId ? { posicion: posicionId } : undefined;
-      const progresos = await apiService.getProgresosNivel(params);
+      const progresosResponse = await apiService.getProgresosNivel(params);
+      const progresosLista = Array.isArray(progresosResponse)
+        ? progresosResponse
+        : Array.isArray((progresosResponse as any)?.results)
+          ? (progresosResponse as any).results
+          : [];
+      const progresos = (progresosLista as ProgresoNivel[]);
+ 
+      if (progresos.length === 0) {
+        return;
+      }
+
       const progresosAgrupados: Record<number, Record<number, ProgresoNivel>> = {};
       const completadosAgrupados: Record<number, Record<number, boolean>> = {};
 
@@ -614,7 +689,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     try {
       setLoading(true);
       setEvaluacionActual(evaluacion);
-      setEvaluacionModoLectura(false);
+      setEvaluacionModoLectura(isRegularUser);
       setEvaluacionGuardadaInfo(null);
 
       const nivelEvaluacion =
@@ -625,9 +700,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setNivelSeleccionado(nivelEvaluacion);
       }
       
-      // Cargar supervisores disponibles
+      const rolesSupervision = 'ADMIN,ENTRENADOR,SUPERVISOR';
       const supervisoresData = await apiService.getUsers({ 
-        role: 'ADMIN,EVALUADOR',
+        role: rolesSupervision,
         is_active: true 
       });
       setSupervisores(supervisoresData.results);
@@ -636,7 +711,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       let supervisorPorDefecto: number | null = null;
       if (evaluacion.supervisor) {
         supervisorPorDefecto = evaluacion.supervisor;
-      } else if (selectedArea?.supervisores && selectedArea.supervisores.length > 0) {
+      } else if (!isRegularUser && selectedArea?.supervisores && selectedArea.supervisores.length > 0) {
         supervisorPorDefecto = selectedArea.supervisores[0].id;
       }
       if (
@@ -1081,6 +1156,21 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   };
 
   const goBack = () => {
+    if (isRegularUser) {
+      if (currentView === 'usuario-evaluacion') {
+        setCurrentView('usuario-detalle');
+        setEvaluacionActual(null);
+        setResultadosEvaluacion([]);
+        setSupervisorSeleccionado(null);
+        setEvaluacionModoLectura(true);
+        setSignatures({});
+        setHasSignature({});
+        setFirmasUsuario({});
+        setFirmasPendientes({});
+      }
+      return;
+    }
+
     switch (currentView) {
       case 'grupos':
         setCurrentView('areas');
@@ -1541,13 +1631,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
               </button>
             </div>
             <div className="usuario-controles">
-                  <button
-                    className="btn-onboarding"
-                    type="button"
-                    onClick={() => handleOnboardingClick(selectedUser?.id ?? null)}
-                  >
-                Onboarding
-              </button>
+              {!isRegularUser && (
+                <button
+                  className="btn-onboarding"
+                  type="button"
+                  onClick={() => handleOnboardingClick(selectedUser?.id ?? null)}
+                >
+                  Onboarding
+                </button>
+              )}
               <span className="usuario-fecha">{fechaActual}</span>
               <div className="nivel-navegacion">
                 <button
@@ -1644,11 +1736,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                               Ver
                             </button>
                           ) : (
-                            <button 
-                              className="btn btn-primary btn-sm"
+                            <button
+                              className={`btn btn-${isRegularUser ? 'secondary' : 'primary'} btn-sm`}
                               onClick={() => iniciarEvaluacion(evaluacion)}
                             >
-                              Evaluar
+                              {isRegularUser ? 'Firmar' : 'Evaluar'}
                             </button>
                           )}
                         </div>
@@ -1919,7 +2011,25 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         : firmanteNombre
                           ? `Pendiente de firma de ${firmanteNombre}`
                           : 'Pendiente de asignación');
+                    const estadoEvaluacionCompletada = (
+                      (evaluacionGuardadaInfo?.estado || '').toLowerCase() === 'completada' ||
+                      (evaluacionGuardadaInfo?.estado_firmas_usuario || '').toLowerCase() === 'firmas_completas' ||
+                      (evaluacionActual.estado_firmas || '').toLowerCase() === 'firmas_completas'
+                    );
 
+                    const usuarioAsignadoFirma =
+                      firmaUsuario?.usuario ??
+                      firmaPendiente?.usuario ??
+                      firma.usuario ??
+                      (firma.tipo_firma === 'empleado' ? selectedUser?.id ?? null : null);
+
+                    const esFirmanteActual =
+                      currentUserId !== null && usuarioAsignadoFirma === currentUserId;
+
+                    const puedeFirmarPendiente = esFirmanteActual && !estaFirmada;
+                    const puedeEditarPorRol = !evaluacionModoLectura && !estadoEvaluacionCompletada;
+                    const puedeEditarFirma = puedeFirmarPendiente || puedeEditarPorRol;
+ 
                     return (
                       <div key={slug} className="firma-item">
                         <label className="firma-label">{nombreFirma}</label>
@@ -1934,22 +2044,26 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                                 alt={`Firma ${nombreFirma}`}
                               />
                             </div>
-                            <button
-                              type="button"
-                              className="btn-editar-firma"
-                              onClick={() => handleOpenFirmaModal(firma)}
-                            >
-                              <FaEdit /> Editar Firma
-                            </button>
+                            {puedeEditarFirma && (
+                              <button
+                                type="button"
+                                className="btn-editar-firma"
+                                onClick={() => handleOpenFirmaModal(firma)}
+                              >
+                                <FaEdit /> Editar Firma
+                              </button>
+                            )}
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            className="btn-agregar-firma"
-                            onClick={() => handleOpenFirmaModal(firma)}
-                          >
-                            <FaPlus /> Agregar Firma
-                          </button>
+                          puedeEditarFirma && (
+                            <button
+                              type="button"
+                              className="btn-agregar-firma"
+                              onClick={() => handleOpenFirmaModal(firma)}
+                            >
+                              <FaPlus /> Agregar Firma
+                            </button>
+                          )
                         )}
                       </div>
                     );
@@ -2347,9 +2461,14 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       {/* Header con navegación */}
       <div className="evaluaciones-header">
         <div className="breadcrumb">
-          <span>{getBreadcrumb()}</span>
+          <span>{isRegularUser ? 'Mis Evaluaciones' : getBreadcrumb()}</span>
         </div>
-        {currentView !== 'areas' && (
+        {!isRegularUser && currentView !== 'areas' && (
+          <button className="back-button" onClick={goBack}>
+            <FaArrowLeft /> Volver
+          </button>
+        )}
+        {isRegularUser && currentView === 'usuario-evaluacion' && (
           <button className="back-button" onClick={goBack}>
             <FaArrowLeft /> Volver
           </button>
@@ -2358,14 +2477,14 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
       {/* Contenido principal */}
       <div className="evaluaciones-content">
-        {currentView === 'areas' && renderAreas()}
-        {currentView === 'grupos' && renderGrupos()}
-        {currentView === 'posiciones' && renderPosiciones()}
-        {currentView === 'usuarios' && renderUsuarios()}
+        {!isRegularUser && currentView === 'areas' && renderAreas()}
+        {!isRegularUser && currentView === 'grupos' && renderGrupos()}
+        {!isRegularUser && currentView === 'posiciones' && renderPosiciones()}
+        {!isRegularUser && currentView === 'usuarios' && renderUsuarios()}
         {currentView === 'usuario-detalle' && renderUsuarioDetalle()}
         {currentView === 'usuario-evaluacion' && renderUsuarioEvaluacion()}
-        {currentView === 'onboarding' && renderOnboarding()}
-        {currentView === 'lista-asistencia-form' && renderListaAsistenciaForm()}
+        {!isRegularUser && currentView === 'onboarding' && renderOnboarding()}
+        {!isRegularUser && currentView === 'lista-asistencia-form' && renderListaAsistenciaForm()}
       </div>
 
       {/* Toast Container */}

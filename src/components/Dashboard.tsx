@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FaClipboardList, 
   FaChartBar, 
@@ -11,6 +11,27 @@ import Evaluaciones from './Evaluaciones';
 import Notificaciones from './Notificaciones';
 import Reportes from './Reportes';
 import './Dashboard.css';
+
+const ROLE_MENU: Record<string, string[]> = {
+  ADMIN: ['home', 'evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
+  ENTRENADOR: ['evaluaciones', 'notificaciones', 'ajustes'],
+  SUPERVISOR: ['evaluaciones', 'notificaciones', 'ajustes'],
+  USUARIO: ['evaluaciones', 'notificaciones', 'ajustes'],
+};
+
+interface MenuItemConfig {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const MENU_ITEMS: MenuItemConfig[] = [
+  { key: 'evaluaciones', label: 'Evaluaciones', icon: FaClipboardList },
+  { key: 'reportes', label: 'Reportes', icon: FaChartBar },
+  { key: 'notificaciones', label: 'Notificaciones', icon: FaBell },
+  { key: 'mensajes', label: 'Mensajes', icon: FaComments },
+  { key: 'ajustes', label: 'Ajustes', icon: FaCog },
+];
 
 interface User {
   id: number;
@@ -31,6 +52,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<string>('home');
 
+  const role = user?.role || 'USUARIO';
+  const allowedMenuItems = useMemo(() => ROLE_MENU[role] || ROLE_MENU.USUARIO, [role]);
+
   useEffect(() => {
     // Obtener información del usuario desde localStorage
     const userData = localStorage.getItem('user');
@@ -42,6 +66,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (allowedMenuItems.length === 0) {
+      return;
+    }
+
+    if (!allowedMenuItems.includes(activeView)) {
+      const defaultView = allowedMenuItems.includes('home') ? 'home' : allowedMenuItems[0];
+      if (activeView !== defaultView) {
+        setActiveView(defaultView);
+      }
+    }
+  }, [allowedMenuItems, activeView]);
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
@@ -63,28 +100,46 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const renderAccessDenied = (message?: string) => (
+    <div className="dashboard-content">
+      <div className="access-denied">
+        <h2>Acceso restringido</h2>
+        <p>{message || 'No tienes permisos para ver esta sección.'}</p>
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeView) {
       case 'evaluaciones':
-        // Solo mostrar evaluaciones para administradores
-        if (user?.role === 'ADMIN' || user?.is_admin) {
-          return <Evaluaciones />;
-        } else {
-          return (
-            <div className="dashboard-content">
-              <div className="access-denied">
-                <h2>Acceso Restringido</h2>
-                <p>Esta sección solo está disponible para administradores.</p>
-              </div>
-            </div>
-          );
+        if (!allowedMenuItems.includes('evaluaciones')) {
+          return renderAccessDenied();
         }
+        return <Evaluaciones userRole={role} currentUser={user} />;
       case 'ajustes':
-        return <Settings />;
+        if (!allowedMenuItems.includes('ajustes')) {
+          return renderAccessDenied();
+        }
+        return <Settings userRole={role} />;
       case 'notificaciones':
+        if (!allowedMenuItems.includes('notificaciones')) {
+          return renderAccessDenied();
+        }
         return <Notificaciones />;
       case 'reportes':
+        if (!allowedMenuItems.includes('reportes')) {
+          return renderAccessDenied();
+        }
         return <Reportes />;
+      case 'mensajes':
+        if (!allowedMenuItems.includes('mensajes')) {
+          return renderAccessDenied();
+        }
+        return (
+          <div className="dashboard-content">
+            <p>El módulo de mensajes estará disponible próximamente.</p>
+          </div>
+        );
       case 'home':
       default:
         return (
@@ -119,41 +174,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
 
       {/* Menú inferior */}
       <nav className="bottom-menu">
-        <div 
-          className={`menu-item ${activeView === 'evaluaciones' ? 'active' : ''}`}
-          onClick={() => setActiveView('evaluaciones')}
-        >
-          <FaClipboardList className="menu-icon" />
-          <span>Evaluaciones</span>
-        </div>
-        <div 
-          className={`menu-item ${activeView === 'reportes' ? 'active' : ''}`}
-          onClick={() => setActiveView('reportes')}
-        >
-          <FaChartBar className="menu-icon" />
-          <span>Reportes</span>
-        </div>
-        <div 
-          className={`menu-item ${activeView === 'notificaciones' ? 'active' : ''}`}
-          onClick={() => setActiveView('notificaciones')}
-        >
-          <FaBell className="menu-icon" />
-          <span>Notificaciones</span>
-        </div>
-        <div 
-          className={`menu-item ${activeView === 'mensajes' ? 'active' : ''}`}
-          onClick={() => setActiveView('mensajes')}
-        >
-          <FaComments className="menu-icon" />
-          <span>Mensajes</span>
-        </div>
-        <div 
-          className={`menu-item ${activeView === 'ajustes' ? 'active' : ''}`}
-          onClick={() => setActiveView('ajustes')}
-        >
-          <FaCog className="menu-icon" />
-          <span>Ajustes</span>
-        </div>
+        {MENU_ITEMS.filter((item) => allowedMenuItems.includes(item.key)).map((item) => (
+          <div
+            key={item.key}
+            className={`menu-item ${activeView === item.key ? 'active' : ''}`}
+            onClick={() => setActiveView(item.key)}
+          >
+            <item.icon className="menu-icon" />
+            <span>{item.label}</span>
+          </div>
+        ))}
       </nav>
     </div>
   );

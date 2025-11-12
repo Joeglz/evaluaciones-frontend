@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FaUsers, 
   FaBuilding, 
-  FaCog,
   FaArrowLeft,
   FaUser,
   FaChartBar
@@ -13,17 +12,47 @@ import UserProfile from './UserProfile';
 import EvaluacionesManagement from './EvaluacionesManagement';
 import './Settings.css';
 
-const Settings: React.FC = () => {
+interface SettingsProps {
+  userRole?: string;
+}
+
+const Settings: React.FC<SettingsProps> = ({ userRole }) => {
   const [activeSection, setActiveSection] = useState<string>('main');
+
+  const allowedSections = useMemo<string[]>(() => {
+    switch (userRole) {
+      case 'ADMIN':
+        return ['profile', 'users', 'areas', 'plantillas'];
+      case 'ENTRENADOR':
+      case 'SUPERVISOR':
+        return ['profile'];
+      case 'USUARIO':
+      default:
+        return ['profile'];
+    }
+  }, [userRole]);
+
+  useEffect(() => {
+    if (activeSection !== 'main' && !allowedSections.includes(activeSection)) {
+      setActiveSection('main');
+    }
+  }, [activeSection, allowedSections]);
+
+  const renderAccessDenied = () => (
+    <div className="access-denied">
+      <h2>Acceso restringido</h2>
+      <p>No tienes permisos para ver esta sección.</p>
+    </div>
+  );
 
   const renderContent = () => {
     switch (activeSection) {
       case 'users':
-        return <UserManagement />;
+        return allowedSections.includes('users') ? <UserManagement /> : renderAccessDenied();
       case 'areas':
-        return <AreaManagement />;
-      case 'evaluaciones':
-        return <EvaluacionesManagement />;
+        return allowedSections.includes('areas') ? <AreaManagement /> : renderAccessDenied();
+      case 'plantillas':
+        return allowedSections.includes('plantillas') ? <EvaluacionesManagement /> : renderAccessDenied();
       case 'profile':
         return <UserProfile />;
       case 'main':
@@ -36,70 +65,77 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="settings-grid">
-              <div 
-                className="settings-card"
-                onClick={() => setActiveSection('profile')}
-              >
-                <div className="settings-card-icon">
-                  <FaUser />
+              {allowedSections.includes('profile') && (
+                <div 
+                  className="settings-card"
+                  onClick={() => setActiveSection('profile')}
+                >
+                  <div className="settings-card-icon">
+                    <FaUser />
+                  </div>
+                  <div className="settings-card-content">
+                    <h3>Mi Perfil</h3>
+                    <p>Edita tu información personal</p>
+                  </div>
+                  <div className="settings-card-arrow">
+                    →
+                  </div>
                 </div>
-                <div className="settings-card-content">
-                  <h3>Mi Perfil</h3>
-                  <p>Edita tu información personal y firma digital</p>
-                </div>
-                <div className="settings-card-arrow">
-                  →
-                </div>
-              </div>
+              )}
 
-              <div 
-                className="settings-card"
-                onClick={() => setActiveSection('users')}
-              >
-                <div className="settings-card-icon">
-                  <FaUsers />
+              {allowedSections.includes('users') && (
+                <div 
+                  className="settings-card"
+                  onClick={() => setActiveSection('users')}
+                >
+                  <div className="settings-card-icon">
+                    <FaUsers />
+                  </div>
+                  <div className="settings-card-content">
+                    <h3>Gestión de Usuarios</h3>
+                    <p>Administra usuarios, roles y permisos del sistema</p>
+                  </div>
+                  <div className="settings-card-arrow">
+                    →
+                  </div>
                 </div>
-                <div className="settings-card-content">
-                  <h3>Gestión de Usuarios</h3>
-                  <p>Administra usuarios, roles y permisos del sistema</p>
-                </div>
-                <div className="settings-card-arrow">
-                  →
-                </div>
-              </div>
+              )}
 
-              <div 
-                className="settings-card"
-                onClick={() => setActiveSection('areas')}
-              >
-                <div className="settings-card-icon">
-                  <FaBuilding />
+              {allowedSections.includes('areas') && (
+                <div 
+                  className="settings-card"
+                  onClick={() => setActiveSection('areas')}
+                >
+                  <div className="settings-card-icon">
+                    <FaBuilding />
+                  </div>
+                  <div className="settings-card-content">
+                    <h3>Gestión de Áreas</h3>
+                    <p>Crea y administra las áreas de trabajo</p>
+                  </div>
+                  <div className="settings-card-arrow">
+                    →
+                  </div>
                 </div>
-                <div className="settings-card-content">
-                  <h3>Gestión de Áreas</h3>
-                  <p>Crea y administra las áreas de trabajo</p>
-                </div>
-                <div className="settings-card-arrow">
-                  →
-                </div>
-              </div>
+              )}
 
-              <div 
-                className="settings-card"
-                onClick={() => setActiveSection('evaluaciones')}
-              >
-                <div className="settings-card-icon">
-                  <FaChartBar />
+              {allowedSections.includes('plantillas') && (
+                <div 
+                  className="settings-card"
+                  onClick={() => setActiveSection('plantillas')}
+                >
+                  <div className="settings-card-icon">
+                    <FaChartBar />
+                  </div>
+                  <div className="settings-card-content">
+                    <h3>Gestión de Plantillas</h3>
+                    <p>Crea y administra plantillas de evaluación</p>
+                  </div>
+                  <div className="settings-card-arrow">
+                    →
+                  </div>
                 </div>
-                <div className="settings-card-content">
-                  <h3>Gestión de Evaluaciones</h3>
-                  <p>Crea y administra evaluaciones de competencias</p>
-                </div>
-                <div className="settings-card-arrow">
-                  →
-                </div>
-              </div>
-
+              )}
             </div>
           </div>
         );
@@ -123,7 +159,7 @@ const Settings: React.FC = () => {
           {activeSection === 'profile' && 'Mi Perfil'}
           {activeSection === 'users' && 'Gestión de Usuarios'}
           {activeSection === 'areas' && 'Gestión de Áreas'}
-          {activeSection === 'evaluaciones' && 'Gestión de Evaluaciones'}
+          {activeSection === 'plantillas' && 'Gestión de Plantillas'}
         </div>
       </div>
     );

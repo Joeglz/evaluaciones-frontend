@@ -525,9 +525,14 @@ const UserManagement: React.FC = () => {
 
   const getRoleBadgeClass = (role: string) => {
     switch (role) {
-      case 'ADMIN': return 'badge-admin';
-      case 'EVALUADOR': return 'badge-evaluador';
-      default: return 'badge-usuario';
+      case 'ADMIN':
+        return 'badge-admin';
+      case 'ENTRENADOR':
+        return 'badge-entrenador';
+      case 'SUPERVISOR':
+        return 'badge-supervisor';
+      default:
+        return 'badge-usuario';
     }
   };
 
@@ -835,7 +840,8 @@ const UserManagement: React.FC = () => {
               className={errors.role ? 'error' : ''}
             >
               <option value="USUARIO">Usuario Regular</option>
-              <option value="EVALUADOR">Evaluador</option>
+              <option value="ENTRENADOR">Entrenador</option>
+              <option value="SUPERVISOR">Supervisor</option>
               <option value="ADMIN">Administrador</option>
             </select>
             {errors.role && <div className="error-message">{errors.role[0]}</div>}
@@ -1149,7 +1155,8 @@ const UserManagement: React.FC = () => {
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
             <option value="">Todos los roles</option>
             <option value="ADMIN">Administrador</option>
-            <option value="EVALUADOR">Evaluador</option>
+            <option value="ENTRENADOR">Entrenador</option>
+            <option value="SUPERVISOR">Supervisor</option>
             <option value="USUARIO">Usuario Regular</option>
           </select>
           
@@ -1229,6 +1236,104 @@ const UserManagement: React.FC = () => {
         </table>
       </div>
 
+      {/* Modal: Cambiar contraseña */}
+      {showPasswordModal && selectedUser && (
+        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Cambiar contraseña para {selectedUser.full_name}</h2>
+            <form onSubmit={handleChangePassword}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Nueva contraseña</label>
+                  <input
+                    type="password"
+                    value={passwordForm.new_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                    required
+                  />
+                  <FieldError errors={passwordErrors.new_password} />
+                </div>
+                <div className="form-group">
+                  <label>Confirmar contraseña</label>
+                  <input
+                    type="password"
+                    value={passwordForm.new_password_confirm}
+                    onChange={(e) =>
+                      setPasswordForm({ ...passwordForm, new_password_confirm: e.target.value })
+                    }
+                    required
+                  />
+                  <FieldError errors={passwordErrors.new_password_confirm} />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowPasswordModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary">
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+ 
+      {/* Modal: Confirmar eliminación */}
+      {showDeleteModal && selectedUser && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Eliminar usuario</h2>
+            <p>
+              ¿Estás seguro de que deseas eliminar a <strong>{selectedUser.full_name}</strong>? Esta
+              acción no se puede deshacer.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancelar
+              </button>
+              <button type="button" className="btn-danger" onClick={handleDeleteUser}>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+ 
+      {/* Modal: Activar/Desactivar usuario */}
+      {showDeactivateModal && selectedUser && (
+        <div className="modal-overlay" onClick={() => setShowDeactivateModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>{selectedUser.is_active ? 'Desactivar' : 'Activar'} usuario</h2>
+            <p>
+              ¿Seguro que quieres {selectedUser.is_active ? 'desactivar' : 'activar'} a
+              <strong> {selectedUser.full_name}</strong>?
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowDeactivateModal(false)}
+              >
+                Cancelar
+              </button>
+              <button type="button" className="btn-primary" onClick={handleDeactivateUser}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+ 
+      {/* Modal: Detalle de usuario */}
       {showUserDetailModal && selectedUser && (
         <div className="modal-overlay" onClick={() => setShowUserDetailModal(false)}>
           <div className="modal-content modal-user-detail" onClick={(e) => e.stopPropagation()}>
@@ -1239,15 +1344,18 @@ const UserManagement: React.FC = () => {
             >
               <FaTimes />
             </button>
-
+ 
             <div className="user-detail-avatar">
               {selectedUser.profile_photo ? (
-                <img src={getMediaUrl(selectedUser.profile_photo)} alt={`Foto de ${selectedUser.full_name}`} />
+                <img
+                  src={getMediaUrl(selectedUser.profile_photo)}
+                  alt={`Foto de ${selectedUser.full_name}`}
+                />
               ) : (
                 <FaUser />
               )}
             </div>
-
+ 
             <div className="user-detail-info">
               <h2>{selectedUser.full_name}</h2>
               <span className="user-detail-username">@{selectedUser.username}</span>
@@ -1260,7 +1368,7 @@ const UserManagement: React.FC = () => {
                 </span>
               </div>
             </div>
-
+ 
             <div className="user-detail-grid">
               <div className="user-detail-field">
                 <span className="label">Número de empleado</span>
@@ -1268,17 +1376,17 @@ const UserManagement: React.FC = () => {
                   {selectedUser.numero_empleado ? `#${selectedUser.numero_empleado}` : 'Sin asignar'}
                 </span>
               </div>
-
+ 
               <div className="user-detail-field">
                 <span className="label">Correo electrónico</span>
                 <span className="value">{selectedUser.email}</span>
               </div>
-
+ 
               <div className="user-detail-field">
                 <span className="label">Posición</span>
                 <span className="value">{getUserPositionName(selectedUser)}</span>
               </div>
-
+ 
               <div className="user-detail-field">
                 <span className="label">Áreas</span>
                 <span className="value areas-value">
@@ -1294,7 +1402,7 @@ const UserManagement: React.FC = () => {
                 </span>
               </div>
             </div>
-
+ 
             <div className="modal-actions user-detail-actions">
               <button
                 className="btn-secondary"
@@ -1303,7 +1411,8 @@ const UserManagement: React.FC = () => {
                   openDeactivateModal(selectedUser);
                 }}
               >
-                {selectedUser.is_active ? <FaBan /> : <FaCheckCircle />} {selectedUser.is_active ? 'Desactivar' : 'Activar'}
+                {selectedUser.is_active ? <FaBan /> : <FaCheckCircle />}{' '}
+                {selectedUser.is_active ? 'Desactivar' : 'Activar'}
               </button>
               <button
                 className="btn-secondary"

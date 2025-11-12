@@ -23,6 +23,7 @@ export interface LoginResponse {
     role: string;
     is_admin: boolean;
     is_evaluador: boolean;
+    is_supervisor?: boolean;
     profile_photo?: string | null;
   };
 }
@@ -802,6 +803,10 @@ class ApiService {
 
   async getUser(id: number): Promise<User> {
     return this.request<User>(`/users/${id}/`);
+  }
+
+  async getCurrentUser(): Promise<User> {
+    return this.request<User>('/users/me/');
   }
 
   async createUser(userData: UserCreate | FormData): Promise<User> {

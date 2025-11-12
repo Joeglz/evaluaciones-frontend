@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaEye, FaSearch, FaFilter, FaCalendarAlt, FaUser, FaBuilding, FaChartBar } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaEye } from 'react-icons/fa';
 import { apiService } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
@@ -24,23 +24,14 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const [supervisores, setSupervisores] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   
-  // Estados para filtros
-  const [filtros, setFiltros] = useState({
-    area_id: '',
-    posicion_id: '',
-    supervisor_id: '',
-    nivel: '',
-    search: ''
-  });
-  
   // Estados para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showPuntoModal, setShowPuntoModal] = useState(false);
   const [showCriterioModal, setShowCriterioModal] = useState(false);
   const [showFirmaModal, setShowFirmaModal] = useState(false);
   const [selectedEvaluacion, setSelectedEvaluacion] = useState<any>(null);
+  const [editNombreValor, setEditNombreValor] = useState('');
   const [editingPunto, setEditingPunto] = useState<any>(null);
   const [editingCriterio, setEditingCriterio] = useState<any>(null);
   
@@ -115,33 +106,6 @@ const [firmaForm, setFirmaForm] = useState({
     }
   };
 
-  const handleFilterChange = (key: string, value: string) => {
-    setFiltros(prev => ({ ...prev, [key]: value }));
-  };
-
-  const applyFilters = async () => {
-    try {
-      setLoading(true);
-      const params: any = {
-        es_plantilla: true // Solo mostrar plantillas
-      };
-      
-      if (filtros.area_id) params.area_id = parseInt(filtros.area_id);
-      if (filtros.posicion_id) params.posicion_id = parseInt(filtros.posicion_id);
-      if (filtros.supervisor_id) params.supervisor_id = parseInt(filtros.supervisor_id);
-      if (filtros.nivel) params.nivel = parseInt(filtros.nivel);
-      if (filtros.search) params.search = filtros.search;
-      
-      const data = await apiService.getEvaluaciones(params);
-      setEvaluaciones(data.results);
-    } catch (error) {
-      console.error('Error applying filters:', error);
-      showError('Error al aplicar filtros');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateEvaluacion = async () => {
     // Validar campos requeridos
     if (!createForm.nombre || !createForm.posicion || !createForm.fecha_evaluacion) {
@@ -185,48 +149,6 @@ const [firmaForm, setFirmaForm] = useState({
     }
   };
 
-  const handleEditEvaluacion = async () => {
-    if (!selectedEvaluacion) return;
-    
-    // Validar campos requeridos
-    if (!editForm.nombre || !editForm.posicion || !editForm.fecha_evaluacion) {
-      showError('Por favor completa todos los campos requeridos');
-      return;
-    }
-    if (editForm.formula_divisor <= 0) {
-      showError('El divisor de la fórmula debe ser mayor a cero');
-      return;
-    }
-    if (editForm.formula_multiplicador < 0) {
-      showError('El multiplicador de la fórmula no puede ser negativo');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      await apiService.updateEvaluacion(selectedEvaluacion.id, {
-        nombre: editForm.nombre,
-        posicion: editForm.posicion!,
-        supervisor: editForm.supervisor,
-        nivel: editForm.nivel,
-        minimo_aprobatorio: editForm.minimo_aprobatorio,
-        formula_divisor: editForm.formula_divisor,
-        formula_multiplicador: editForm.formula_multiplicador,
-        fecha_evaluacion: editForm.fecha_evaluacion,
-        is_active: editForm.is_active
-      });
-      showSuccess('Evaluación actualizada exitosamente');
-      setShowEditModal(false);
-      setSelectedEvaluacion(null);
-      loadData();
-    } catch (error: any) {
-      console.error('Error updating evaluacion:', error);
-      showError(error.response?.data?.detail || 'Error al actualizar la evaluación');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDeleteEvaluacion = async (id: number) => {
     if (!window.confirm('¿Estás seguro de que quieres eliminar esta evaluación?')) return;
     
@@ -260,27 +182,12 @@ const [firmaForm, setFirmaForm] = useState({
     });
   };
 
-  const openEditModal = (evaluacion: any) => {
-    setSelectedEvaluacion(evaluacion);
-    setEditForm({
-      nombre: evaluacion.nombre,
-      posicion: evaluacion.posicion,
-      supervisor: evaluacion.supervisor,
-      nivel: evaluacion.nivel,
-      minimo_aprobatorio: evaluacion.minimo_aprobatorio,
-       formula_divisor: evaluacion.formula_divisor ?? 17,
-       formula_multiplicador: evaluacion.formula_multiplicador ?? 80,
-      fecha_evaluacion: evaluacion.fecha_evaluacion,
-      is_active: evaluacion.is_active
-    });
-    setShowEditModal(true);
-  };
-
   const openDetailModal = async (evaluacion: any) => {
     try {
       setLoading(true);
       const fullEvaluacion = await apiService.getEvaluacion(evaluacion.id);
       setSelectedEvaluacion(fullEvaluacion);
+      setEditNombreValor(fullEvaluacion.nombre || '');
       setShowDetailModal(true);
     } catch (error) {
       console.error('Error loading evaluacion details:', error);
@@ -290,12 +197,36 @@ const [firmaForm, setFirmaForm] = useState({
     }
   };
 
-  const getPosicionesByArea = (areaId: number) => {
-    return posiciones.filter(p => p.area === areaId);
+  const handleActualizarNombre = async () => {
+    if (!selectedEvaluacion) return;
+    const nuevoNombre = editNombreValor.trim();
+    if (!nuevoNombre) {
+      showError('El nombre no puede estar vacío');
+      return;
+    }
+
+    if (nuevoNombre === selectedEvaluacion.nombre) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const payload = { nombre: nuevoNombre } as any;
+      await apiService.updateEvaluacion(selectedEvaluacion.id, payload);
+      const evaluacionActualizada = await apiService.getEvaluacion(selectedEvaluacion.id);
+      setSelectedEvaluacion(evaluacionActualizada);
+      loadData();
+      showSuccess('Nombre actualizado correctamente');
+    } catch (error: any) {
+      console.error('Error al actualizar nombre de plantilla:', error);
+      showError(error.response?.data?.detail || 'No se pudo actualizar el nombre');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getSupervisoresByArea = (areaId: number) => {
-    return supervisores.filter(s => s.areas?.includes(areaId));
+  const getPlantillasFirmas = (evaluacion: any) => {
+    return evaluacion.firmas || [];
   };
 
   // Funciones para manejar puntos de evaluación
@@ -550,105 +481,13 @@ const [firmaForm, setFirmaForm] = useState({
   return (
     <div className="evaluaciones-management">
       <div className="management-header">
-        <h2>Gestión de Evaluaciones</h2>
+        <h2>Gestión de Plantillas</h2>
         <button 
           className="btn btn-primary"
           onClick={() => setShowCreateModal(true)}
         >
           <FaPlus /> Nueva Evaluación
         </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="filters-section">
-        <div className="filters-grid">
-          <div className="filter-group">
-            <label>Área</label>
-            <select 
-              value={filtros.area_id}
-              onChange={(e) => handleFilterChange('area_id', e.target.value)}
-            >
-              <option value="">Todas las áreas</option>
-              {areas.map(area => (
-                <option key={area.id} value={area.id}>{area.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Posición</label>
-            <select 
-              value={filtros.posicion_id}
-              onChange={(e) => handleFilterChange('posicion_id', e.target.value)}
-            >
-              <option value="">Todas las posiciones</option>
-              {filtros.area_id ? 
-                getPosicionesByArea(parseInt(filtros.area_id)).map(pos => (
-                  <option key={pos.id} value={pos.id}>{pos.name}</option>
-                )) :
-                posiciones.map(pos => (
-                  <option key={pos.id} value={pos.id}>{pos.name}</option>
-                ))
-              }
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Supervisor</label>
-            <select 
-              value={filtros.supervisor_id}
-              onChange={(e) => handleFilterChange('supervisor_id', e.target.value)}
-            >
-              <option value="">Todos los supervisores</option>
-              {filtros.area_id ?
-                getSupervisoresByArea(parseInt(filtros.area_id)).map(sup => (
-                  <option key={sup.id} value={sup.id}>{sup.full_name}</option>
-                )) :
-                supervisores.map(sup => (
-                  <option key={sup.id} value={sup.id}>{sup.full_name}</option>
-                ))
-              }
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Nivel</label>
-            <select 
-              value={filtros.nivel}
-              onChange={(e) => handleFilterChange('nivel', e.target.value)}
-            >
-              <option value="">Todos los niveles</option>
-              <option value="1">Nivel 1</option>
-              <option value="2">Nivel 2</option>
-              <option value="3">Nivel 3</option>
-              <option value="4">Nivel 4</option>
-              <option value="5">Nivel 5</option>
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Buscar</label>
-            <div className="search-input">
-              <FaSearch />
-              <input 
-                type="text"
-                placeholder="Buscar por nombre..."
-                value={filtros.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="filter-actions">
-            <button 
-              className="btn btn-secondary"
-              onClick={applyFilters}
-              disabled={loading}
-            >
-              <FaFilter /> Aplicar Filtros
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Lista de evaluaciones */}
@@ -672,13 +511,6 @@ const [firmaForm, setFirmaForm] = useState({
                       <FaEye />
                     </button>
                     <button 
-                      className="btn-icon"
-                      onClick={() => openEditModal(evaluacion)}
-                      title="Editar"
-                    >
-                      <FaEdit />
-                    </button>
-                    <button 
                       className="btn-icon btn-danger"
                       onClick={() => handleDeleteEvaluacion(evaluacion.id)}
                       title="Eliminar"
@@ -686,34 +518,6 @@ const [firmaForm, setFirmaForm] = useState({
                       <FaTrash />
                     </button>
                   </div>
-                </div>
-                
-                <div className="card-content">
-                  <div className="info-row">
-                    <FaBuilding />
-                    <span>{evaluacion.area_name} - {evaluacion.posicion_name}</span>
-                  </div>
-                  
-                  <div className="info-row">
-                    <FaUser />
-                    <span>{evaluacion.supervisor_name}</span>
-                  </div>
-                  
-                  <div className="info-row">
-                    <FaChartBar />
-                    <span>{evaluacion.nivel_display}</span>
-                  </div>
-                  
-                  <div className="info-row">
-                    <FaCalendarAlt />
-                    <span>{new Date(evaluacion.fecha_evaluacion).toLocaleDateString()}</span>
-                  </div>
-                  
-                  {evaluacion.resultado !== null && (
-                    <div className="resultado">
-                      <strong>Resultado: {evaluacion.resultado}%</strong>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
@@ -848,143 +652,6 @@ const [firmaForm, setFirmaForm] = useState({
         </div>
       )}
 
-      {/* Modal de edición */}
-      {showEditModal && selectedEvaluacion && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3>Editar Evaluación</h3>
-              <button 
-                className="modal-close"
-                onClick={() => setShowEditModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="modal-body">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Nombre de la Evaluación</label>
-                  <input 
-                    type="text"
-                    value={editForm.nombre}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, nombre: e.target.value }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Posición</label>
-                  <select 
-                    value={editForm.posicion || ''}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, posicion: parseInt(e.target.value) || null }))}
-                  >
-                    <option value="">Seleccionar posición</option>
-                    {posiciones.map(pos => (
-                      <option key={pos.id} value={pos.id}>{pos.name} ({pos.area_name})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Supervisor</label>
-                  <select 
-                    value={editForm.supervisor || ''}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, supervisor: parseInt(e.target.value) || null }))}
-                  >
-                    <option value="">Seleccionar supervisor</option>
-                    {supervisores.map(sup => (
-                      <option key={sup.id} value={sup.id}>{sup.full_name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Nivel</label>
-                  <select 
-                    value={editForm.nivel}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, nivel: parseInt(e.target.value) as 1 | 2 | 3 | 4 | 5 }))}
-                  >
-                    <option value="1">Nivel 1</option>
-                    <option value="2">Nivel 2</option>
-                    <option value="3">Nivel 3</option>
-                    <option value="4">Nivel 4</option>
-                    <option value="5">Nivel 5</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Mínimo Aprobatorio (%)</label>
-                  <input 
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editForm.minimo_aprobatorio}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, minimo_aprobatorio: parseInt(e.target.value) || 0 }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Divisor de Fórmula</label>
-                  <input 
-                    type="number"
-                    min="1"
-                    value={editForm.formula_divisor}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, formula_divisor: Math.max(1, parseInt(e.target.value) || 1) }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Multiplicador de Fórmula</label>
-                  <input 
-                    type="number"
-                    min="0"
-                    value={editForm.formula_multiplicador}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, formula_multiplicador: Math.max(0, parseInt(e.target.value) || 0) }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Fecha de Evaluación</label>
-                  <input 
-                    type="date"
-                    value={editForm.fecha_evaluacion}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, fecha_evaluacion: e.target.value }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>
-                    <input 
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, is_active: e.target.checked }))}
-                    />
-                    Activa
-                  </label>
-                </div>
-              </div>
-            </div>
-            
-            <div className="modal-footer">
-              <button 
-                className="btn btn-secondary"
-                onClick={() => setShowEditModal(false)}
-              >
-                Cancelar
-              </button>
-              <button 
-                className="btn btn-primary"
-                onClick={handleEditEvaluacion}
-                disabled={loading || !editForm.nombre || !editForm.posicion || !editForm.fecha_evaluacion}
-              >
-                {loading ? 'Actualizando...' : 'Actualizar Evaluación'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal de detalles */}
       {showDetailModal && selectedEvaluacion && (
         <div className="modal-overlay">
@@ -1006,44 +673,24 @@ const [firmaForm, setFirmaForm] = useState({
                   <div className="detail-grid">
                     <div className="detail-item">
                       <label>Nombre:</label>
-                      <span>{selectedEvaluacion.nombre}</span>
+                      <input
+                        type="text"
+                        value={editNombreValor}
+                        onChange={(e) => setEditNombreValor(e.target.value)}
+                        onBlur={handleActualizarNombre}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleActualizarNombre();
+                          }
+                          if (e.key === 'Escape') {
+                            setEditNombreValor(selectedEvaluacion.nombre || '');
+                          }
+                        }}
+                        maxLength={150}
+                        disabled={loading}
+                      />
                     </div>
-                    <div className="detail-item">
-                      <label>Área:</label>
-                      <span>{selectedEvaluacion.area_name}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Posición:</label>
-                      <span>{selectedEvaluacion.posicion_name}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Supervisor:</label>
-                      <span>{selectedEvaluacion.supervisor_name}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Nivel:</label>
-                      <span>{selectedEvaluacion.nivel_display}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Mínimo Aprobatorio:</label>
-                      <span>{selectedEvaluacion.minimo_aprobatorio}%</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Fecha de Evaluación:</label>
-                      <span>{new Date(selectedEvaluacion.fecha_evaluacion).toLocaleDateString()}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Estado:</label>
-                      <span className={selectedEvaluacion.is_active ? 'status-active' : 'status-inactive'}>
-                        {selectedEvaluacion.is_active ? 'Activa' : 'Inactiva'}
-                      </span>
-                    </div>
-                    {selectedEvaluacion.resultado !== null && (
-                      <div className="detail-item">
-                        <label>Resultado:</label>
-                        <span className="resultado">{selectedEvaluacion.resultado}%</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
