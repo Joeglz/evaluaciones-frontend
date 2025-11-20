@@ -1,9 +1,47 @@
 // Servicio de API para el frontend
 // En desarrollo local, usar ruta relativa para aprovechar el proxy de React
-// En producción (build), usar la IP del servidor de producción
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? (process.env.REACT_APP_API_BASE_URL || 'http://10.12.46.229:8000/api/v1')
-  : (process.env.REACT_APP_API_BASE_URL || '/api/v1');
+// En producción (build), detectar hostname dinámicamente para funcionar con diferentes nombres de host en IIS
+
+// Declaración de tipos para process.env (React inyecta estas variables en build time)
+declare var process: {
+  env: {
+    REACT_APP_API_BASE_URL?: string;
+    NODE_ENV?: string;
+  };
+};
+
+function getApiBaseUrl(): string {
+  // Si hay una variable de entorno explícita, usarla (se reemplaza en build time)
+  // @ts-ignore - process.env está disponible en runtime después del build de React
+  const apiBaseUrl = typeof process !== 'undefined' && process.env?.REACT_APP_API_BASE_URL;
+  if (apiBaseUrl) {
+    return apiBaseUrl;
+  }
+  
+  // Detectar si estamos en desarrollo (localhost o 127.0.0.1)
+  const hostname = window.location.hostname;
+  const isDevelopment = hostname === 'localhost' || hostname === '127.0.0.1';
+  
+  if (isDevelopment) {
+    return '/api/v1';
+  }
+  
+  // En producción, detectar dinámicamente el hostname y puerto actual
+  // Esto permite que funcione con cualquier hostname (IP, nombre de servidor, etc.)
+  // Ejemplo: http://10.12.46.229/ o http://appdadc2568/
+  const protocol = window.location.protocol;
+  const port = window.location.port ? `:${window.location.port}` : '';
+  
+  // Si el frontend y backend están en el mismo servidor IIS,
+  // el backend probablemente está en el puerto 8000
+  // Si el frontend está en el puerto 80/443, el backend está en 8000
+  const backendPort = port && port !== ':80' && port !== ':443' ? port : ':8000';
+  
+  // Construir URL absoluta con el hostname actual para que funcione con cualquier nombre de host
+  return `${protocol}//${hostname}${backendPort}/api/v1`;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface LoginRequest {
   username: string;
@@ -1455,16 +1493,41 @@ export function getMediaUrl(path: string | null): string {
     return path;
   }
   
-  // En desarrollo con proxy, usar ruta relativa
-  // En producción (build), usar URL completa del servidor de producción
-  const baseUrl = process.env.NODE_ENV === 'production' 
-    ? (process.env.REACT_APP_BACKEND_URL || 'http://10.12.46.229:8000')
-    : (process.env.REACT_APP_BACKEND_URL || '');
+  // Función helper para obtener la URL base del backend
+  function getBackendBaseUrl(): string {
+    // Si hay una variable de entorno explícita, usarla (se reemplaza en build time)
+    // @ts-ignore - process.env está disponible en runtime después del build de React
+    const backendUrl = typeof process !== 'undefined' && process.env?.REACT_APP_BACKEND_URL;
+    if (backendUrl) {
+      return backendUrl;
+    }
+    
+    // Detectar si estamos en desarrollo
+    const hostname = window.location.hostname;
+    const isDevelopment = hostname === 'localhost' || hostname === '127.0.0.1';
+    
+    if (isDevelopment) {
+      return ''; // Ruta vacía para rutas relativas con proxy
+    }
+    
+    // En producción, detectar dinámicamente el hostname actual
+    // Esto permite que funcione con cualquier hostname (IP, nombre de servidor, etc.)
+    const protocol = window.location.protocol;
+    const port = window.location.port ? `:${window.location.port}` : '';
+    
+    // Asumimos que el backend está en el mismo servidor pero en el puerto 8000
+    // Si el frontend está en el puerto 80/443, el backend está en 8000
+    const backendPort = port && port !== ':80' && port !== ':443' ? port : ':8000';
+    
+    return `${protocol}//${hostname}${backendPort}`;
+  }
+  
+  const baseUrl = getBackendBaseUrl();
   
   // Si comienza con /media/, usar la ruta directamente
   if (path.startsWith('/media/')) {
-    return `${baseUrl}${path}`;
+    return baseUrl ? `${baseUrl}${path}` : path;
   }
   // Si no, asumir que es una ruta relativa y agregar /media/
-  return `${baseUrl}/media/${path}`;
+  return baseUrl ? `${baseUrl}/media/${path}` : `/media/${path}`;
 }
