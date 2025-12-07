@@ -136,6 +136,13 @@
   margin-bottom: 1rem;
 }
 
+.field-helper {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
 /* Tabla */
 .users-table-container {
   background: white;
@@ -405,6 +412,74 @@
   color: #333;
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.password-field-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.password-field-header label {
+  margin-bottom: 0;
+}
+
+.btn-default-password {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #e12026;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.btn-default-password:hover {
+  background-color: #b91c1c;
+}
+
+.btn-default-password:active {
+  transform: translateY(1px);
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  padding-right: 45px;
+  width: 100%;
+}
+
+.btn-toggle-password {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 1;
+}
+
+.btn-toggle-password:hover {
+  color: #e12026;
+}
+
+.btn-toggle-password:focus {
+  outline: none;
 }
 
 .form-group input,

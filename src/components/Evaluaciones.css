@@ -16,7 +16,48 @@
 .breadcrumb {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #e12026;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.breadcrumb-link {
+  background: none;
+  border: none;
+  color: #f87171;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  position: relative;
+}
+
+.breadcrumb-link:hover {
+  background: rgba(248, 113, 113, 0.15);
+  color: #ef4444;
+  transform: translateY(-1px);
+}
+
+.breadcrumb-link:active {
+  transform: translateY(0);
+}
+
+.breadcrumb-text {
+  color: #6b7280;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+}
+
+.breadcrumb-separator {
+  color: #9ca3af;
+  font-weight: 400;
+  margin: 0 0.15rem;
+  font-size: 0.9rem;
 }
 
 .back-button {
@@ -2629,7 +2670,8 @@
 .usuario-card-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 1.5rem;
   padding: 1.5rem;
   background: white;
   border: 2px solid #e9ecef;
@@ -2656,15 +2698,63 @@
 
 .usuario-info-lista {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.75rem;
   flex: 1;
+  min-width: 0;
 }
 
 .usuario-nombre {
   font-weight: 600;
   color: #495057;
   font-size: 1rem;
+}
+
+.usuario-fecha-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.usuario-fecha-input label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+.fecha-usuario-input {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: #333;
+  background: white;
+  transition: all 0.2s ease;
+  width: 100%;
+  max-width: 200px;
+}
+
+.fecha-usuario-input:focus {
+  outline: none;
+  border-color: #e12026;
+  box-shadow: 0 0 0 3px rgba(225, 32, 38, 0.1);
+}
+
+.fecha-usuario-input:hover {
+  border-color: #bbb;
+}
+
+.usuario-fecha-display {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.usuario-fecha-display span {
+  color: #e12026;
+  font-weight: 500;
 }
 
 .btn-agregar-usuario,
@@ -2814,24 +2904,57 @@
   background: white;
   border: 2px solid #e9ecef;
   border-radius: 12px;
-  padding: 1.5rem;
+  padding: 0.75rem 1.5rem;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .lista-card-simple:hover {
   border-color: #e12026;
   transform: translateY(-2px);
   box-shadow: 0 4px 16px rgba(225, 32, 38, 0.15);
+  background: #fff5f5;
+}
+
+.lista-card-simple .card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .lista-card-simple .card-content h3 {
   color: #e12026;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 600;
   margin: 0;
-  text-align: center;
+  white-space: nowrap;
+}
+
+.lista-fecha-usuario {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  color: #666;
+  white-space: nowrap;
+}
+
+.lista-fecha-usuario .fecha-label {
+  font-weight: 600;
+  color: #333;
+}
+
+.lista-fecha-usuario .fecha-value {
+  color: #e12026;
+  font-weight: 500;
 }
 
 /* Estilos para acciones de onboarding */

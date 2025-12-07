@@ -13,7 +13,9 @@ import {
   FaArrowRight,
   FaUser,
   FaUserTag,
-  FaBuilding
+  FaBuilding,
+  FaEye,
+  FaEyeSlash
 } from 'react-icons/fa';
 import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -105,6 +107,10 @@ const UserManagement: React.FC = () => {
   const [createProfilePhotoFile, setCreateProfilePhotoFile] = useState<File | null>(null);
   const [createProfilePhotoPreview, setCreateProfilePhotoPreview] = useState<string | null>(null);
   const [editProfilePhotoFile, setEditProfilePhotoFile] = useState<File | null>(null);
+  
+  // Estados para mostrar/ocultar contraseñas
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [editProfilePhotoPreview, setEditProfilePhotoPreview] = useState<string | null>(null);
   const [removeProfilePhoto, setRemoveProfilePhoto] = useState<boolean>(false);
 
@@ -493,6 +499,8 @@ const UserManagement: React.FC = () => {
       fecha_ingreso: null,
       is_active: true
     });
+    setShowPassword(false);
+    setShowPasswordConfirm(false);
     clearCreateProfilePhoto();
   };
 
@@ -521,6 +529,21 @@ const UserManagement: React.FC = () => {
       new_password: '',
       new_password_confirm: ''
     });
+  };
+
+  const handleFillDefaultPassword = async () => {
+    try {
+      const response = await apiService.getDefaultPassword();
+      setCreateForm({
+        ...createForm,
+        password: response.default_password,
+        password_confirm: response.default_password
+      });
+      showSuccess('Contraseña por defecto aplicada');
+    } catch (error: any) {
+      console.error('Error al obtener contraseña por defecto:', error);
+      showError('Error al obtener la contraseña por defecto');
+    }
   };
 
   const getRoleBadgeClass = (role: string) => {
@@ -720,22 +743,22 @@ const UserManagement: React.FC = () => {
         </div>
 
         <div className="form-grid">
-          <div className="form-group">
-            <label>Nombre de Usuario *</label>
-            <input
-              type="text"
-              value={form.username}
-              onChange={(e) => {
-                if (isCreating) {
-                  setCreateForm({...createForm, username: e.target.value});
-                } else {
+          {!isCreating && (
+            <div className="form-group">
+              <label>Nombre de Usuario</label>
+              <input
+                type="text"
+                value={form.username}
+                onChange={(e) => {
                   setEditForm({...editForm, username: e.target.value});
-                }
-              }}
-              className={errors.username ? 'error' : ''}
-            />
-            {errors.username && <div className="error-message">{errors.username[0]}</div>}
-          </div>
+                }}
+                className={errors.username ? 'error' : ''}
+                readOnly
+                title="El nombre de usuario se genera automáticamente desde el número de empleado"
+              />
+              {errors.username && <div className="error-message">{errors.username[0]}</div>}
+            </div>
+          )}
 
           <div className="form-group">
             <label>Email *</label>
@@ -791,24 +814,54 @@ const UserManagement: React.FC = () => {
           {isCreating && (
             <>
               <div className="form-group">
-                <label>Contraseña *</label>
-                <input
-                  type="password"
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
-                  className={errors.password ? 'error' : ''}
-                />
+                <div className="password-field-header">
+                  <label>Contraseña *</label>
+                  <button
+                    type="button"
+                    className="btn-default-password"
+                    onClick={handleFillDefaultPassword}
+                    title="Usar contraseña por defecto"
+                  >
+                    <FaKey /> Usar contraseña por defecto
+                  </button>
+                </div>
+                <div className="password-input-wrapper">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
+                    className={errors.password ? 'error' : ''}
+                  />
+                  <button
+                    type="button"
+                    className="btn-toggle-password"
+                    onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPassword ? <FaEyeSlash /> : <FaEye />}
+                  </button>
+                </div>
                 {errors.password && <div className="error-message">{errors.password[0]}</div>}
               </div>
 
               <div className="form-group">
                 <label>Confirmar Contraseña *</label>
-                <input
-                  type="password"
-                  value={createForm.password_confirm}
-                  onChange={(e) => setCreateForm({...createForm, password_confirm: e.target.value})}
-                  className={errors.password_confirm ? 'error' : ''}
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    type={showPasswordConfirm ? 'text' : 'password'}
+                    value={createForm.password_confirm}
+                    onChange={(e) => setCreateForm({...createForm, password_confirm: e.target.value})}
+                    className={errors.password_confirm ? 'error' : ''}
+                  />
+                  <button
+                    type="button"
+                    className="btn-toggle-password"
+                    onClick={() => setShowPasswordConfirm(!showPasswordConfirm)}
+                    title={showPasswordConfirm ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPasswordConfirm ? <FaEyeSlash /> : <FaEye />}
+                  </button>
+                </div>
                 {errors.password_confirm && <div className="error-message">{errors.password_confirm[0]}</div>}
               </div>
             </>
@@ -848,7 +901,7 @@ const UserManagement: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Número de Empleado</label>
+            <label>Número de Empleado {isCreating ? '*' : ''}</label>
             <input
               type="text"
               value={form.numero_empleado || ''}
@@ -860,8 +913,14 @@ const UserManagement: React.FC = () => {
                 }
               }}
               className={errors.numero_empleado ? 'error' : ''}
+              required={isCreating}
             />
             {errors.numero_empleado && <div className="error-message">{errors.numero_empleado[0]}</div>}
+            {isCreating && (
+              <div className="field-helper">
+                Este número se usará como nombre de usuario para iniciar sesión
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -1003,7 +1062,7 @@ const UserManagement: React.FC = () => {
 
         if (createProfilePhotoFile) {
           const formData = new FormData();
-          formData.append('username', createForm.username);
+          // No enviar username, el backend lo generará desde numero_empleado
           formData.append('email', createForm.email);
           formData.append('first_name', createForm.first_name || '');
           formData.append('last_name', createForm.last_name || '');
@@ -1032,7 +1091,9 @@ const UserManagement: React.FC = () => {
           formData.append('profile_photo', createProfilePhotoFile);
           payload = formData;
         } else {
-          payload = createForm;
+          // No enviar username, el backend lo generará desde numero_empleado
+          const { username, ...createPayload } = createForm;
+          payload = createPayload;
         }
 
         await apiService.createUser(payload);

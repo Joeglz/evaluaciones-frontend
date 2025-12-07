@@ -160,12 +160,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     nombre: '',
     supervisor: null,
     instructor: null,
-    fecha: new Date().toISOString().split('T')[0],
     usuarios_regulares: [],
     area: 0,
     is_active: true
   });
   const [usuariosSeleccionados, setUsuariosSeleccionados] = useState<User[]>([]);
+  // Estado para fechas por usuario en la lista
+  const [fechasUsuarios, setFechasUsuarios] = useState<Record<number, string>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [editingListaId, setEditingListaId] = useState<number | null>(null);
 
@@ -1139,7 +1140,6 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       nombre: lista.nombre,
       supervisor: lista.supervisor,
       instructor: lista.instructor,
-      fecha: lista.fecha,
       usuarios_regulares: lista.usuarios_regulares,
       area: lista.area,
       is_active: lista.is_active
@@ -1153,6 +1153,22 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       lista.usuarios_regulares.includes(user.id)
     );
     setUsuariosSeleccionados(usuariosAsignados);
+    
+    // Cargar fechas de usuarios desde la lista (si están disponibles)
+    const fechasIniciales: Record<number, string> = {};
+    if (lista.usuarios_fechas) {
+      Object.keys(lista.usuarios_fechas).forEach(usuarioIdStr => {
+        const usuarioId = parseInt(usuarioIdStr);
+        fechasIniciales[usuarioId] = lista.usuarios_fechas![usuarioIdStr];
+      });
+    }
+    // Si no hay fechas en la lista, usar fecha de hoy como default
+    usuariosAsignados.forEach(user => {
+      if (!fechasIniciales[user.id]) {
+        fechasIniciales[user.id] = new Date().toISOString().split('T')[0];
+      }
+    });
+    setFechasUsuarios(fechasIniciales);
   };
 
   const goBack = () => {
@@ -1211,26 +1227,39 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         break;
       case 'onboarding':
         if (onboardingUsuarioId) {
-          const usuarioSeleccionado =
-            selectedUser && selectedUser.id === onboardingUsuarioId
-              ? selectedUser
-              : usuarios.find((user) => user.id === onboardingUsuarioId) || selectedUser;
+          // Si se entró desde el botón Onboarding del usuario, regresar al detalle del usuario
+          // Primero intentar usar selectedUser si coincide con el ID
+          let usuarioSeleccionado = selectedUser && selectedUser.id === onboardingUsuarioId
+            ? selectedUser
+            : null;
+          
+          // Si no coincide, buscar en la lista de usuarios
+          if (!usuarioSeleccionado) {
+            usuarioSeleccionado = usuarios.find((user) => user.id === onboardingUsuarioId) || null;
+          }
+          
+          // Si aún no se encuentra, usar selectedUser como fallback
+          if (!usuarioSeleccionado && selectedUser) {
+            usuarioSeleccionado = selectedUser;
+          }
 
           if (usuarioSeleccionado) {
             setSelectedUser(usuarioSeleccionado);
             setCurrentView('usuario-detalle');
+            if (selectedPosicion?.id) {
+              loadProgresosNivel(selectedPosicion.id);
+            } else {
+              loadProgresosNivel();
+            }
           } else {
+            // Si no se encuentra el usuario, ir a grupos
             setCurrentView('grupos');
           }
+          setOnboardingUsuarioId(null);
         } else {
+          // Si se entró desde la tarjeta ONBOARDING (sin usuario), regresar a grupos
           setCurrentView('grupos');
         }
-        if (selectedPosicion?.id) {
-          loadProgresosNivel(selectedPosicion.id);
-        } else {
-          loadProgresosNivel();
-        }
-        setOnboardingUsuarioId(null);
         break;
       case 'lista-asistencia-form':
         setCurrentView(onboardingUsuarioId ? 'onboarding' : 'grupos');
@@ -1238,12 +1267,12 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           nombre: '',
           supervisor: null,
           instructor: null,
-          fecha: new Date().toISOString().split('T')[0],
           usuarios_regulares: [],
           area: 0,
           is_active: true
         });
         setUsuariosSeleccionados([]);
+        setFechasUsuarios({});
         setIsEditing(false);
         setEditingListaId(null);
         if (selectedPosicion?.id) {
@@ -1255,25 +1284,158 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
-  const getBreadcrumb = () => {
-    const parts = ['Áreas'];
+  interface BreadcrumbItem {
+    label: string;
+    onClick?: () => void;
+    isClickable: boolean;
+  }
+
+  const getBreadcrumbItems = (): BreadcrumbItem[] => {
+    const items: BreadcrumbItem[] = [
+      {
+        label: 'Áreas',
+        onClick: () => {
+          setCurrentView('areas');
+          setSelectedArea(null);
+          setSelectedGrupo(null);
+          setSelectedPosicion(null);
+          setSelectedUser(null);
+        },
+        isClickable: currentView !== 'areas'
+      }
+    ];
+
     if (selectedArea) {
-      parts.push(selectedArea.name);
+      items.push({
+        label: selectedArea.name,
+        onClick: () => {
+          setCurrentView('grupos');
+          setSelectedGrupo(null);
+          setSelectedPosicion(null);
+          setSelectedUser(null);
+        },
+        isClickable: currentView !== 'grupos' && currentView !== 'areas'
+      });
+
       if (currentView === 'grupos') {
-        parts.push('Grupos');
-      } else if (currentView === 'posiciones') {
-        parts.push('Grupos', selectedGrupo?.name || 'Grupo', 'Posiciones');
-      } else if (currentView === 'usuarios') {
-        parts.push('Grupos', selectedGrupo?.name || 'Grupo', 'Posiciones', selectedPosicion?.name || 'Posición', 'Usuarios');
-      } else if (currentView === 'usuario-detalle') {
-        parts.push('Grupos', selectedGrupo?.name || 'Grupo', 'Posiciones', selectedPosicion?.name || 'Posición', 'Usuarios', selectedUser?.full_name || 'Usuario');
+        items.push({
+          label: 'Grupos',
+          isClickable: false
+        });
+      } else if (currentView === 'posiciones' || currentView === 'usuarios' || currentView === 'usuario-detalle' || currentView === 'usuario-evaluacion') {
+        items.push({
+          label: 'Grupos',
+          onClick: () => {
+            setCurrentView('grupos');
+            setSelectedPosicion(null);
+            setSelectedUser(null);
+          },
+          isClickable: true
+        });
+
+        if (selectedGrupo) {
+          items.push({
+            label: selectedGrupo.name,
+            onClick: () => {
+              setCurrentView('posiciones');
+              setSelectedPosicion(null);
+              setSelectedUser(null);
+            },
+            isClickable: currentView !== 'posiciones'
+          });
+        }
+
+        items.push({
+          label: 'Posiciones',
+          onClick: () => {
+            setCurrentView('posiciones');
+            setSelectedUser(null);
+          },
+          isClickable: currentView !== 'posiciones'
+        });
+
+        if (selectedPosicion && (currentView === 'usuarios' || currentView === 'usuario-detalle' || currentView === 'usuario-evaluacion')) {
+          items.push({
+            label: selectedPosicion.name,
+            onClick: () => {
+              setCurrentView('usuarios');
+              setSelectedUser(null);
+            },
+            isClickable: currentView !== 'usuarios'
+          });
+
+          items.push({
+            label: 'Usuarios',
+            onClick: () => {
+              setCurrentView('usuarios');
+              setSelectedUser(null);
+            },
+            isClickable: currentView !== 'usuarios'
+          });
+
+          if (selectedUser && (currentView === 'usuario-detalle' || currentView === 'usuario-evaluacion')) {
+            items.push({
+              label: selectedUser.full_name || 'Usuario',
+              onClick: () => {
+                setCurrentView('usuario-detalle');
+                setEvaluacionActual(null);
+                setResultadosEvaluacion([]);
+                setSupervisorSeleccionado(null);
+                setEvaluacionModoLectura(true);
+                setSignatures({});
+                setHasSignature({});
+                setFirmasUsuario({});
+                setFirmasPendientes({});
+              },
+              isClickable: currentView !== 'usuario-detalle'
+            });
+          }
+        }
       } else if (currentView === 'onboarding') {
-        parts.push('ONBOARDING');
+        items.push({
+          label: 'ONBOARDING',
+          isClickable: false
+        });
       } else if (currentView === 'lista-asistencia-form') {
-        parts.push('ONBOARDING', 'Crear Lista de Asistencia');
+        items.push({
+          label: 'ONBOARDING',
+          onClick: () => {
+            setCurrentView('onboarding');
+          },
+          isClickable: true
+        });
+        items.push({
+          label: 'Crear Lista de Asistencia',
+          isClickable: false
+        });
       }
     }
-    return parts.join(' > ');
+
+    return items;
+  };
+
+  const renderBreadcrumb = () => {
+    const items = getBreadcrumbItems();
+    return (
+      <div className="breadcrumb">
+        {items.map((item, index) => (
+          <React.Fragment key={index}>
+            {item.isClickable && item.onClick ? (
+              <button
+                type="button"
+                className="breadcrumb-link"
+                onClick={item.onClick}
+              >
+                {item.label}
+              </button>
+            ) : (
+              <span className="breadcrumb-text">{item.label}</span>
+            )}
+            {index < items.length - 1 && <span className="breadcrumb-separator"> &gt; </span>}
+          </React.Fragment>
+        ))}
+      </div>
+    );
   };
 
   const handleFormChange = (field: keyof ListaAsistenciaCreate, value: any) => {
@@ -1287,32 +1449,61 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         ...prev,
         usuarios_regulares: prev.usuarios_regulares.filter(id => id !== usuario.id)
       }));
+      // Eliminar la fecha del usuario cuando se quita de la lista
+      setFechasUsuarios(prev => {
+        const newFechas = { ...prev };
+        delete newFechas[usuario.id];
+        return newFechas;
+      });
     } else {
       setFormData(prev => ({
         ...prev,
         usuarios_regulares: [...prev.usuarios_regulares, usuario.id]
       }));
+      // Asignar fecha de hoy por defecto al agregar usuario
+      setFechasUsuarios(prev => ({
+        ...prev,
+        [usuario.id]: new Date().toISOString().split('T')[0]
+      }));
     }
+  };
+
+  const handleFechaUsuarioChange = (usuarioId: number, fecha: string) => {
+    setFechasUsuarios(prev => ({
+      ...prev,
+      [usuarioId]: fecha
+    }));
   };
 
   const handleSubmitLista = async () => {
     try {
       setLoading(true);
       
+      // Preparar el objeto de fechas por usuario
+      const usuarios_fechas: Record<string, string> = {};
+      formData.usuarios_regulares.forEach(usuarioId => {
+        if (fechasUsuarios[usuarioId]) {
+          usuarios_fechas[usuarioId.toString()] = fechasUsuarios[usuarioId];
+        }
+      });
+      
+      const payload = {
+        nombre: formData.nombre,
+        supervisor: formData.supervisor,
+        instructor: formData.instructor,
+        usuarios_regulares: formData.usuarios_regulares,
+        usuarios_fechas: usuarios_fechas,
+        area: formData.area,
+        is_active: formData.is_active
+      };
+      
       if (isEditing && editingListaId) {
         // Actualizar lista existente
-        await apiService.updateListaAsistencia(editingListaId, {
-          nombre: formData.nombre,
-          supervisor: formData.supervisor,
-          instructor: formData.instructor,
-          fecha: formData.fecha,
-          usuarios_regulares: formData.usuarios_regulares,
-          is_active: formData.is_active
-        });
+        await apiService.updateListaAsistencia(editingListaId, payload);
         showSuccess('Lista de asistencia actualizada exitosamente');
       } else {
         // Crear nueva lista
-        await apiService.createListaAsistencia(formData);
+        await apiService.createListaAsistencia(payload);
         showSuccess('Lista de asistencia creada exitosamente');
       }
       
@@ -2199,11 +2390,22 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       ? usuarios.find((user) => user.id === onboardingUsuarioId) || null
       : null;
     const listasFiltradas = listasDelArea.filter(lista => {
-      if (!usuarioOnboarding) {
-        return true;
+      // Filtrar por usuario si hay uno seleccionado
+      if (usuarioOnboarding && !lista.usuarios_regulares.includes(usuarioOnboarding.id)) {
+        return false;
       }
-      return lista.usuarios_regulares.includes(usuarioOnboarding.id);
+      
+      // Filtrar por término de búsqueda
+      if (searchTerm) {
+        const nombreMatch = lista.nombre.toLowerCase().includes(searchTerm.toLowerCase());
+        return nombreMatch;
+      }
+      
+      return true;
     });
+    
+    // Solo mostrar el botón "Añadir nueva lista" si se entró desde la tarjeta ONBOARDING (no desde el botón Onboarding del usuario)
+    const mostrarBotonCrearLista = !onboardingUsuarioId && selectedArea !== null;
     
     return (
       <div className="evaluaciones-section">
@@ -2220,15 +2422,17 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         </div>
         
         <div className="onboarding-actions">
-          <div 
-            className="btn-crear-lista-card"
-            onClick={handleCrearListaAsistencia}
-          >
-            <div className="card-content">
-              <FaPlus />
-              <h3>Añadir nueva lista</h3>
+          {mostrarBotonCrearLista && (
+            <div 
+              className="btn-crear-lista-card"
+              onClick={handleCrearListaAsistencia}
+            >
+              <div className="card-content">
+                <FaPlus />
+                <h3>Añadir nueva lista</h3>
+              </div>
             </div>
-          </div>
+          )}
           
           <div className="search-container">
             <div className="search-bar">
@@ -2245,17 +2449,36 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         
         <div className="listas-grid">
           {listasFiltradas.length > 0 ? (
-            listasFiltradas.map((lista) => (
-              <div 
-                key={lista.id} 
-                className="lista-card-simple"
-                onClick={() => handleEditarLista(lista)}
-              >
-                <div className="card-content">
-                  <h3>{lista.nombre}</h3>
+            listasFiltradas.map((lista) => {
+              // Obtener la fecha del usuario en esta lista
+              const fechaUsuario = usuarioOnboarding && lista.usuarios_fechas 
+                ? lista.usuarios_fechas[usuarioOnboarding.id.toString()] 
+                : null;
+              
+              return (
+                <div 
+                  key={lista.id} 
+                  className="lista-card-simple"
+                  onClick={() => handleEditarLista(lista)}
+                >
+                  <div className="card-content">
+                    <h3>{lista.nombre}</h3>
+                    {fechaUsuario && (
+                      <div className="lista-fecha-usuario">
+                        <span className="fecha-label">Fecha:</span>
+                        <span className="fecha-value">
+                          {new Date(fechaUsuario).toLocaleDateString('es-ES', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="no-results">
               <FaClipboardList />
@@ -2301,16 +2524,6 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                   value={formData.nombre}
                   onChange={(e) => handleFormChange('nombre', e.target.value)}
                   placeholder="Ej: Lista de Asistencia - Enero 2024"
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="fecha">Fecha:</label>
-                <input
-                  type="date"
-                  id="fecha"
-                  value={formData.fecha}
-                  onChange={(e) => handleFormChange('fecha', e.target.value)}
                   className="form-input"
                 />
               </div>
@@ -2374,6 +2587,22 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         : 'Sin posición'
                       })
                     </span>
+                    {(effectiveUserRole === 'ADMIN' || effectiveUserRole === 'ENTRENADOR') && (
+                      <div className="usuario-fecha-input">
+                        <label>Fecha:</label>
+                        <input
+                          type="date"
+                          value={fechasUsuarios[usuario.id] || new Date().toISOString().split('T')[0]}
+                          onChange={(e) => handleFechaUsuarioChange(usuario.id, e.target.value)}
+                          className="fecha-usuario-input"
+                        />
+                      </div>
+                    )}
+                    {effectiveUserRole !== 'ADMIN' && effectiveUserRole !== 'ENTRENADOR' && (
+                      <div className="usuario-fecha-display">
+                        <span>Fecha: {fechasUsuarios[usuario.id] ? new Date(fechasUsuarios[usuario.id]).toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES')}</span>
+                      </div>
+                    )}
                   </div>
                   <button
                     className="btn-quitar-usuario"
@@ -2460,9 +2689,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     <div className="evaluaciones-container">
       {/* Header con navegación */}
       <div className="evaluaciones-header">
-        <div className="breadcrumb">
-          <span>{isRegularUser ? 'Mis Evaluaciones' : getBreadcrumb()}</span>
-        </div>
+        {isRegularUser ? (
+          <div className="breadcrumb">
+            <span>Mis Evaluaciones</span>
+          </div>
+        ) : (
+          renderBreadcrumb()
+        )}
         {!isRegularUser && currentView !== 'areas' && (
           <button className="back-button" onClick={goBack}>
             <FaArrowLeft /> Volver

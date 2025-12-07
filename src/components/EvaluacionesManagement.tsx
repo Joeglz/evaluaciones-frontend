@@ -108,16 +108,8 @@ const [firmaForm, setFirmaForm] = useState({
 
   const handleCreateEvaluacion = async () => {
     // Validar campos requeridos
-    if (!createForm.nombre || !createForm.posicion || !createForm.fecha_evaluacion) {
-      showError('Por favor completa todos los campos requeridos');
-      return;
-    }
-    if (createForm.formula_divisor <= 0) {
-      showError('El divisor de la fórmula debe ser mayor a cero');
-      return;
-    }
-    if (createForm.formula_multiplicador < 0) {
-      showError('El multiplicador de la fórmula no puede ser negativo');
+    if (!createForm.nombre) {
+      showError('Por favor ingresa el nombre de la evaluación');
       return;
     }
 
@@ -126,7 +118,7 @@ const [firmaForm, setFirmaForm] = useState({
       await apiService.createEvaluacion({
         nombre: createForm.nombre,
         es_plantilla: createForm.es_plantilla,
-        posicion: createForm.posicion!,
+        posicion: createForm.posicion,
         supervisor: createForm.supervisor,
         nivel: createForm.nivel,
         minimo_aprobatorio: createForm.minimo_aprobatorio,
@@ -238,9 +230,11 @@ const [firmaForm, setFirmaForm] = useState({
 
     try {
       setLoading(true);
+      // Calcular el orden automáticamente basado en la cantidad de puntos existentes
+      const ordenAutomatico = (selectedEvaluacion.puntos_evaluacion?.length || 0) + 1;
       await apiService.agregarPuntoEvaluacion(selectedEvaluacion.id, {
         pregunta: puntoForm.pregunta,
-        orden: puntoForm.orden
+        orden: ordenAutomatico
       });
       showSuccess('Punto de evaluación agregado exitosamente');
       setShowPuntoModal(false);
@@ -264,9 +258,10 @@ const [firmaForm, setFirmaForm] = useState({
 
     try {
       setLoading(true);
+      // Mantener el orden existente al actualizar
       await apiService.updatePuntoEvaluacion(editingPunto.id, {
         pregunta: puntoForm.pregunta,
-        orden: puntoForm.orden
+        orden: editingPunto.orden || puntoForm.orden
       });
       showSuccess('Punto de evaluación actualizado exitosamente');
       setShowPuntoModal(false);
@@ -326,9 +321,11 @@ const [firmaForm, setFirmaForm] = useState({
 
     try {
       setLoading(true);
+      // Calcular el orden automáticamente basado en la cantidad de criterios existentes
+      const ordenAutomatico = (selectedEvaluacion.criterios_evaluacion?.length || 0) + 1;
       await apiService.agregarCriterioEvaluacion(selectedEvaluacion.id, {
         criterio: criterioForm.criterio,
-        orden: criterioForm.orden
+        orden: ordenAutomatico
       });
       showSuccess('Criterio de evaluación agregado exitosamente');
       setShowCriterioModal(false);
@@ -352,9 +349,10 @@ const [firmaForm, setFirmaForm] = useState({
 
     try {
       setLoading(true);
+      // Mantener el orden existente al actualizar
       await apiService.updateCriterioEvaluacion(editingCriterio.id, {
         criterio: criterioForm.criterio,
-        orden: criterioForm.orden
+        orden: editingCriterio.orden || criterioForm.orden
       });
       showSuccess('Criterio de evaluación actualizado exitosamente');
       setShowCriterioModal(false);
@@ -486,7 +484,7 @@ const [firmaForm, setFirmaForm] = useState({
           className="btn btn-primary"
           onClick={() => setShowCreateModal(true)}
         >
-          <FaPlus /> Nueva Evaluación
+          <FaPlus /> Nueva Plantilla
         </button>
       </div>
 
@@ -500,9 +498,12 @@ const [firmaForm, setFirmaForm] = useState({
           <div className="evaluaciones-grid">
             {evaluaciones.map(evaluacion => (
               <div key={evaluacion.id} className="evaluacion-card">
-                <div className="card-header">
+                <div 
+                  className="card-header card-header-clickable"
+                  onClick={() => openDetailModal(evaluacion)}
+                >
                   <h3>{evaluacion.nombre}</h3>
-                  <div className="card-actions">
+                  <div className="card-actions" onClick={(e) => e.stopPropagation()}>
                     <button 
                       className="btn-icon"
                       onClick={() => openDetailModal(evaluacion)}
@@ -530,7 +531,7 @@ const [firmaForm, setFirmaForm] = useState({
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">
-              <h3>Nueva Evaluación</h3>
+              <h3>Nueva Plantilla</h3>
               <button 
                 className="modal-close"
                 onClick={() => setShowCreateModal(false)}
@@ -542,92 +543,12 @@ const [firmaForm, setFirmaForm] = useState({
             <div className="modal-body">
               <div className="form-grid">
                 <div className="form-group">
-                  <label>Nombre de la Evaluación</label>
+                  <label>Nombre de la Plantilla</label>
                   <input 
                     type="text"
                     value={createForm.nombre}
                     onChange={(e) => setCreateForm(prev => ({ ...prev, nombre: e.target.value }))}
                     placeholder="Ej: Evaluación de Competencias - Operador"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Posición</label>
-                  <select 
-                    value={createForm.posicion || ''}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, posicion: parseInt(e.target.value) || null }))}
-                  >
-                    <option value="">Seleccionar posición</option>
-                    {posiciones.map(pos => (
-                      <option key={pos.id} value={pos.id}>{pos.name} ({pos.area_name})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Supervisor</label>
-                  <select 
-                    value={createForm.supervisor || ''}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, supervisor: parseInt(e.target.value) || null }))}
-                  >
-                    <option value="">Seleccionar supervisor</option>
-                    {supervisores.map(sup => (
-                      <option key={sup.id} value={sup.id}>{sup.full_name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Nivel</label>
-                  <select 
-                    value={createForm.nivel}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, nivel: parseInt(e.target.value) as 1 | 2 | 3 | 4 | 5 }))}
-                  >
-                    <option value="1">Nivel 1</option>
-                    <option value="2">Nivel 2</option>
-                    <option value="3">Nivel 3</option>
-                    <option value="4">Nivel 4</option>
-                    <option value="5">Nivel 5</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Mínimo Aprobatorio (%)</label>
-                  <input 
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={createForm.minimo_aprobatorio}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, minimo_aprobatorio: parseInt(e.target.value) || 0 }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Divisor de Fórmula</label>
-                  <input 
-                    type="number"
-                    min="1"
-                    value={createForm.formula_divisor}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, formula_divisor: Math.max(1, parseInt(e.target.value) || 1) }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Multiplicador de Fórmula</label>
-                  <input 
-                    type="number"
-                    min="0"
-                    value={createForm.formula_multiplicador}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, formula_multiplicador: Math.max(0, parseInt(e.target.value) || 0) }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Fecha de Evaluación</label>
-                  <input 
-                    type="date"
-                    value={createForm.fecha_evaluacion}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, fecha_evaluacion: e.target.value }))}
                   />
                 </div>
               </div>
@@ -643,9 +564,9 @@ const [firmaForm, setFirmaForm] = useState({
               <button 
                 className="btn btn-primary"
                 onClick={handleCreateEvaluacion}
-                disabled={loading || !createForm.nombre || !createForm.posicion || !createForm.fecha_evaluacion}
+                disabled={loading || !createForm.nombre}
               >
-                {loading ? 'Creando...' : 'Crear Evaluación'}
+                {loading ? 'Creando...' : 'Crear'}
               </button>
             </div>
           </div>
@@ -657,7 +578,7 @@ const [firmaForm, setFirmaForm] = useState({
         <div className="modal-overlay">
           <div className="modal modal-large">
             <div className="modal-header">
-              <h3>Detalles de la Evaluación</h3>
+              <h3>Detalles de la Plantilla</h3>
               <button 
                 className="modal-close"
                 onClick={() => setShowDetailModal(false)}
@@ -899,16 +820,6 @@ const [firmaForm, setFirmaForm] = useState({
                   rows={4}
                 />
               </div>
-
-              <div className="form-group">
-                <label>Orden</label>
-                <input 
-                  type="number"
-                  min="0"
-                  value={puntoForm.orden}
-                  onChange={(e) => setPuntoForm(prev => ({ ...prev, orden: parseInt(e.target.value) || 0 }))}
-                />
-              </div>
             </div>
             
             <div className="modal-footer">
@@ -960,16 +871,6 @@ const [firmaForm, setFirmaForm] = useState({
                   onChange={(e) => setCriterioForm(prev => ({ ...prev, criterio: e.target.value }))}
                   placeholder="Ingresa el criterio de evaluación..."
                   rows={4}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Orden</label>
-                <input 
-                  type="number"
-                  min="0"
-                  value={criterioForm.orden}
-                  onChange={(e) => setCriterioForm(prev => ({ ...prev, orden: parseInt(e.target.value) || 0 }))}
                 />
               </div>
             </div>

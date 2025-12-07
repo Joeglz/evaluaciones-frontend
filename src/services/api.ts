@@ -163,7 +163,7 @@ export interface User {
 }
 
 export interface UserCreate {
-  username: string;
+  username?: string; // Opcional, se genera automáticamente desde numero_empleado
   email: string;
   first_name: string;
   last_name: string;
@@ -207,10 +207,10 @@ export interface ListaAsistencia {
   supervisor_name?: string;
   instructor: number | null;
   instructor_name?: string;
-  fecha: string;
   usuarios_regulares: number[];
   usuarios_regulares_list?: string[];
   usuarios_count?: number;
+  usuarios_fechas?: Record<string, string>; // { usuario_id: fecha }
   area: number;
   area_name?: string;
   is_active: boolean;
@@ -222,8 +222,8 @@ export interface ListaAsistenciaCreate {
   nombre: string;
   supervisor: number | null;
   instructor: number | null;
-  fecha: string;
   usuarios_regulares: number[];
+  usuarios_fechas?: Record<string, string>; // { usuario_id: fecha }
   area: number;
   is_active?: boolean;
 }
@@ -232,8 +232,8 @@ export interface ListaAsistenciaUpdate {
   nombre: string;
   supervisor: number | null;
   instructor: number | null;
-  fecha: string;
   usuarios_regulares: number[];
+  usuarios_fechas?: Record<string, string>; // { usuario_id: fecha }
   is_active?: boolean;
 }
 
@@ -820,6 +820,11 @@ class ApiService {
   // Información de la API
   async getApiInfo(): Promise<{ name: string; version: string; description: string }> {
     return this.request<{ name: string; version: string; description: string }>('/info/');
+  }
+
+  // Obtener contraseña por defecto
+  async getDefaultPassword(): Promise<{ default_password: string }> {
+    return this.request<{ default_password: string }>('/default-password/');
   }
 
   // Gestión de usuarios

@@ -713,9 +713,9 @@ const AreaManagement: React.FC = () => {
       setModalError('Ingresa el nombre visible de la firma adicional.');
       return;
     }
-    const slug = slugifyText(modalFirmaExtraIdentificador || modalFirmaExtraNombre);
+    const slug = slugifyText(modalFirmaExtraNombre);
     if (!slug) {
-      setModalError('Ingresa un identificador válido para la firma adicional.');
+      setModalError('El nombre debe contener al menos un carácter válido.');
       return;
     }
     const existentes = new Set<string>([
@@ -734,7 +734,6 @@ const AreaManagement: React.FC = () => {
       }
     ]);
     setModalFirmaExtraNombre('');
-    setModalFirmaExtraIdentificador('');
     setModalError(null);
   };
 
@@ -861,9 +860,9 @@ const AreaManagement: React.FC = () => {
       setEditarEvaluacionError('Ingresa el nombre visible de la firma.');
       return;
     }
-    const slug = slugifyText(editarFirmaIdentificador || editarFirmaNombre);
+    const slug = slugifyText(editarFirmaNombre);
     if (!slug) {
-      setEditarEvaluacionError('Ingresa un identificador válido (sin espacios).');
+      setEditarEvaluacionError('El nombre debe contener al menos un carácter válido.');
       return;
     }
     if (editarEvaluacionFirmas.some(firma => firma.tipo_firma === slug)) {
@@ -880,7 +879,6 @@ const AreaManagement: React.FC = () => {
       });
       await recargarEvaluacionEdicion();
       setEditarFirmaNombre('');
-      setEditarFirmaIdentificador('');
       alert('Firma agregada correctamente');
     } catch (error: any) {
       console.error('Error al agregar firma:', error);
@@ -1302,16 +1300,10 @@ const AreaManagement: React.FC = () => {
                 onChange={(e) => setEditarFirmaNombre(e.target.value)}
                 placeholder="Nombre visible"
               />
-              <input
-                type="text"
-                value={editarFirmaIdentificador}
-                onChange={(e) => setEditarFirmaIdentificador(slugifyText(e.target.value))}
-                placeholder="Identificador interno"
-              />
             </div>
             <button
               type="button"
-              className="btn-secondary"
+              className="btn-secondary btn-agregar-firma"
               onClick={handleAgregarFirmaEdicion}
               disabled={agregandoFirmaEvaluacion}
             >
@@ -1385,7 +1377,11 @@ const AreaManagement: React.FC = () => {
           </thead>
           <tbody>
             {areas.map((area) => (
-              <tr key={area.id}>
+              <tr 
+                key={area.id}
+                className="area-row-clickable"
+                onClick={() => openEditModal(area)}
+              >
                 <td>{area.name}</td>
                 <td>
                   <span className={`status-badge ${area.is_active ? 'status-active' : 'status-inactive'}`}>
@@ -1393,21 +1389,7 @@ const AreaManagement: React.FC = () => {
                   </span>
                 </td>
                 <td>{new Date(area.created_at).toLocaleDateString()}</td>
-                <td className="actions-cell">
-                  <button 
-                    className="btn-icon btn-edit" 
-                    onClick={() => openEditModal(area)}
-                    title="Editar"
-                  >
-                    <FaEdit />
-                  </button>
-                  <button 
-                    className="btn-icon btn-deactivate" 
-                    onClick={() => openDeactivateModal(area)}
-                    title={area.is_active ? 'Desactivar' : 'Activar'}
-                  >
-                    {area.is_active ? <FaBan /> : <FaCheckCircle />}
-                  </button>
+                <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                   <button 
                     className="btn-icon btn-delete" 
                     onClick={() => openDeleteModal(area)}
@@ -1699,9 +1681,13 @@ const AreaManagement: React.FC = () => {
                                                 </div>
                                               ) : (
                                                 evalList.map(evaluacion => (
-                                                  <div key={evaluacion.id} className="evaluacion-pill">
+                                                  <div 
+                                                    key={evaluacion.id} 
+                                                    className="evaluacion-pill evaluacion-pill-clickable"
+                                                    onClick={() => abrirModalEditarEvaluacion(evaluacion.id, nivelExistente.id, posicionId)}
+                                                  >
                                                     <span>{evaluacion.nombre}</span>
-                                                    <div className="evaluacion-pill-actions">
+                                                    <div className="evaluacion-pill-actions" onClick={(e) => e.stopPropagation()}>
                                                       <button
                                                         type="button"
                                                         className="btn-icon btn-edit-evaluacion"
@@ -2094,22 +2080,11 @@ const AreaManagement: React.FC = () => {
                     <input
                       type="text"
                       value={modalFirmaExtraNombre}
-                      onChange={(e) => {
-                        setModalFirmaExtraNombre(e.target.value);
-                        if (!modalFirmaExtraIdentificador) {
-                          setModalFirmaExtraIdentificador(slugifyText(e.target.value));
-                        }
-                      }}
+                      onChange={(e) => setModalFirmaExtraNombre(e.target.value)}
                       placeholder="Nombre visible"
                     />
-                    <input
-                      type="text"
-                      value={modalFirmaExtraIdentificador}
-                      onChange={(e) => setModalFirmaExtraIdentificador(slugifyText(e.target.value))}
-                      placeholder="Identificador interno"
-                    />
                   </div>
-                  <button type="button" className="btn-secondary" onClick={handleAgregarFirmaExtra}>
+                  <button type="button" className="btn-secondary btn-agregar-firma" onClick={handleAgregarFirmaExtra}>
                     Agregar firma
                   </button>
                 </div>

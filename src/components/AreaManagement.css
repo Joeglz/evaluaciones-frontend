@@ -454,6 +454,28 @@
   gap: 0.45rem;
 }
 
+.btn-agregar-firma {
+  text-align: center;
+  background-color: #e12026;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  width: 100%;
+}
+
+.btn-agregar-firma:hover:not(:disabled) {
+  background-color: #b91c1c;
+}
+
+.btn-agregar-firma:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .firma-extra-inputs input {
   width: 100%;
   padding: 0.5rem 0.65rem;
@@ -588,6 +610,17 @@
   font-size: 0.9rem;
 }
 
+.evaluacion-pill-clickable {
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.evaluacion-pill-clickable:hover {
+  background: rgba(225, 32, 38, 0.1);
+  border-color: rgba(225, 32, 38, 0.3);
+  transform: translateY(-1px);
+}
+
 .evaluacion-pill-actions {
   display: flex;
   align-items: center;
@@ -699,6 +732,14 @@
   background: #f5f5f5;
 }
 
+.area-row-clickable {
+  cursor: pointer;
+}
+
+.area-row-clickable:hover {
+  background: #f0f0f0 !important;
+}
+
 .areas-table td {
   padding: 1rem;
   font-size: 0.95rem;
@@ -714,12 +755,12 @@
 
 .status-active {
   background: #4caf50;
-  color: white;
+  color: #ffffff !important;
 }
 
 .status-inactive {
   background: #f44336;
-  color: white;
+  color: #ffffff !important;
 }
 
 .actions-cell {
