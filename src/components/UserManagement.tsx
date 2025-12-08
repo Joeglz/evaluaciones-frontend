@@ -15,7 +15,10 @@ import {
   FaUserTag,
   FaBuilding,
   FaEye,
-  FaEyeSlash
+  FaEyeSlash,
+  FaDownload,
+  FaFileExcel,
+  FaUpload
 } from 'react-icons/fa';
 import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -113,6 +116,12 @@ const UserManagement: React.FC = () => {
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [editProfilePhotoPreview, setEditProfilePhotoPreview] = useState<string | null>(null);
   const [removeProfilePhoto, setRemoveProfilePhoto] = useState<boolean>(false);
+  
+  // Estados para carga masiva
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [bulkUploadFile, setBulkUploadFile] = useState<File | null>(null);
+  const [bulkUploadZipFile, setBulkUploadZipFile] = useState<File | null>(null);
+  const [bulkUploadLoading, setBulkUploadLoading] = useState(false);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -481,6 +490,113 @@ const UserManagement: React.FC = () => {
   const openDeactivateModal = (user: User) => {
     setSelectedUser(user);
     setShowDeactivateModal(true);
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await apiService.downloadUserTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'plantilla_carga_masiva_usuarios.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showSuccess('Plantilla descargada exitosamente');
+    } catch (err: any) {
+      showError(err.message || 'Error al descargar la plantilla');
+    }
+  };
+
+  const handleBulkUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file) {
+      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+        showError('El archivo debe ser un Excel (.xlsx o .xls)');
+        e.target.value = '';
+        return;
+      }
+      setBulkUploadFile(file);
+    }
+  };
+
+  const handleBulkUploadZipFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file) {
+      if (!file.name.endsWith('.zip')) {
+        showError('El archivo debe ser un ZIP (.zip)');
+        e.target.value = '';
+        return;
+      }
+      setBulkUploadZipFile(file);
+    }
+  };
+
+  const handleBulkUpload = async () => {
+    if (!bulkUploadFile) {
+      showError('Por favor selecciona un archivo');
+      return;
+    }
+
+    setBulkUploadLoading(true);
+    try {
+      const result = await apiService.bulkUploadUsers(bulkUploadFile, bulkUploadZipFile || undefined);
+      
+      let message = `Procesamiento completado:\n`;
+      message += `✓ Usuarios creados: ${result.summary.total_created}\n`;
+      if (result.summary.total_errors > 0) {
+        message += `✗ Errores: ${result.summary.total_errors}\n`;
+      }
+      
+      if (result.created_areas.length > 0) {
+        message += `\nÁreas creadas: ${result.created_areas.join(', ')}\n`;
+      }
+      if (result.created_posiciones.length > 0) {
+        message += `Posiciones creadas: ${result.created_posiciones.join(', ')}\n`;
+      }
+      if (result.created_grupos.length > 0) {
+        message += `Grupos creados: ${result.created_grupos.join(', ')}\n`;
+      }
+
+      if (result.summary.images_assigned > 0) {
+        message += `\n✓ Imágenes asignadas: ${result.summary.images_assigned}\n`;
+      }
+      if (result.summary.images_not_found > 0) {
+        message += `⚠ Imágenes no encontradas: ${result.summary.images_not_found}\n`;
+        if (result.images_not_found && result.images_not_found.length > 0) {
+          message += `  Usuarios sin imagen: ${result.images_not_found.map(img => img.username).join(', ')}\n`;
+        }
+      }
+
+      if (result.errors.length > 0) {
+        message += `\nErrores encontrados:\n`;
+        result.errors.forEach(err => {
+          const identifier = err.email || err.numero_empleado || 'N/A';
+          message += `  Fila ${err.row} (${identifier}): ${err.error}\n`;
+        });
+      }
+
+      if (result.summary.total_created > 0) {
+        showSuccess(message);
+      } else if (result.summary.total_errors > 0) {
+        showError(message);
+      } else {
+        showSuccess(message);
+      }
+      
+      setShowBulkUploadModal(false);
+      setBulkUploadFile(null);
+      setBulkUploadZipFile(null);
+      loadUsers();
+      loadAreas();
+      loadPosiciones();
+      loadGrupos();
+    } catch (err: any) {
+      showError(err.message || 'Error al procesar el archivo');
+    } finally {
+      setBulkUploadLoading(false);
+    }
   };
 
   const resetCreateForm = () => {
@@ -1189,9 +1305,17 @@ const UserManagement: React.FC = () => {
     <div className="user-management">
       <div className="user-management-header">
         <h1>Gestión de Usuarios</h1>
-        <button className="btn-primary" onClick={startCreateUser}>
-          <FaPlus /> Nuevo Usuario
-        </button>
+        <div className="header-actions">
+          <button className="btn-secondary" onClick={handleDownloadTemplate}>
+            <FaDownload /> Descargar Plantilla
+          </button>
+          <button className="btn-secondary" onClick={() => setShowBulkUploadModal(true)}>
+            <FaUpload /> Carga Masiva
+          </button>
+          <button className="btn-primary" onClick={startCreateUser}>
+            <FaPlus /> Nuevo Usuario
+          </button>
+        </div>
       </div>
 
       <div className="user-management-filters">
@@ -1579,6 +1703,98 @@ const UserManagement: React.FC = () => {
       )}
 
       {/* Toast Container */}
+      {/* Modal de Carga Masiva */}
+      {showBulkUploadModal && (
+        <div className="modal-overlay" onClick={() => !bulkUploadLoading && setShowBulkUploadModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Carga Masiva de Usuarios</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowBulkUploadModal(false)}
+                disabled={bulkUploadLoading}
+              >
+                <FaTimes />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Seleccionar archivo Excel</label>
+                <div className="bulk-upload-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleDownloadTemplate}
+                    disabled={bulkUploadLoading}
+                  >
+                    <FaDownload /> Descargar Plantilla
+                  </button>
+                </div>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleBulkUploadFileChange}
+                  disabled={bulkUploadLoading}
+                  style={{ marginTop: '10px' }}
+                />
+                {bulkUploadFile && (
+                  <p className="file-selected">
+                    <FaFileExcel /> {bulkUploadFile.name}
+                  </p>
+                )}
+                <p className="field-helper">
+                  El archivo debe ser un Excel (.xlsx o .xls). 
+                  Descarga la plantilla para ver el formato requerido.
+                  <br />
+                  <strong>Nota:</strong> Las áreas, posiciones y grupos se crearán automáticamente si no existen.
+                </p>
+              </div>
+              
+              <div className="form-group" style={{ marginTop: '1.5rem' }}>
+                <label>Seleccionar archivo ZIP con imágenes (Opcional)</label>
+                <input
+                  type="file"
+                  accept=".zip"
+                  onChange={handleBulkUploadZipFileChange}
+                  disabled={bulkUploadLoading}
+                />
+                {bulkUploadZipFile && (
+                  <p className="file-selected">
+                    <FaFileExcel /> {bulkUploadZipFile.name}
+                  </p>
+                )}
+                <p className="field-helper">
+                  Sube un archivo ZIP con las imágenes de los usuarios. 
+                  Los nombres de los archivos deben coincidir con el campo "Nombre de Imagen" del Excel.
+                  <br />
+                  Formatos soportados: JPG, JPEG, PNG, GIF, BMP
+                </p>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowBulkUploadModal(false);
+                  setBulkUploadFile(null);
+                  setBulkUploadZipFile(null);
+                }}
+                disabled={bulkUploadLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleBulkUpload}
+                disabled={!bulkUploadFile || bulkUploadLoading}
+              >
+                {bulkUploadLoading ? 'Procesando...' : <><FaUpload /> Cargar Usuarios</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
     </div>
   );

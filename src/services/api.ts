@@ -900,6 +900,79 @@ class ApiService {
     });
   }
 
+  /**
+   * Descarga la plantilla Excel para carga masiva de usuarios
+   */
+  async downloadUserTemplate(): Promise<Blob> {
+    const csrfToken = this.getCsrfToken();
+    const headers: HeadersInit = {};
+    if (csrfToken) {
+      headers['X-CSRFToken'] = csrfToken;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/users/bulk-upload/template/`, {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al descargar la plantilla');
+    }
+
+    return response.blob();
+  }
+
+  /**
+   * Sube un archivo Excel para carga masiva de usuarios
+   */
+  async bulkUploadUsers(file: File, zipFile?: File): Promise<{
+    success: boolean;
+    summary: {
+      total_created: number;
+      total_errors: number;
+      areas_created: number;
+      posiciones_created: number;
+      grupos_created: number;
+      images_assigned: number;
+      images_not_found: number;
+    };
+    created: Array<{ id: number; username: string; email: string; full_name: string }>;
+    errors: Array<{ row: number; error: string; email?: string; numero_empleado?: string }>;
+    created_areas: string[];
+    created_posiciones: string[];
+    created_grupos: string[];
+    images_assigned: Array<{ user_id: number; username: string; image_name: string }>;
+    images_not_found: Array<{ user_id: number; username: string; image_name: string }>;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    if (zipFile) {
+      formData.append('zip_file', zipFile);
+    }
+
+    const csrfToken = this.getCsrfToken();
+    const headers: HeadersInit = {};
+    if (csrfToken) {
+      headers['X-CSRFToken'] = csrfToken;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/users/bulk-upload/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al procesar el archivo');
+    }
+
+    return response.json();
+  }
+
   // Gestión de áreas
   async getAreas(params?: { 
     search?: string; 
