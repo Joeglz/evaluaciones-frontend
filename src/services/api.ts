@@ -160,6 +160,7 @@ export interface User {
   is_active: boolean;
   date_joined: string;
   last_login: string | null;
+  niveles_completos?: Record<number, boolean>;
 }
 
 export interface UserCreate {
@@ -486,56 +487,24 @@ export interface ProgresoNivel {
   updated_at: string;
 }
 
-export type NivelClave = 'onboarding' | 'nivel_1' | 'nivel_2' | 'nivel_3' | 'nivel_4';
 
-export interface NivelEtiqueta {
-  clave: NivelClave;
-  etiqueta: string;
-}
 
-export interface ComposicionNivelesDetalle {
-  posicion_id: number;
-  posicion_nombre: string;
-  total_usuarios: number;
-  onboarding: number;
+export interface AvanceGlobalGrupo {
+  grupo_id: number;
+  grupo_nombre: string;
   nivel_1: number;
   nivel_2: number;
   nivel_3: number;
   nivel_4: number;
+  entrenamiento: number;
 }
 
-export interface ComposicionNivelesResponse {
+export interface AvanceGlobalResponse {
   area_id: number;
   area_nombre: string;
-  total_usuarios: number;
-  anio: number;
-  mes: number;
-  niveles: NivelEtiqueta[];
-  posiciones: ComposicionNivelesDetalle[];
-}
-
-export interface AvanceMensualPunto {
-  mes: string;
-  niveles_completados: number;
-}
-
-export interface AvanceMensualResponse {
-  area_id: number;
-  area_nombre: string;
-  total_niveles: number;
-  serie: AvanceMensualPunto[];
-}
-
-export interface AvanceAnualPunto {
-  anio: number;
-  niveles_completados: number;
-}
-
-export interface AvanceAnualResponse {
-  area_id: number;
-  area_nombre: string;
-  total_niveles: number;
-  serie: AvanceAnualPunto[];
+  week: number;
+  year: number;
+  grupos: AvanceGlobalGrupo[];
 }
 
 export interface Notificacion {
@@ -938,7 +907,13 @@ class ApiService {
       images_not_found: number;
     };
     created: Array<{ id: number; username: string; email: string; full_name: string }>;
-    errors: Array<{ row: number; error: string; email?: string; numero_empleado?: string }>;
+    errors: Array<{ 
+      row: number; 
+      error: string; 
+      email?: string; 
+      numero_empleado?: string; 
+      ignored?: boolean;
+    }>;
     created_areas: string[];
     created_posiciones: string[];
     created_grupos: string[];
@@ -1484,6 +1459,68 @@ class ApiService {
     });
   }
 
+  async getAvanceGlobal(params: {
+    area_id?: number;
+    week?: number;
+    year?: number;
+  }): Promise<AvanceGlobalResponse[]> {
+    const searchParams = new URLSearchParams();
+    if (params.area_id !== undefined) {
+      searchParams.append('area_id', String(params.area_id));
+    }
+    if (params.week !== undefined) {
+      searchParams.append('week', String(params.week));
+    }
+    if (params.year !== undefined) {
+      searchParams.append('year', String(params.year));
+    }
+    const query = searchParams.toString();
+    const url = query ? `/users/reportes/avance-global/?${query}` : '/users/reportes/avance-global/';
+    return this.request<AvanceGlobalResponse[]>(url, {
+      method: 'GET',
+    });
+  }
+
+  async getAdvanceTrainingMonthly(params: {
+    area_id?: number;
+    month?: number;
+    year?: number;
+  }): Promise<any[]> {
+    const searchParams = new URLSearchParams();
+    if (params.area_id !== undefined) {
+      searchParams.append('area_id', String(params.area_id));
+    }
+    if (params.month !== undefined) {
+      searchParams.append('month', String(params.month));
+    }
+    if (params.year !== undefined) {
+      searchParams.append('year', String(params.year));
+    }
+    const query = searchParams.toString();
+    const url = query ? `/users/reportes/advance-training-monthly/?${query}` : '/users/reportes/advance-training-monthly/';
+    return this.request<any[]>(url, {
+      method: 'GET',
+    });
+  }
+
+  async getAdvanceTrainingMatrix(params: {
+    week?: number;
+    year?: number;
+  }): Promise<any[]> {
+    const searchParams = new URLSearchParams();
+    if (params.week !== undefined) {
+      searchParams.append('week', String(params.week));
+    }
+    if (params.year !== undefined) {
+      searchParams.append('year', String(params.year));
+    }
+    const query = searchParams.toString();
+    const url = query ? `/users/reportes/advance-training-matrix/?${query}` : '/users/reportes/advance-training-matrix/';
+    return this.request<any[]>(url, {
+      method: 'GET',
+    });
+  }
+
   async getProgresosNivel(params?: {
     usuario?: number;
     posicion?: number;
@@ -1510,55 +1547,6 @@ class ApiService {
     });
   }
 
-  async getReporteComposicionNiveles(params: {
-    area_id: number;
-    anio?: number;
-    mes?: number;
-    nivel_maximo?: number;
-  }): Promise<ComposicionNivelesResponse> {
-    const searchParams = new URLSearchParams();
-    searchParams.append('area_id', String(params.area_id));
-    if (typeof params.anio === 'number') {
-      searchParams.append('anio', String(params.anio));
-    }
-    if (typeof params.mes === 'number') {
-      searchParams.append('mes', String(params.mes));
-    }
-    if (typeof params.nivel_maximo === 'number') {
-      searchParams.append('nivel_maximo', String(params.nivel_maximo));
-    }
-
-    const query = searchParams.toString();
-    return this.request<ComposicionNivelesResponse>(
-      `/users/reportes/composicion-niveles/${query ? `?${query}` : ''}`
-    );
-  }
-
-  async getReporteAvanceMensual(params: {
-    area_id: number;
-    meses: string[];
-  }): Promise<AvanceMensualResponse> {
-    const searchParams = new URLSearchParams();
-    searchParams.append('area_id', String(params.area_id));
-    params.meses.forEach((mes) => {
-      searchParams.append('meses', mes);
-    });
-
-    const query = searchParams.toString();
-    return this.request<AvanceMensualResponse>(
-      `/users/reportes/avance-mensual/${query ? `?${query}` : ''}`
-    );
-  }
-
-  async getReporteAvanceAnual(params: { area_id: number }): Promise<AvanceAnualResponse> {
-    const searchParams = new URLSearchParams();
-    searchParams.append('area_id', String(params.area_id));
-
-    const query = searchParams.toString();
-    return this.request<AvanceAnualResponse>(
-      `/users/reportes/avance-anual/${query ? `?${query}` : ''}`
-    );
-  }
 }
 
 export const apiService = new ApiService();

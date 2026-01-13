@@ -18,8 +18,11 @@ import {
   FaEyeSlash,
   FaDownload,
   FaFileExcel,
-  FaUpload
+  FaUpload,
+  FaCheck,
+  FaExclamationTriangle
 } from 'react-icons/fa';
+import * as XLSX from 'xlsx';
 import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
@@ -122,6 +125,41 @@ const UserManagement: React.FC = () => {
   const [bulkUploadFile, setBulkUploadFile] = useState<File | null>(null);
   const [bulkUploadZipFile, setBulkUploadZipFile] = useState<File | null>(null);
   const [bulkUploadLoading, setBulkUploadLoading] = useState(false);
+  
+  // Estados para previsualización
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState<Array<{
+    row: number;
+    email: string;
+    first_name: string;
+    last_name: string;
+    numero_empleado: string;
+    role: string;
+    area: string;
+    posicion: string;
+    grupo: string;
+    fecha_ingreso: string;
+    activo: string;
+    imagen_nombre: string;
+    errors: string[];
+    isIgnored: boolean;
+  }>>([]);
+  
+  // Estados para modal de errores
+  const [showErrorsModal, setShowErrorsModal] = useState(false);
+  const [bulkUploadResult, setBulkUploadResult] = useState<{
+    summary: {
+      total_created: number;
+      total_errors: number;
+      images_assigned: number;
+      images_not_found: number;
+    };
+    errors: Array<{ row: number; error: string; email?: string; numero_empleado?: string; ignored?: boolean }>;
+    created_areas: string[];
+    created_posiciones: string[];
+    created_grupos: string[];
+    images_not_found: Array<{ user_id: number; username: string; image_name: string }>;
+  } | null>(null);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -509,6 +547,119 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const parseExcelFile = async (file: File): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
+          
+          if (jsonData.length < 2) {
+            reject(new Error('El archivo Excel está vacío o no tiene datos'));
+            return;
+          }
+          
+          // Leer encabezados (primera fila)
+          const headers = jsonData[0].map((h: any) => String(h || '').trim());
+          
+          // Mapeo de columnas
+          const columnMap: Record<string, number> = {};
+          const expectedHeaders = [
+            'Email *', 'Nombre *', 'Apellido *', 'Número de Empleado *',
+            'Rol', 'Área', 'Posición', 'Grupo', 'Fecha de Ingreso', 'Activo', 'Nombre de Imagen'
+          ];
+          
+          headers.forEach((header, idx) => {
+            if (expectedHeaders.includes(header)) {
+              columnMap[header] = idx;
+            }
+          });
+          
+          // Validar columnas requeridas
+          const requiredHeaders = ['Nombre *', 'Apellido *', 'Número de Empleado *'];
+          const missingHeaders = requiredHeaders.filter(h => !columnMap[h]);
+          if (missingHeaders.length > 0) {
+            reject(new Error(`Faltan columnas requeridas: ${missingHeaders.join(', ')}`));
+            return;
+          }
+          
+          // Procesar filas (empezar desde la fila 2, saltar la 3 que son instrucciones)
+          const parsedData: typeof previewData = [];
+          
+          for (let rowNum = 1; rowNum < jsonData.length; rowNum++) {
+            const row = jsonData[rowNum];
+            
+            // Saltar filas vacías
+            if (!row.some(cell => cell)) continue;
+            
+            // Leer valores
+            const email = String(row[columnMap['Email *']] || '').trim();
+            const first_name = String(row[columnMap['Nombre *']] || '').trim();
+            const last_name = String(row[columnMap['Apellido *']] || '').trim();
+            const numero_empleado = String(row[columnMap['Número de Empleado *']] || '').trim();
+            const role = String(row[columnMap['Rol']] || '').trim().toUpperCase();
+            const area = String(row[columnMap['Área']] || '').trim();
+            const posicion = String(row[columnMap['Posición']] || '').trim();
+            const grupo = String(row[columnMap['Grupo']] || '').trim();
+            const fecha_ingreso = String(row[columnMap['Fecha de Ingreso']] || '').trim();
+            const activo = String(row[columnMap['Activo']] || '').trim();
+            const imagen_nombre = String(row[columnMap['Nombre de Imagen']] || '').trim();
+            
+            // Validar y generar email si falta
+            let finalEmail = email;
+            if (!finalEmail && numero_empleado) {
+              finalEmail = `${numero_empleado}@averydennison.com`;
+            }
+            
+            // Validar datos
+            const errors: string[] = [];
+            if (!first_name) errors.push('Falta el nombre');
+            if (!last_name) errors.push('Falta el apellido');
+            if (!numero_empleado) errors.push('Falta el número de empleado');
+            
+            // Verificar si el usuario ya existe (esto se hará en el backend, pero podemos marcarlo)
+            const isIgnored = false; // Se determinará en el backend
+            
+            parsedData.push({
+              row: rowNum + 1,
+              email: finalEmail,
+              first_name,
+              last_name,
+              numero_empleado,
+              role: role || 'USUARIO',
+              area,
+              posicion,
+              grupo,
+              fecha_ingreso,
+              activo: activo || 'Sí',
+              imagen_nombre,
+              errors,
+              isIgnored
+            });
+          }
+          
+          // Ordenar: errores primero
+          parsedData.sort((a, b) => {
+            if (a.errors.length > 0 && b.errors.length === 0) return -1;
+            if (a.errors.length === 0 && b.errors.length > 0) return 1;
+            return a.row - b.row;
+          });
+          
+          setPreviewData(parsedData);
+          resolve();
+        } catch (error: any) {
+          reject(new Error(`Error al leer el archivo Excel: ${error.message}`));
+        }
+      };
+      reader.onerror = () => reject(new Error('Error al leer el archivo'));
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
   const handleBulkUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     if (file) {
@@ -533,9 +684,35 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handleBulkUpload = async () => {
+  const handlePreviewBulkUpload = async () => {
+    if (!bulkUploadFile) {
+      showError('Por favor selecciona un archivo Excel');
+      return;
+    }
+    
+    // Parsear y mostrar previsualización
+    try {
+      setBulkUploadLoading(true);
+      await parseExcelFile(bulkUploadFile);
+      setShowBulkUploadModal(false);
+      setShowPreviewModal(true);
+    } catch (error: any) {
+      showError(error.message || 'Error al procesar el archivo Excel');
+    } finally {
+      setBulkUploadLoading(false);
+    }
+  };
+
+  const handleConfirmBulkUpload = async () => {
     if (!bulkUploadFile) {
       showError('Por favor selecciona un archivo');
+      return;
+    }
+
+    // Validar que no haya errores
+    const hasErrors = previewData.some((item: typeof previewData[0]) => item.errors.length > 0);
+    if (hasErrors) {
+      showError('Por favor corrige todos los errores antes de continuar');
       return;
     }
 
@@ -543,51 +720,45 @@ const UserManagement: React.FC = () => {
     try {
       const result = await apiService.bulkUploadUsers(bulkUploadFile, bulkUploadZipFile || undefined);
       
-      let message = `Procesamiento completado:\n`;
-      message += `✓ Usuarios creados: ${result.summary.total_created}\n`;
-      if (result.summary.total_errors > 0) {
-        message += `✗ Errores: ${result.summary.total_errors}\n`;
-      }
+      // Guardar el resultado para mostrarlo en el modal
+      setBulkUploadResult({
+        summary: result.summary,
+        errors: result.errors,
+        created_areas: result.created_areas,
+        created_posiciones: result.created_posiciones,
+        created_grupos: result.created_grupos,
+        images_not_found: result.images_not_found || []
+      });
       
-      if (result.created_areas.length > 0) {
-        message += `\nÁreas creadas: ${result.created_areas.join(', ')}\n`;
-      }
-      if (result.created_posiciones.length > 0) {
-        message += `Posiciones creadas: ${result.created_posiciones.join(', ')}\n`;
-      }
-      if (result.created_grupos.length > 0) {
-        message += `Grupos creados: ${result.created_grupos.join(', ')}\n`;
-      }
-
-      if (result.summary.images_assigned > 0) {
-        message += `\n✓ Imágenes asignadas: ${result.summary.images_assigned}\n`;
-      }
-      if (result.summary.images_not_found > 0) {
-        message += `⚠ Imágenes no encontradas: ${result.summary.images_not_found}\n`;
-        if (result.images_not_found && result.images_not_found.length > 0) {
-          message += `  Usuarios sin imagen: ${result.images_not_found.map(img => img.username).join(', ')}\n`;
-        }
-      }
-
-      if (result.errors.length > 0) {
-        message += `\nErrores encontrados:\n`;
-        result.errors.forEach(err => {
-          const identifier = err.email || err.numero_empleado || 'N/A';
-          message += `  Fila ${err.row} (${identifier}): ${err.error}\n`;
-        });
-      }
-
-      if (result.summary.total_created > 0) {
-        showSuccess(message);
-      } else if (result.summary.total_errors > 0) {
-        showError(message);
-      } else {
-        showSuccess(message);
-      }
-      
-      setShowBulkUploadModal(false);
+      // Cerrar el modal de previsualización
+      setShowPreviewModal(false);
       setBulkUploadFile(null);
       setBulkUploadZipFile(null);
+      setPreviewData([]);
+      
+      // Mostrar mensaje de éxito si hay usuarios creados
+      if (result.summary.total_created > 0) {
+        let successMessage = `✓ Usuarios creados: ${result.summary.total_created}`;
+        if (result.created_areas.length > 0) {
+          successMessage += `\nÁreas creadas: ${result.created_areas.join(', ')}`;
+        }
+        if (result.created_posiciones.length > 0) {
+          successMessage += `\nPosiciones creadas: ${result.created_posiciones.join(', ')}`;
+        }
+        if (result.created_grupos.length > 0) {
+          successMessage += `\nGrupos creados: ${result.created_grupos.join(', ')}`;
+        }
+        if (result.summary.images_assigned > 0) {
+          successMessage += `\n✓ Imágenes asignadas: ${result.summary.images_assigned}`;
+        }
+        showSuccess(successMessage);
+      }
+      
+      // Mostrar modal de errores si hay errores
+      if (result.summary.total_errors > 0) {
+        setShowErrorsModal(true);
+      }
+      
       loadUsers();
       loadAreas();
       loadPosiciones();
@@ -1785,10 +1956,393 @@ const UserManagement: React.FC = () => {
               </button>
               <button
                 className="btn-primary"
-                onClick={handleBulkUpload}
+                onClick={async () => {
+                  if (!bulkUploadFile) {
+                    showError('Por favor selecciona un archivo Excel');
+                    return;
+                  }
+                  
+                  // Parsear y mostrar previsualización
+                  try {
+                    setBulkUploadLoading(true);
+                    await parseExcelFile(bulkUploadFile);
+                    setShowBulkUploadModal(false);
+                    setShowPreviewModal(true);
+                  } catch (error: any) {
+                    showError(error.message || 'Error al procesar el archivo Excel');
+                  } finally {
+                    setBulkUploadLoading(false);
+                  }
+                }}
                 disabled={!bulkUploadFile || bulkUploadLoading}
               >
                 {bulkUploadLoading ? 'Procesando...' : <><FaUpload /> Cargar Usuarios</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Previsualización */}
+      {showPreviewModal && (
+        <div className="modal-overlay" onClick={() => !bulkUploadLoading && setShowPreviewModal(false)}>
+          <div className="modal-content modal-preview" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Previsualización de Carga Masiva</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setBulkUploadFile(null);
+                  setPreviewData([]);
+                }}
+                disabled={bulkUploadLoading}
+              >
+                <FaTimes />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="bulk-upload-notice">
+                <strong>Nota:</strong> Si un usuario no tiene email, se completará automáticamente con el formato: <code>numero_empleado@averydennison.com</code>
+                <br />
+                <strong>Instrucciones:</strong> Revisa y corrige los errores marcados en rojo. Los usuarios con errores aparecen primero en la tabla.
+              </div>
+
+              <div className="preview-table-container">
+                <table className="preview-table">
+                  <thead>
+                    <tr>
+                      <th>Fila</th>
+                      <th>Email</th>
+                      <th>Nombre</th>
+                      <th>Apellido</th>
+                      <th>N° Empleado</th>
+                      <th>Rol</th>
+                      <th>Área</th>
+                      <th>Posición</th>
+                      <th>Grupo</th>
+                      <th>Fecha Ingreso</th>
+                      <th>Activo</th>
+                      <th>Errores</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewData.map((item, index) => (
+                      <tr key={index} className={item.errors.length > 0 ? 'preview-row-error' : ''}>
+                        <td className="preview-row-number">{item.row}</td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.email}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].email = e.target.value;
+                              // Revalidar
+                              const errors: string[] = [];
+                              if (!newData[index].first_name) errors.push('Falta el nombre');
+                              if (!newData[index].last_name) errors.push('Falta el apellido');
+                              if (!newData[index].numero_empleado) errors.push('Falta el número de empleado');
+                              if (!newData[index].email && !newData[index].numero_empleado) {
+                                errors.push('Falta email o número de empleado');
+                              }
+                              newData[index].errors = errors;
+                              setPreviewData(newData);
+                            }}
+                            className={item.errors.length > 0 ? 'preview-input-error' : ''}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.first_name}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].first_name = e.target.value;
+                              const errors: string[] = [];
+                              if (!newData[index].first_name) errors.push('Falta el nombre');
+                              if (!newData[index].last_name) errors.push('Falta el apellido');
+                              if (!newData[index].numero_empleado) errors.push('Falta el número de empleado');
+                              newData[index].errors = errors;
+                              setPreviewData(newData);
+                            }}
+                            className={item.errors.length > 0 ? 'preview-input-error' : ''}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.last_name}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].last_name = e.target.value;
+                              const errors: string[] = [];
+                              if (!newData[index].first_name) errors.push('Falta el nombre');
+                              if (!newData[index].last_name) errors.push('Falta el apellido');
+                              if (!newData[index].numero_empleado) errors.push('Falta el número de empleado');
+                              newData[index].errors = errors;
+                              setPreviewData(newData);
+                            }}
+                            className={item.errors.length > 0 ? 'preview-input-error' : ''}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.numero_empleado}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].numero_empleado = e.target.value;
+                              // Auto-completar email si falta
+                              if (!newData[index].email && e.target.value) {
+                                newData[index].email = `${e.target.value}@averydennison.com`;
+                              }
+                              const errors: string[] = [];
+                              if (!newData[index].first_name) errors.push('Falta el nombre');
+                              if (!newData[index].last_name) errors.push('Falta el apellido');
+                              if (!newData[index].numero_empleado) errors.push('Falta el número de empleado');
+                              newData[index].errors = errors;
+                              setPreviewData(newData);
+                            }}
+                            className={item.errors.length > 0 ? 'preview-input-error' : ''}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={item.role}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].role = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                          >
+                            <option value="USUARIO">Usuario Regular</option>
+                            <option value="ENTRENADOR">Entrenador</option>
+                            <option value="SUPERVISOR">Supervisor</option>
+                            <option value="ADMIN">Administrador</option>
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.area}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].area = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.posicion}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].posicion = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.grupo}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].grupo = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.fecha_ingreso}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].fecha_ingreso = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                            placeholder="YYYY-MM-DD"
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={item.activo}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].activo = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                          >
+                            <option value="Sí">Sí</option>
+                            <option value="No">No</option>
+                          </select>
+                        </td>
+                        <td className="preview-errors-cell">
+                          {item.errors.length > 0 ? (
+                            <div className="preview-errors">
+                              {item.errors.map((err: string, errIdx: number) => (
+                                <span key={errIdx} className="preview-error-badge">
+                                  <FaExclamationTriangle /> {err}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="preview-ok">
+                              <FaCheck /> OK
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setBulkUploadFile(null);
+                  setPreviewData([]);
+                }}
+                disabled={bulkUploadLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleConfirmBulkUpload}
+                disabled={bulkUploadLoading || previewData.some((item: typeof previewData[0]) => item.errors.length > 0)}
+              >
+                {bulkUploadLoading ? 'Procesando...' : <><FaUpload /> Confirmar y Cargar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Errores de Carga Masiva */}
+      {showErrorsModal && bulkUploadResult && (
+        <div className="modal-overlay" onClick={() => setShowErrorsModal(false)}>
+          <div className="modal-content modal-errors" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Procesamiento completado</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowErrorsModal(false)}
+              >
+                <FaTimes />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="bulk-upload-notice">
+                <strong>Nota:</strong> Si un usuario no tiene email, se completará automáticamente con el formato: <code>numero_empleado@averydennison.com</code>
+              </div>
+              
+              <div className="bulk-upload-summary">
+                <div className="summary-item">
+                  <span className="summary-label">Usuarios creados:</span>
+                  <span className="summary-value success">{bulkUploadResult.summary.total_created}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="summary-label">Errores:</span>
+                  <span className="summary-value error">{bulkUploadResult.summary.total_errors}</span>
+                </div>
+                {bulkUploadResult.summary.images_assigned > 0 && (
+                  <div className="summary-item">
+                    <span className="summary-label">Imágenes asignadas:</span>
+                    <span className="summary-value success">{bulkUploadResult.summary.images_assigned}</span>
+                  </div>
+                )}
+                {bulkUploadResult.summary.images_not_found > 0 && (
+                  <div className="summary-item">
+                    <span className="summary-label">Imágenes no encontradas:</span>
+                    <span className="summary-value warning">{bulkUploadResult.summary.images_not_found}</span>
+                  </div>
+                )}
+              </div>
+
+              {bulkUploadResult.created_areas.length > 0 && (
+                <div className="bulk-upload-info">
+                  <strong>Áreas creadas:</strong> {bulkUploadResult.created_areas.join(', ')}
+                </div>
+              )}
+              {bulkUploadResult.created_posiciones.length > 0 && (
+                <div className="bulk-upload-info">
+                  <strong>Posiciones creadas:</strong> {bulkUploadResult.created_posiciones.join(', ')}
+                </div>
+              )}
+              {bulkUploadResult.created_grupos.length > 0 && (
+                <div className="bulk-upload-info">
+                  <strong>Grupos creados:</strong> {bulkUploadResult.created_grupos.join(', ')}
+                </div>
+              )}
+
+              {bulkUploadResult.errors.length > 0 && (
+                <div className="errors-section">
+                  <h4>Errores encontrados:</h4>
+                  <div className="errors-table-container">
+                    <table className="errors-table">
+                      <thead>
+                        <tr>
+                          <th>Fila</th>
+                          <th>Identificador</th>
+                          <th>Error</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkUploadResult.errors.map((err, index) => {
+                          const identifier = err.email || err.numero_empleado || 'N/A';
+                          const isIgnored = err.ignored === true;
+                          return (
+                            <tr key={index} className="error-row">
+                              <td className="error-row-number">{err.row}</td>
+                              <td className="error-identifier">{identifier}</td>
+                              <td className="error-message-text">
+                                {err.error}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {bulkUploadResult.images_not_found.length > 0 && (
+                <div className="errors-section">
+                  <h4>Imágenes no encontradas:</h4>
+                  <div className="errors-table-container">
+                    <table className="errors-table">
+                      <thead>
+                        <tr>
+                          <th>Usuario</th>
+                          <th>Nombre de imagen</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkUploadResult.images_not_found.map((img, index) => (
+                          <tr key={index} className="error-row">
+                            <td>{img.username}</td>
+                            <td className="error-message">{img.image_name}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-primary"
+                onClick={() => setShowErrorsModal(false)}
+              >
+                Cerrar
               </button>
             </div>
           </div>

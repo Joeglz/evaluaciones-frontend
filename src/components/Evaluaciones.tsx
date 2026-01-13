@@ -51,7 +51,7 @@ const calcularResumenNiveles = (
     const estadoFirmasUsuario = (evaluacionGuardada?.estado_firmas_usuario || '').toLowerCase();
     const firmasCompletas = estadoFirmasUsuario === 'firmas_completas';
 
-    if (firmasCompletas && (estado === 'completada' || evaluacion.resultado !== null)) {
+    if (firmasCompletas && (estado === 'completada' || evaluacionGuardada?.resultado_final !== null)) {
       stats[nivel].completadas += 1;
     }
   });
@@ -415,10 +415,21 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     const cargarResumenes = async () => {
       for (const usuario of usuariosPendientes) {
         try {
+          // Obtener el área del usuario (puede ser un array o un número)
+          const areaId = Array.isArray(usuario.areas) && usuario.areas.length > 0 
+            ? usuario.areas[0] 
+            : (typeof usuario.areas === 'number' ? usuario.areas : undefined);
+
+          if (!areaId || !usuario.posicion) {
+            // Si no tiene área o posición, saltar este usuario
+            console.log(`Saltando usuario ${usuario.id}: sin área o posición`, { areaId, posicion: usuario.posicion });
+            continue;
+          }
+
           const [evaluaciones, evaluacionesGuardadas] = await Promise.all([
             apiService.getEvaluaciones({
-              area_id: usuario.areas[0],
-              posicion_id: usuario.posicion || undefined,
+              area_id: areaId,
+              posicion_id: usuario.posicion,
               es_plantilla: false
             }),
             apiService.getEvaluacionesUsuario({
@@ -436,11 +447,18 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           });
 
           const { completados } = calcularResumenNiveles(evaluaciones.results || [], guardadasMap);
+          
+          console.log(`Resumen de niveles para usuario ${usuario.id} (${usuario.full_name}):`, completados);
 
-          setNivelesCompletosPorUsuario((prev) => ({
-            ...prev,
-            [usuario.id]: completados
-          }));
+          if (!cancelado) {
+            setNivelesCompletosPorUsuario((prev) => {
+              // Siempre actualizar con los nuevos datos calculados
+              return {
+                ...prev,
+                [usuario.id]: completados
+              };
+            });
+          }
         } catch (prefetchError) {
           console.error('Error al precargar resumen de niveles para el usuario', usuario.id, prefetchError);
         }
@@ -452,7 +470,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     return () => {
       cancelado = true;
     };
-  }, [currentView, filteredUsuarios, nivelesCompletosPorUsuario]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, filteredUsuarios]);
 
   useEffect(() => {
     if (!selectedUser) {
@@ -1688,8 +1707,23 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 </div>
                 <div className="usuario-cuadro">
                   {[4, 1, 3, 2].map((nivel) => {
-                    const resumenUsuario = nivelesCompletosPorUsuario[user.id] || {};
-                    const completado = Boolean(resumenUsuario[nivel]);
+                    // Usar niveles_completos del backend como fuente principal
+                    let completado = Boolean(user.niveles_completos?.[nivel]);
+                    
+                    // Fallback: usar nivelesCompletosPorUsuario si no viene del backend
+                    if (!completado) {
+                      const resumenUsuario = nivelesCompletosPorUsuario[user.id] || {};
+                      completado = Boolean(resumenUsuario[nivel]);
+                    }
+                    
+                    // Último fallback: usar progresosNivel
+                    if (!completado && progresosNivel[user.id]) {
+                      const progresoUsuario = progresosNivel[user.id];
+                      if (progresoUsuario && progresoUsuario[nivel] !== undefined) {
+                        completado = progresoUsuario[nivel].completado;
+                      }
+                    }
+                    
                     const esActivo = selectedUser?.id === user.id && nivelSeleccionado === nivel;
                     const clases = [
                       'cuadro-item',
@@ -1760,6 +1794,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         return false;
       }
 
+      // Usar niveles_completos del backend como fuente principal
+      if (selectedUser.niveles_completos && selectedUser.niveles_completos[nivel] !== undefined) {
+        return Boolean(selectedUser.niveles_completos[nivel]);
+      }
+
+      // Fallback: usar nivelesCompletosPorUsuario si no viene del backend
+      const resumenUsuario = nivelesCompletosPorUsuario[selectedUser.id];
+      if (resumenUsuario && resumenUsuario[nivel] !== undefined) {
+        return Boolean(resumenUsuario[nivel]);
+      }
+
+      // Si no hay datos en nivelesCompletosPorUsuario, intentar con progresosNivel
+      const progresoUsuario = progresosNivel[selectedUser.id];
+      if (progresoUsuario && progresoUsuario[nivel] !== undefined) {
+        return progresoUsuario[nivel].completado;
+      }
+
+      // Fallback: usar la lógica basada en evaluaciones si no hay datos precargados
       const evaluacionUsuarioCompletas = Object.values(evaluacionesUsuarioGuardadas).filter(
         (registro) => registro.usuario === selectedUser.id
       );
@@ -1792,6 +1844,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         });
       }
 
+      // Último fallback: usar resumenActual
       return Boolean(resumenActual[nivel]);
     };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FaClipboardList, 
-  FaChartBar, 
+  FaChartBar,
   FaBell, 
   FaComments, 
   FaCog
@@ -121,16 +121,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           return renderAccessDenied();
         }
         return <Settings userRole={role} />;
-      case 'notificaciones':
-        if (!allowedMenuItems.includes('notificaciones')) {
-          return renderAccessDenied();
-        }
-        return <Notificaciones />;
       case 'reportes':
         if (!allowedMenuItems.includes('reportes')) {
           return renderAccessDenied();
         }
         return <Reportes />;
+      case 'notificaciones':
+        if (!allowedMenuItems.includes('notificaciones')) {
+          return renderAccessDenied();
+        }
+        return <Notificaciones />;
       case 'mensajes':
         if (!allowedMenuItems.includes('mensajes')) {
           return renderAccessDenied();
