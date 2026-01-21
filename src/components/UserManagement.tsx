@@ -7,7 +7,6 @@ import {
   FaCheckCircle, 
   FaKey, 
   FaSearch,
-  FaFilter,
   FaTimes,
   FaArrowLeft,
   FaArrowRight,
@@ -1474,21 +1473,6 @@ const UserManagement: React.FC = () => {
 
   return (
     <div className="user-management">
-      <div className="user-management-header">
-        <h1>Gestión de Usuarios</h1>
-        <div className="header-actions">
-          <button className="btn-secondary" onClick={handleDownloadTemplate}>
-            <FaDownload /> Descargar Plantilla
-          </button>
-          <button className="btn-secondary" onClick={() => setShowBulkUploadModal(true)}>
-            <FaUpload /> Carga Masiva
-          </button>
-          <button className="btn-primary" onClick={startCreateUser}>
-            <FaPlus /> Nuevo Usuario
-          </button>
-        </div>
-      </div>
-
       <div className="user-management-filters">
         <div className="search-box">
           {searching ? (
@@ -1507,7 +1491,6 @@ const UserManagement: React.FC = () => {
         </div>
         
         <div className="filter-group">
-          <FaFilter />
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
             <option value="">Todos los roles</option>
             <option value="ADMIN">Administrador</option>
@@ -1521,6 +1504,18 @@ const UserManagement: React.FC = () => {
             <option value="active">Activos</option>
             <option value="inactive">Inactivos</option>
           </select>
+        </div>
+
+        <div className="header-actions">
+          <button className="btn-secondary" onClick={handleDownloadTemplate}>
+            <FaDownload /> Descargar Plantilla
+          </button>
+          <button className="btn-secondary" onClick={() => setShowBulkUploadModal(true)}>
+            <FaUpload /> Carga Masiva
+          </button>
+          <button className="btn-primary" onClick={startCreateUser}>
+            <FaPlus /> Nuevo Usuario
+          </button>
         </div>
       </div>
 
@@ -1988,7 +1983,14 @@ const UserManagement: React.FC = () => {
         <div className="modal-overlay" onClick={() => !bulkUploadLoading && setShowPreviewModal(false)}>
           <div className="modal-content modal-preview" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Previsualización de Carga Masiva</h3>
+              <div>
+                <h3>Previsualización de Carga Masiva</h3>
+                <div className="bulk-upload-notice">
+                  <strong>Nota:</strong> Si un usuario no tiene email, se completará automáticamente con el formato: <code>numero_empleado@averydennison.com</code>
+                  <br />
+                  <strong>Instrucciones:</strong> Revisa y corrige los errores marcados en rojo. Los usuarios con errores aparecen primero en la tabla.
+                </div>
+              </div>
               <button 
                 className="modal-close" 
                 onClick={() => {
@@ -2002,12 +2004,6 @@ const UserManagement: React.FC = () => {
               </button>
             </div>
             <div className="modal-body">
-              <div className="bulk-upload-notice">
-                <strong>Nota:</strong> Si un usuario no tiene email, se completará automáticamente con el formato: <code>numero_empleado@averydennison.com</code>
-                <br />
-                <strong>Instrucciones:</strong> Revisa y corrige los errores marcados en rojo. Los usuarios con errores aparecen primero en la tabla.
-              </div>
-
               <div className="preview-table-container">
                 <table className="preview-table">
                   <thead>
