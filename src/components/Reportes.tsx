@@ -302,7 +302,7 @@ const Reportes: React.FC = () => {
                     <tr
                       key={grupo.grupo_id || index}
                       className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
-                    >
+                >
                       <td className="grupo-cell">{grupo.grupo_nombre}</td>
                       <td>{formatPercentage(grupo.nivel_1)}</td>
                       <td>{formatPercentage(grupo.nivel_2)}</td>
@@ -322,8 +322,8 @@ const Reportes: React.FC = () => {
           )}
                 </div>
       )}
-    </>
-  );
+              </>
+            );
 
   const renderAdvanceTrainingMatrix = () => {
     // Targets fijos por nivel
@@ -410,11 +410,11 @@ const Reportes: React.FC = () => {
                         <td className="matrix-level-cell">{levelNames[level]}</td>
                         {areas.map((area) => {
                           const areaData = levelData?.areas?.find((a: any) => a.area_id === area.id);
-                          return (
+              return (
                             <td key={`${area.id}-${level}-actual`} className="matrix-actual-cell">
                               {areaData ? `${areaData.porcentaje.toFixed(2)}%` : '0.00%'}
                             </td>
-                          );
+              );
                         })}
                         <td className="matrix-average-cell">
                           {levelData ? `${levelData.porcentaje.toFixed(2)}%` : '0.00%'}
@@ -425,13 +425,13 @@ const Reportes: React.FC = () => {
                 })}
               </tbody>
             </table>
-          </div>
+                </div>
         )}
       </>
     );
   };
 
-  return (
+            return (
     <div className="reportes-container">
       <div className="reportes-header">
         <h1>Reportes</h1>
@@ -462,7 +462,7 @@ const Reportes: React.FC = () => {
         {activeTab === 'avance-global' && renderAvanceGlobal()}
         {activeTab === 'advance-training-monthly' && renderAdvanceTrainingMonthly()}
         {activeTab === 'advance-training-matrix' && renderAdvanceTrainingMatrix()}
-      </div>
+                </div>
         </div>
   );
 };

@@ -19,10 +19,11 @@ import {
   FaFileExcel,
   FaUpload,
   FaCheck,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaList
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, getMediaUrl } from '../services/api';
+import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, Evaluacion, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './UserManagement.css';
@@ -140,12 +141,27 @@ const UserManagement: React.FC = () => {
     posicion: string;
     grupo: string;
     fecha_ingreso: string;
+    nivel: string;
     activo: string;
     imagen_nombre: string;
     errors: string[];
     isIgnored: boolean;
   }>>([]);
   
+  // Estados para modal de evaluaciones del nivel
+  const [showEvaluacionesModal, setShowEvaluacionesModal] = useState(false);
+  const [evaluacionesNivel, setEvaluacionesNivel] = useState<Array<{
+    nivel: number;
+    evaluaciones: Evaluacion[];
+  }>>([]);
+  const [loadingEvaluaciones, setLoadingEvaluaciones] = useState(false);
+  const [usuarioEvaluacionesInfo, setUsuarioEvaluacionesInfo] = useState<{
+    nombre: string;
+    area: string;
+    posicion: string;
+    nivel: number;
+  } | null>(null);
+
   // Estados para modal de errores
   const [showErrorsModal, setShowErrorsModal] = useState(false);
   const [bulkUploadResult, setBulkUploadResult] = useState<{
@@ -578,7 +594,7 @@ const UserManagement: React.FC = () => {
           const columnMap: Record<string, number> = {};
           const expectedHeaders = [
             'Email *', 'Nombre *', 'Apellido *', 'Número de Empleado *',
-            'Rol', 'Área', 'Posición', 'Grupo', 'Fecha de Ingreso', 'Activo', 'Nombre de Imagen'
+            'Rol', 'Área', 'Posición', 'Grupo', 'Fecha de Ingreso', 'Nivel', 'Activo', 'Nombre de Imagen'
           ];
           
           headers.forEach((header, idx) => {
@@ -614,6 +630,7 @@ const UserManagement: React.FC = () => {
             const posicion = String(row[columnMap['Posición']] || '').trim();
             const grupo = String(row[columnMap['Grupo']] || '').trim();
             const fecha_ingreso = String(row[columnMap['Fecha de Ingreso']] || '').trim();
+            const nivel = String(row[columnMap['Nivel']] || '').trim();
             const activo = String(row[columnMap['Activo']] || '').trim();
             const imagen_nombre = String(row[columnMap['Nombre de Imagen']] || '').trim();
             
@@ -643,6 +660,7 @@ const UserManagement: React.FC = () => {
               posicion,
               grupo,
               fecha_ingreso,
+              nivel,
               activo: activo || 'Sí',
               imagen_nombre,
               errors,
@@ -708,6 +726,102 @@ const UserManagement: React.FC = () => {
       showError(error.message || 'Error al procesar el archivo Excel');
     } finally {
       setBulkUploadLoading(false);
+    }
+  };
+
+  const handleVerEvaluaciones = async (item: typeof previewData[0], index: number) => {
+    if (!item.area || !item.posicion || !item.nivel) {
+      showError('Debe especificar Área, Posición y Nivel para ver las evaluaciones');
+      return;
+    }
+
+    const nivelNum = parseInt(item.nivel);
+    if (isNaN(nivelNum) || nivelNum < 1 || nivelNum > 4) {
+      showError('El nivel debe ser un número entre 1 y 4');
+      return;
+    }
+
+    setLoadingEvaluaciones(true);
+    setShowEvaluacionesModal(true);
+    setUsuarioEvaluacionesInfo({
+      nombre: `${item.first_name} ${item.last_name}`,
+      area: item.area,
+      posicion: item.posicion,
+      nivel: nivelNum
+    });
+
+    try {
+      // Buscar el área
+      const areasData = await apiService.getAreas({ is_active: true });
+      const area = areasData.results.find(a => a.name.toLowerCase() === item.area.toLowerCase());
+      
+      if (!area) {
+        setEvaluacionesNivel([]);
+        setLoadingEvaluaciones(false);
+        return;
+      }
+
+      // Buscar la posición dentro del área
+      const posicionesData = await apiService.getPosiciones({ is_active: true });
+      const posicion = posicionesData.results.find(
+        p => p.area === area.id && p.name.toLowerCase() === item.posicion.toLowerCase()
+      );
+
+      if (!posicion) {
+        setEvaluacionesNivel([]);
+        setLoadingEvaluaciones(false);
+        return;
+      }
+
+      // Obtener los niveles de la posición
+      const nivelesData = await apiService.getNivelesPosicion({ posicion_id: posicion.id });
+      const niveles = nivelesData.results.filter(n => n.nivel <= nivelNum && n.is_active);
+
+      // Obtener evaluaciones para cada nivel (obtener todas las páginas)
+      const evaluacionesPorNivel: Array<{ nivel: number; evaluaciones: Evaluacion[] }> = [];
+      
+      for (const nivel of niveles) {
+        try {
+          let allEvaluaciones: Evaluacion[] = [];
+          let currentPage = 1;
+          let hasMore = true;
+          
+          while (hasMore) {
+            const evalResponse = await apiService.getEvaluaciones({
+              nivel_posicion_id: nivel.id,
+              area_id: area.id,
+              posicion_id: posicion.id,
+              es_plantilla: false,
+              page: currentPage
+            });
+            
+            if (evalResponse.results && evalResponse.results.length > 0) {
+              allEvaluaciones = [...allEvaluaciones, ...evalResponse.results];
+            }
+            
+            hasMore = evalResponse.next !== null && evalResponse.next !== undefined;
+            currentPage++;
+          }
+          
+          evaluacionesPorNivel.push({
+            nivel: nivel.nivel,
+            evaluaciones: allEvaluaciones
+          });
+        } catch (err) {
+          console.error(`Error al cargar evaluaciones para nivel ${nivel.nivel}:`, err);
+          evaluacionesPorNivel.push({
+            nivel: nivel.nivel,
+            evaluaciones: []
+          });
+        }
+      }
+
+      setEvaluacionesNivel(evaluacionesPorNivel);
+    } catch (error: any) {
+      showError(`Error al cargar evaluaciones: ${error.message}`);
+      setEvaluacionesNivel([]);
+    } finally {
+      setLoadingEvaluaciones(false);
     }
   };
 
@@ -2088,7 +2202,9 @@ const UserManagement: React.FC = () => {
                       <th>Posición</th>
                       <th>Grupo</th>
                       <th>Fecha Ingreso</th>
+                      <th>Nivel</th>
                       <th>Activo</th>
+                      <th>Evaluaciones</th>
                       <th>Errores</th>
                     </tr>
                   </thead>
@@ -2229,7 +2345,19 @@ const UserManagement: React.FC = () => {
                               newData[index].fecha_ingreso = e.target.value;
                               setPreviewData(newData);
                             }}
-                            placeholder="YYYY-MM-DD"
+                            placeholder="MM/DD/YYYY"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={item.nivel}
+                            onChange={(e) => {
+                              const newData = [...previewData];
+                              newData[index].nivel = e.target.value;
+                              setPreviewData(newData);
+                            }}
+                            placeholder="1-4"
                           />
                         </td>
                         <td>
@@ -2244,6 +2372,17 @@ const UserManagement: React.FC = () => {
                             <option value="Sí">Sí</option>
                             <option value="No">No</option>
                           </select>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-icon btn-view"
+                            onClick={() => handleVerEvaluaciones(item, index)}
+                            disabled={!item.area || !item.posicion || !item.nivel}
+                            title="Ver evaluaciones que se completarán"
+                          >
+                            <FaList /> Ver
+                          </button>
                         </td>
                         <td className="preview-errors-cell">
                           {item.errors.length > 0 ? (
@@ -2284,6 +2423,89 @@ const UserManagement: React.FC = () => {
                 disabled={bulkUploadLoading || previewData.some((item: typeof previewData[0]) => item.errors.length > 0)}
               >
                 {bulkUploadLoading ? 'Procesando...' : <><FaUpload /> Confirmar y Cargar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Evaluaciones del Nivel */}
+      {showEvaluacionesModal && usuarioEvaluacionesInfo && (
+        <div className="modal-overlay" onClick={() => setShowEvaluacionesModal(false)}>
+          <div className="modal-content modal-evaluaciones" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Evaluaciones que se completarán</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => {
+                  setShowEvaluacionesModal(false);
+                  setEvaluacionesNivel([]);
+                  setUsuarioEvaluacionesInfo(null);
+                }}
+              >
+                <FaTimes />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="evaluaciones-info">
+                <p><strong>Usuario:</strong> {usuarioEvaluacionesInfo.nombre}</p>
+                <p><strong>Área:</strong> {usuarioEvaluacionesInfo.area}</p>
+                <p><strong>Posición:</strong> {usuarioEvaluacionesInfo.posicion}</p>
+                <p><strong>Nivel:</strong> {usuarioEvaluacionesInfo.nivel}</p>
+                <p className="evaluaciones-note">
+                  Se completarán todas las evaluaciones del nivel {usuarioEvaluacionesInfo.nivel} y niveles anteriores (1 hasta {usuarioEvaluacionesInfo.nivel})
+                </p>
+              </div>
+              
+              {loadingEvaluaciones ? (
+                <div className="loading-container">
+                  <div className="spinner"></div>
+                  <p>Cargando evaluaciones...</p>
+                </div>
+              ) : evaluacionesNivel.length === 0 ? (
+                <div className="no-evaluaciones">
+                  <p>No se encontraron evaluaciones para los niveles especificados.</p>
+                  <p className="help-text">Asegúrate de que:</p>
+                  <ul>
+                    <li>El área y posición existen en el sistema</li>
+                    <li>Existen niveles creados para esa posición</li>
+                    <li>Existen evaluaciones creadas para esos niveles</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="evaluaciones-list">
+                  {evaluacionesNivel.map((nivelData) => (
+                    <div key={nivelData.nivel} className="nivel-evaluaciones">
+                      <h4>Nivel {nivelData.nivel}</h4>
+                      {nivelData.evaluaciones.length === 0 ? (
+                        <p className="no-evaluaciones-nivel">No hay evaluaciones para este nivel</p>
+                      ) : (
+                        <ul className="evaluaciones-items">
+                          {nivelData.evaluaciones.map((evaluacion) => (
+                            <li key={evaluacion.id} className="evaluacion-item">
+                              <span className="evaluacion-nombre">{evaluacion.nombre}</span>
+                              {evaluacion.nivel_posicion_data && (
+                                <span className="evaluacion-nivel-badge">Nivel {evaluacion.nivel_posicion_data.nivel}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowEvaluacionesModal(false);
+                  setEvaluacionesNivel([]);
+                  setUsuarioEvaluacionesInfo(null);
+                }}
+              >
+                Cerrar
               </button>
             </div>
           </div>

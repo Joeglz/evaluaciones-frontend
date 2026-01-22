@@ -449,15 +449,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           });
 
           const { completados } = calcularResumenNiveles(evaluaciones.results || [], guardadasMap);
-          
+
           console.log(`Resumen de niveles para usuario ${usuario.id} (${usuario.full_name}):`, completados);
 
           if (!cancelado) {
             setNivelesCompletosPorUsuario((prev) => {
               // Siempre actualizar con los nuevos datos calculados
               return {
-                ...prev,
-                [usuario.id]: completados
+            ...prev,
+            [usuario.id]: completados
               };
             });
           }
@@ -1251,7 +1251,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           // Si se entró desde el botón Onboarding del usuario, regresar al detalle del usuario
           // Primero intentar usar selectedUser si coincide con el ID
           let usuarioSeleccionado = selectedUser && selectedUser.id === onboardingUsuarioId
-            ? selectedUser
+              ? selectedUser
             : null;
           
           // Si no coincide, buscar en la lista de usuarios
@@ -1269,13 +1269,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             setCurrentView('usuario-detalle');
             if (selectedPosicion?.id) {
               loadProgresosNivel(selectedPosicion.id);
-            } else {
-              loadProgresosNivel();
-            }
           } else {
-            // Si no se encuentra el usuario, ir a grupos
-            setCurrentView('grupos');
+              loadProgresosNivel();
           }
+        } else {
+            // Si no se encuentra el usuario, ir a grupos
+          setCurrentView('grupos');
+        }
           setOnboardingUsuarioId(null);
         } else {
           // Si se entró desde la tarjeta ONBOARDING (sin usuario), regresar a grupos
@@ -1509,13 +1509,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       });
       
       const payload = {
-        nombre: formData.nombre,
-        supervisor: formData.supervisor,
-        instructor: formData.instructor,
-        usuarios_regulares: formData.usuarios_regulares,
+          nombre: formData.nombre,
+          supervisor: formData.supervisor,
+          instructor: formData.instructor,
+          usuarios_regulares: formData.usuarios_regulares,
         usuarios_fechas: usuarios_fechas,
         area: formData.area,
-        is_active: formData.is_active
+          is_active: formData.is_active
       };
       
       if (isEditing && editingListaId) {
@@ -1714,7 +1714,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     
                     // Fallback: usar nivelesCompletosPorUsuario si no viene del backend
                     if (!completado) {
-                      const resumenUsuario = nivelesCompletosPorUsuario[user.id] || {};
+                    const resumenUsuario = nivelesCompletosPorUsuario[user.id] || {};
                       completado = Boolean(resumenUsuario[nivel]);
                     }
                     
@@ -2478,15 +2478,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         
         <div className="onboarding-actions">
           {mostrarBotonCrearLista && (
-            <div 
-              className="btn-crear-lista-card"
-              onClick={handleCrearListaAsistencia}
-            >
-              <div className="card-content">
-                <FaPlus />
-                <h3>Añadir nueva lista</h3>
-              </div>
+          <div 
+            className="btn-crear-lista-card"
+            onClick={handleCrearListaAsistencia}
+          >
+            <div className="card-content">
+              <FaPlus />
+              <h3>Añadir nueva lista</h3>
             </div>
+          </div>
           )}
           
           <div className="search-container">
@@ -2511,13 +2511,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 : null;
               
               return (
-                <div 
-                  key={lista.id} 
-                  className="lista-card-simple"
-                  onClick={() => handleEditarLista(lista)}
-                >
-                  <div className="card-content">
-                    <h3>{lista.nombre}</h3>
+              <div 
+                key={lista.id} 
+                className="lista-card-simple"
+                onClick={() => handleEditarLista(lista)}
+              >
+                <div className="card-content">
+                  <h3>{lista.nombre}</h3>
                     {fechaUsuario && (
                       <div className="lista-fecha-usuario">
                         <span className="fecha-label">Fecha:</span>
@@ -2528,9 +2528,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             day: 'numeric'
                           })}
                         </span>
-                      </div>
+                </div>
                     )}
-                  </div>
+              </div>
                 </div>
               );
             })
@@ -2745,9 +2745,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       {/* Header con navegación */}
       <div className="evaluaciones-header">
         {isRegularUser ? (
-          <div className="breadcrumb">
+        <div className="breadcrumb">
             <span>Mis Evaluaciones</span>
-          </div>
+        </div>
         ) : (
           renderBreadcrumb()
         )}
