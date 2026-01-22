@@ -376,8 +376,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         const tienePosicion = user.posicion === selectedPosicion?.id;
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
         const tieneGrupo = user.grupo === selectedGrupo?.id;
-        const esUsuarioRegular = user.role === 'USUARIO';
-        return tienePosicion && tieneArea && tieneGrupo && esUsuarioRegular;
+        // Incluir usuarios regulares y entrenadores
+        const esUsuarioValido = user.role === 'USUARIO' || user.role === 'ENTRENADOR';
+        return tienePosicion && tieneArea && tieneGrupo && esUsuarioValido;
       });
       
       const filtered = usuariosBase.filter(user => 
@@ -392,8 +393,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         const tienePosicion = user.posicion === selectedPosicion?.id;
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
         const tieneGrupo = user.grupo === selectedGrupo?.id;
-        const esUsuarioRegular = user.role === 'USUARIO';
-        return tienePosicion && tieneArea && tieneGrupo && esUsuarioRegular;
+        // Incluir usuarios regulares y entrenadores
+        const esUsuarioValido = user.role === 'USUARIO' || user.role === 'ENTRENADOR';
+        return tienePosicion && tieneArea && tieneGrupo && esUsuarioValido;
       });
       setFilteredUsuarios(usuariosFiltrados);
     }

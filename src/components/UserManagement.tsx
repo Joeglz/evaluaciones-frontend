@@ -44,6 +44,8 @@ const UserManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [areaFilter, setAreaFilter] = useState<number | ''>('');
+  const [grupoFilter, setGrupoFilter] = useState<number | ''>('');
   
   // Estados para el sistema de pasos
   const [currentStep, setCurrentStep] = useState(1);
@@ -175,14 +177,21 @@ const UserManagement: React.FC = () => {
     }, 500); // Esperar 500ms después del último cambio
 
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, roleFilter, statusFilter]);
+  }, [searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter]);
 
   // Indicador de búsqueda cuando hay cambios en los filtros
   useEffect(() => {
-    if (searchTerm || roleFilter || statusFilter) {
+    if (searchTerm || roleFilter || statusFilter || areaFilter || grupoFilter) {
       setSearching(true);
     }
-  }, [searchTerm, roleFilter, statusFilter]);
+  }, [searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter]);
+
+  // Resetear filtro de grupo cuando cambia el área
+  useEffect(() => {
+    if (!areaFilter) {
+      setGrupoFilter('');
+    }
+  }, [areaFilter]);
 
   useEffect(() => {
     return () => {
@@ -856,28 +865,62 @@ const UserManagement: React.FC = () => {
     return 'Sin posición';
   };
 
+  const getUserGrupoName = (user: User): string => {
+    if (!user.grupo) {
+      return 'Sin grupo';
+    }
+    const grupo = grupos.find((g) => g.id === user.grupo);
+    return grupo ? grupo.name : 'Sin grupo';
+  };
+
   const filteredUsersList = useMemo(() => {
+    let filtered = users;
+
+    // Filtrar por término de búsqueda
     const term = searchTerm.trim().toLowerCase();
-    if (!term) {
-      return users;
+    if (term) {
+      filtered = filtered.filter((user) => {
+        const hayNumeroEmpleado = user.numero_empleado ? `#${user.numero_empleado}` : '';
+        const posicionNombre = getUserPositionName(user);
+        const areasTexto = (user.areas_list || []).join(' ').toLowerCase();
+
+        return (
+          user.full_name.toLowerCase().includes(term) ||
+          user.username.toLowerCase().includes(term) ||
+          (user.email || '').toLowerCase().includes(term) ||
+          user.role_display.toLowerCase().includes(term) ||
+          hayNumeroEmpleado.toLowerCase().includes(term) ||
+          posicionNombre.toLowerCase().includes(term) ||
+          areasTexto.includes(term)
+        );
+      });
     }
 
-    return users.filter((user) => {
-      const hayNumeroEmpleado = user.numero_empleado ? `#${user.numero_empleado}` : '';
-      const posicionNombre = getUserPositionName(user);
-      const areasTexto = (user.areas_list || []).join(' ').toLowerCase();
+    // Filtrar por rol
+    if (roleFilter) {
+      filtered = filtered.filter((user) => user.role === roleFilter);
+    }
 
-      return (
-        user.full_name.toLowerCase().includes(term) ||
-        user.username.toLowerCase().includes(term) ||
-        (user.email || '').toLowerCase().includes(term) ||
-        user.role_display.toLowerCase().includes(term) ||
-        hayNumeroEmpleado.toLowerCase().includes(term) ||
-        posicionNombre.toLowerCase().includes(term) ||
-        areasTexto.includes(term)
+    // Filtrar por estado
+    if (statusFilter) {
+      const isActive = statusFilter === 'active';
+      filtered = filtered.filter((user) => user.is_active === isActive);
+    }
+
+    // Filtrar por área
+    if (areaFilter) {
+      filtered = filtered.filter((user) => 
+        user.areas && user.areas.includes(Number(areaFilter))
       );
-    });
-  }, [users, searchTerm, posiciones]);
+    }
+
+    // Filtrar por grupo
+    if (grupoFilter) {
+      filtered = filtered.filter((user) => user.grupo === Number(grupoFilter));
+    }
+
+    return filtered;
+  }, [users, searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter, posiciones]);
 
   const FieldError: React.FC<{ errors: string[] | undefined }> = ({ errors }) => {
     if (!errors || errors.length === 0) return null;
@@ -1504,6 +1547,29 @@ const UserManagement: React.FC = () => {
             <option value="active">Activos</option>
             <option value="inactive">Inactivos</option>
           </select>
+
+          <select 
+            value={areaFilter} 
+            onChange={(e) => setAreaFilter(e.target.value ? Number(e.target.value) : '')}
+          >
+            <option value="">Todas las áreas</option>
+            {areas.filter(area => area.is_active).map(area => (
+              <option key={area.id} value={area.id}>{area.name}</option>
+            ))}
+          </select>
+
+          <select 
+            value={grupoFilter} 
+            onChange={(e) => setGrupoFilter(e.target.value ? Number(e.target.value) : '')}
+            disabled={!areaFilter}
+          >
+            <option value="">Todos los grupos</option>
+            {areaFilter && getGruposByArea(Number(areaFilter))
+              .filter(grupo => grupo.is_active)
+              .map(grupo => (
+                <option key={grupo.id} value={grupo.id}>{grupo.name}</option>
+              ))}
+          </select>
         </div>
 
         <div className="header-actions">
@@ -1530,6 +1596,7 @@ const UserManagement: React.FC = () => {
               <th>Número de Empleado</th>
               <th>Posición</th>
               <th>Áreas</th>
+              <th>Grupo</th>
             </tr>
           </thead>
           <tbody>
@@ -1580,6 +1647,9 @@ const UserManagement: React.FC = () => {
                       <span className="no-areas">Sin áreas</span>
                     )}
                   </div>
+                </td>
+                <td>
+                  {getUserGrupoName(user)}
                 </td>
               </tr>
             ))}
