@@ -2056,7 +2056,7 @@ const UserManagement: React.FC = () => {
       {/* Modal de Carga Masiva */}
       {showBulkUploadModal && (
         <div className="modal-overlay" onClick={() => !bulkUploadLoading && setShowBulkUploadModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content modal-bulk-upload" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Carga Masiva de Usuarios</h3>
               <button 

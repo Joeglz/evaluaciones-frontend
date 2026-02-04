@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FaPlus, 
   FaEdit, 
@@ -69,6 +69,10 @@ const AreaManagement: React.FC = () => {
   const [modalFirmaExtraIdentificador, setModalFirmaExtraIdentificador] = useState('');
   const [modalFormulaDivisor, setModalFormulaDivisor] = useState<string>('17');
   const [modalFormulaMultiplicador, setModalFormulaMultiplicador] = useState<string>('80');
+  const [plantillaSearchQuery, setPlantillaSearchQuery] = useState('');
+  const [plantillaDropdownOpen, setPlantillaDropdownOpen] = useState(false);
+  const [plantillaHighlightedIndex, setPlantillaHighlightedIndex] = useState(-1);
+  const plantillaComboboxRef = useRef<HTMLDivElement>(null);
   const [showEditarEvaluacionModal, setShowEditarEvaluacionModal] = useState(false);
   const [evaluacionEdicionContext, setEvaluacionEdicionContext] = useState<{ evaluacionId: number; nivelId: number; posicionId: number } | null>(null);
   const [editarEvaluacionNombre, setEditarEvaluacionNombre] = useState('');
@@ -92,6 +96,24 @@ const AreaManagement: React.FC = () => {
     { id: 3, titulo: 'Criterios de Evaluación' },
     { id: 4, titulo: 'Firmas' }
   ];
+
+  const plantillasFiltradas = useMemo(() => {
+    if (!plantillaSearchQuery.trim()) return evaluacionesPlantillas;
+    const q = plantillaSearchQuery.trim().toLowerCase();
+    return evaluacionesPlantillas.filter((p) => (p.nombre || '').toLowerCase().includes(q));
+  }, [evaluacionesPlantillas, plantillaSearchQuery]);
+
+  useEffect(() => {
+    if (!showAgregarEvaluacionModal || !plantillaDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (plantillaComboboxRef.current && !plantillaComboboxRef.current.contains(e.target as Node)) {
+        setPlantillaDropdownOpen(false);
+        setPlantillaHighlightedIndex(-1);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAgregarEvaluacionModal, plantillaDropdownOpen]);
   
   // Formularios
   const [createForm, setCreateForm] = useState({
@@ -339,8 +361,8 @@ const AreaManagement: React.FC = () => {
 
   const loadEvaluacionesPlantillas = async () => {
     try {
-      const response = await apiService.getEvaluaciones({ es_plantilla: true });
-      setEvaluacionesPlantillas(response.results || []);
+      const list = await apiService.getEvaluacionesAll({ es_plantilla: true });
+      setEvaluacionesPlantillas(list || []);
     } catch (err) {
       console.error('Error al cargar evaluaciones plantillas:', err);
       setEvaluacionesPlantillas([]);
@@ -484,6 +506,9 @@ const AreaManagement: React.FC = () => {
     setModalMinimoAprobatorio('70');
     setModalFormulaDivisor('17');
     setModalFormulaMultiplicador('80');
+    setPlantillaSearchQuery('');
+    setPlantillaDropdownOpen(false);
+    setPlantillaHighlightedIndex(-1);
   };
 
   const cerrarModalEditarEvaluacion = () => {
@@ -1751,9 +1776,10 @@ const AreaManagement: React.FC = () => {
       {/* Modal: Crear Área */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content modal-medium" onClick={(e) => e.stopPropagation()}>
             <h2>Crear Nueva Área</h2>
-            <form onSubmit={handleCreateArea}>
+            <form onSubmit={handleCreateArea} className="modal-form-wrap">
+              <div className="modal-body">
               <div className="form-grid">
                 <div className="form-group">
                   <label>Nombre *</label>
@@ -1889,7 +1915,7 @@ const AreaManagement: React.FC = () => {
               </div>
               
               <FieldError errors={createErrors.general} />
-              
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowCreateModal(false)}>
                   Cancelar
@@ -1956,17 +1982,118 @@ const AreaManagement: React.FC = () => {
             <div className="modal-body">
               <div className="form-group">
                 <label>Seleccionar Plantilla *</label>
-                <select
-                  value={modalPlantillaId ?? ''}
-                  onChange={(e) => handleModalPlantillaChange(e.target.value)}
+                <div
+                  className="plantilla-combobox"
+                  ref={plantillaComboboxRef}
                 >
-                  <option value="">Seleccionar Plantilla...</option>
-                  {evaluacionesPlantillas.map(plantilla => (
-                    <option key={plantilla.id} value={plantilla.id}>
-                      {plantilla.nombre}
-                    </option>
-                  ))}
-                </select>
+                  <div className="plantilla-combobox-input-wrap">
+                    <span className="plantilla-combobox-icon-wrap" aria-hidden>
+                      <FaSearch className="plantilla-combobox-icon" />
+                    </span>
+                    <input
+                      type="text"
+                      value={
+                        modalPlantillaId && !plantillaDropdownOpen
+                          ? (evaluacionesPlantillas.find((p) => p.id === modalPlantillaId)?.nombre ?? '')
+                          : plantillaSearchQuery
+                      }
+                      onChange={(e) => {
+                        setPlantillaSearchQuery(e.target.value);
+                        setPlantillaDropdownOpen(true);
+                        setPlantillaHighlightedIndex(0);
+                        if (modalPlantillaId) {
+                          setModalPlantillaId(null);
+                          setModalNombreEvaluacion('');
+                          setModalPlantillaDetalle(null);
+                          setModalFirmasDisponibles([]);
+                          setModalFirmasSeleccionadas({});
+                        }
+                      }}
+                      onFocus={() => {
+                        setPlantillaDropdownOpen(true);
+                        if (modalPlantillaId) setPlantillaSearchQuery(evaluacionesPlantillas.find((p) => p.id === modalPlantillaId)?.nombre ?? '');
+                        setPlantillaHighlightedIndex(plantillasFiltradas.length > 0 ? 0 : -1);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!plantillaDropdownOpen) {
+                          if (e.key === 'ArrowDown' || e.key === ' ') {
+                            e.preventDefault();
+                            setPlantillaDropdownOpen(true);
+                            setPlantillaHighlightedIndex(plantillasFiltradas.length > 0 ? 0 : -1);
+                          }
+                          return;
+                        }
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setPlantillaHighlightedIndex((i) =>
+                            plantillasFiltradas.length === 0 ? -1 : (i + 1) % plantillasFiltradas.length
+                          );
+                          return;
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setPlantillaHighlightedIndex((i) =>
+                            plantillasFiltradas.length === 0 ? -1 : (i - 1 + plantillasFiltradas.length) % plantillasFiltradas.length
+                          );
+                          return;
+                        }
+                        if (e.key === 'Enter' && plantillaHighlightedIndex >= 0 && plantillasFiltradas[plantillaHighlightedIndex]) {
+                          e.preventDefault();
+                          const p = plantillasFiltradas[plantillaHighlightedIndex];
+                          handleModalPlantillaChange(String(p.id));
+                          setPlantillaDropdownOpen(false);
+                          setPlantillaSearchQuery(p.nombre ?? '');
+                          setPlantillaHighlightedIndex(-1);
+                          return;
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setPlantillaDropdownOpen(false);
+                          setPlantillaHighlightedIndex(-1);
+                        }
+                      }}
+                      placeholder="Escribe para buscar plantilla..."
+                      aria-label="Buscar y seleccionar plantilla"
+                      aria-expanded={plantillaDropdownOpen}
+                      aria-autocomplete="list"
+                    />
+                    <FaChevronDown
+                      className={`plantilla-combobox-chevron ${plantillaDropdownOpen ? 'open' : ''}`}
+                      aria-hidden
+                    />
+                  </div>
+                  {plantillaDropdownOpen && (
+                    <ul
+                      className="plantilla-combobox-dropdown"
+                      role="listbox"
+                      id="plantilla-combobox-listbox"
+                    >
+                      {plantillasFiltradas.length === 0 ? (
+                        <li className="plantilla-combobox-empty" role="option">
+                          {plantillaSearchQuery.trim() ? 'Ninguna plantilla coincide con la búsqueda.' : 'Escribe para filtrar plantillas.'}
+                        </li>
+                      ) : (
+                        plantillasFiltradas.map((plantilla, index) => (
+                          <li
+                            key={plantilla.id}
+                            role="option"
+                            aria-selected={modalPlantillaId === plantilla.id}
+                            className={`plantilla-combobox-option ${index === plantillaHighlightedIndex ? 'highlighted' : ''} ${modalPlantillaId === plantilla.id ? 'selected' : ''}`}
+                            onMouseEnter={() => setPlantillaHighlightedIndex(index)}
+                            onClick={() => {
+                              handleModalPlantillaChange(String(plantilla.id));
+                              setPlantillaDropdownOpen(false);
+                              setPlantillaSearchQuery(plantilla.nombre ?? '');
+                              setPlantillaHighlightedIndex(-1);
+                            }}
+                          >
+                            {plantilla.nombre}
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  )}
+                </div>
               </div>
               <div className="form-group">
                 <label>Nombre de la Evaluación *</label>

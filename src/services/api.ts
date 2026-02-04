@@ -1260,6 +1260,32 @@ class ApiService {
     return this.request<EvaluacionesListResponse>(`/users/evaluaciones/${queryString ? '?' + queryString : ''}`);
   }
 
+  /**
+   * Obtiene todas las evaluaciones (todas las páginas) según los filtros.
+   * Útil para listas completas como la de plantillas.
+   */
+  async getEvaluacionesAll(params?: {
+    area_id?: number;
+    posicion_id?: number;
+    supervisor_id?: number;
+    nivel?: number;
+    nivel_posicion_id?: number;
+    plantilla_id?: number;
+    es_plantilla?: boolean;
+    search?: string;
+  }): Promise<Evaluacion[]> {
+    const all: Evaluacion[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const res = await this.getEvaluaciones({ ...params, page });
+      all.push(...res.results);
+      hasMore = res.next != null && res.results.length > 0;
+      page += 1;
+    }
+    return all;
+  }
+
   async getEvaluacion(id: number): Promise<Evaluacion> {
     return this.request<Evaluacion>(`/users/evaluaciones/${id}/`);
   }

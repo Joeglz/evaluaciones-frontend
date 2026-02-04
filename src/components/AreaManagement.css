@@ -359,6 +359,47 @@
   border-radius: 10px;
 }
 
+/* Modal overlay y contenedor (para modales de AreaManagement) */
+.area-management .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.area-management .modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+}
+
+.area-management .modal-content h2 {
+  color: #e12026;
+  margin: 0 0 1rem 0;
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.area-management .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  flex-shrink: 0;
+  padding-top: 1rem;
+  margin-top: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
 .modal-content.modal-small {
   max-width: 420px;
 }
@@ -366,9 +407,14 @@
 .modal-content.modal-medium {
   width: min(100%, 580px);
   margin: 0 auto;
-  max-height: 92vh;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-content.modal-medium > h2 {
+  flex-shrink: 0;
 }
 
 .modal-content.modal-small .modal-body,
@@ -376,6 +422,29 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-content.modal-medium .modal-actions {
+  flex-shrink: 0;
+}
+
+/* Form en modal (ej. Crear Área): cuerpo con scroll y acciones fijas */
+.modal-content.modal-medium form.modal-form-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.modal-content.modal-medium form.modal-form-wrap .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .formula-preview {
@@ -820,6 +889,107 @@
   border-color: #e12026;
 }
 
+/* Combobox plantilla (buscable) */
+.plantilla-combobox {
+  position: relative;
+  width: 100%;
+}
+
+.plantilla-combobox-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.plantilla-combobox-input-wrap:focus-within {
+  border-color: #e12026;
+}
+
+.plantilla-combobox-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.plantilla-combobox-icon {
+  font-size: 0.9rem;
+  width: 1em;
+  height: 1em;
+}
+
+.plantilla-combobox input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.75rem 2.5rem 0.75rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  outline: none;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.plantilla-combobox-chevron {
+  position: absolute;
+  right: 12px;
+  color: #6b7280;
+  font-size: 0.75rem;
+  transition: transform 0.2s;
+  pointer-events: none;
+}
+
+.plantilla-combobox-chevron.open {
+  transform: rotate(180deg);
+}
+
+.plantilla-combobox-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+}
+
+.plantilla-combobox-option {
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #374151;
+  transition: background 0.15s;
+}
+
+.plantilla-combobox-option:hover,
+.plantilla-combobox-option.highlighted {
+  background: #f3f4f6;
+}
+
+.plantilla-combobox-option.selected {
+  color: #e12026;
+  font-weight: 500;
+}
+
+.plantilla-combobox-empty {
+  padding: 0.75rem 1rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+  cursor: default;
+}
 
 .checkbox-group {
   flex-direction: row;

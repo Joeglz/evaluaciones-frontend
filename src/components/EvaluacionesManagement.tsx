@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaEye } from 'react-icons/fa';
+import React, { useState, useEffect, useMemo } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaEye, FaCopy, FaSearch } from 'react-icons/fa';
 import { apiService } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
@@ -23,6 +23,7 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const [posiciones, setPosiciones] = useState<any[]>([]);
   const [supervisores, setSupervisores] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [nombreFilter, setNombreFilter] = useState('');
   
   // Estados para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -34,6 +35,9 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const [editNombreValor, setEditNombreValor] = useState('');
   const [editingPunto, setEditingPunto] = useState<any>(null);
   const [editingCriterio, setEditingCriterio] = useState<any>(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [evaluacionToDuplicate, setEvaluacionToDuplicate] = useState<any>(null);
+  const [duplicateNombre, setDuplicateNombre] = useState('');
   
   // Estados para formularios
   const [createForm, setCreateForm] = useState({
@@ -84,17 +88,23 @@ const [firmaForm, setFirmaForm] = useState({
     loadData();
   }, []);
 
+  const filteredEvaluaciones = useMemo(() => {
+    if (!nombreFilter.trim()) return evaluaciones;
+    const term = nombreFilter.trim().toLowerCase();
+    return evaluaciones.filter((e) => (e.nombre || '').toLowerCase().includes(term));
+  }, [evaluaciones, nombreFilter]);
+
   const loadData = async () => {
     try {
       setLoading(true);
       const [evaluacionesData, areasData, posicionesData, supervisoresData] = await Promise.all([
-        apiService.getEvaluaciones({ es_plantilla: true }), // Solo cargar plantillas
+        apiService.getEvaluacionesAll({ es_plantilla: true }), // Todas las plantillas (todas las páginas)
         apiService.getAreas(),
         apiService.getPosiciones(),
         apiService.getUsers({ role: 'ADMIN,EVALUADOR', is_active: true })
       ]);
       
-      setEvaluaciones(evaluacionesData.results);
+      setEvaluaciones(evaluacionesData);
       setAreas(areasData.results);
       setPosiciones(posicionesData.results);
       setSupervisores(supervisoresData.results);
@@ -152,6 +162,63 @@ const [firmaForm, setFirmaForm] = useState({
     } catch (error: any) {
       console.error('Error deleting evaluacion:', error);
       showError(error.response?.data?.detail || 'Error al eliminar la evaluación');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openDuplicateModal = (evaluacion: any) => {
+    setEvaluacionToDuplicate(evaluacion);
+    setDuplicateNombre(`${evaluacion.nombre || 'Plantilla'} (copia)`);
+    setShowDuplicateModal(true);
+  };
+
+  const handleDuplicateEvaluacion = async () => {
+    if (!evaluacionToDuplicate || !duplicateNombre.trim()) {
+      showError('Ingresa el nombre de la nueva plantilla');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const fullEvaluacion = await apiService.getEvaluacion(evaluacionToDuplicate.id);
+      await apiService.createEvaluacion({
+        nombre: duplicateNombre.trim(),
+        es_plantilla: true,
+        posicion: fullEvaluacion.posicion ?? undefined,
+        supervisor: fullEvaluacion.supervisor ?? null,
+        nivel: fullEvaluacion.nivel ?? 1,
+        minimo_aprobatorio: fullEvaluacion.minimo_aprobatorio ?? 70,
+        formula_divisor: fullEvaluacion.formula_divisor ?? 17,
+        formula_multiplicador: fullEvaluacion.formula_multiplicador ?? 80,
+        fecha_evaluacion: fullEvaluacion.fecha_evaluacion ?? null,
+        is_active: fullEvaluacion.is_active ?? true,
+        puntos_evaluacion: (fullEvaluacion.puntos_evaluacion || []).map((p: any) => ({
+          pregunta: p.pregunta,
+          orden: p.orden ?? 0
+        })),
+        criterios_evaluacion: (fullEvaluacion.criterios_evaluacion || []).map((c: any) => ({
+          criterio: c.criterio,
+          orden: c.orden ?? 0
+        })),
+        ...(fullEvaluacion.firmas?.length
+          ? {
+              firmas: fullEvaluacion.firmas.map((f: any) => ({
+                tipo_firma: f.tipo_firma || slugifyText(f.nombre || ''),
+                nombre: f.nombre || '',
+                orden: f.orden
+              }))
+            }
+          : {})
+      });
+      showSuccess('Plantilla duplicada correctamente');
+      setShowDuplicateModal(false);
+      setEvaluacionToDuplicate(null);
+      setDuplicateNombre('');
+      loadData();
+    } catch (error: any) {
+      console.error('Error duplicating evaluacion:', error);
+      showError(error.response?.data?.detail || 'Error al duplicar la plantilla');
     } finally {
       setLoading(false);
     }
@@ -488,6 +555,20 @@ const [firmaForm, setFirmaForm] = useState({
         </button>
       </div>
 
+      {/* Filtro por nombre */}
+      <div className="evaluaciones-filters">
+        <div className="evaluaciones-search">
+          <FaSearch className="search-icon" />
+          <input
+            type="text"
+            value={nombreFilter}
+            onChange={(e) => setNombreFilter(e.target.value)}
+            placeholder="Buscar"
+            aria-label="Buscar plantillas por nombre"
+          />
+        </div>
+      </div>
+
       {/* Lista de evaluaciones */}
       <div className="evaluaciones-list">
         {loading ? (
@@ -495,36 +576,117 @@ const [firmaForm, setFirmaForm] = useState({
         ) : evaluaciones.length === 0 ? (
           <div className="no-data">No hay evaluaciones disponibles</div>
         ) : (
-          <div className="evaluaciones-grid">
-            {evaluaciones.map(evaluacion => (
-              <div key={evaluacion.id} className="evaluacion-card">
-                <div 
-                  className="card-header card-header-clickable"
-                  onClick={() => openDetailModal(evaluacion)}
-                >
-                  <h3>{evaluacion.nombre}</h3>
-                  <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-                    <button 
-                      className="btn-icon"
+          <div className="evaluaciones-table-container">
+            <table className="evaluaciones-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEvaluaciones.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="table-empty-message">
+                      Ninguna plantilla coincide con la búsqueda.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredEvaluaciones.map(evaluacion => (
+                    <tr 
+                      key={evaluacion.id}
+                      className="evaluacion-row-clickable"
                       onClick={() => openDetailModal(evaluacion)}
-                      title="Ver detalles"
                     >
-                      <FaEye />
-                    </button>
-                    <button 
-                      className="btn-icon btn-danger"
-                      onClick={() => handleDeleteEvaluacion(evaluacion.id)}
-                      title="Eliminar"
-                    >
-                      <FaTrash />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                      <td>{evaluacion.nombre}</td>
+                      <td>
+                        <div className="table-actions" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            className="btn-icon"
+                            onClick={() => openDetailModal(evaluacion)}
+                            title="Ver detalles"
+                          >
+                            <FaEye />
+                          </button>
+                          <button 
+                            className="btn-icon btn-duplicate"
+                            onClick={() => openDuplicateModal(evaluacion)}
+                            title="Duplicar plantilla"
+                          >
+                            <FaCopy />
+                          </button>
+                          <button 
+                            className="btn-icon btn-danger"
+                            onClick={() => handleDeleteEvaluacion(evaluacion.id)}
+                            title="Eliminar"
+                          >
+                            <FaTrash />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      {/* Modal duplicar plantilla */}
+      {showDuplicateModal && evaluacionToDuplicate && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Duplicar plantilla</h3>
+              <button 
+                className="modal-close"
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setEvaluacionToDuplicate(null);
+                  setDuplicateNombre('');
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="duplicate-source">Plantilla original: <strong>{evaluacionToDuplicate.nombre}</strong></p>
+              <div className="form-group">
+                <label>Nombre de la nueva plantilla</label>
+                <input 
+                  type="text"
+                  value={duplicateNombre}
+                  onChange={(e) => setDuplicateNombre(e.target.value)}
+                  placeholder="Ej: Mi plantilla (copia)"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleDuplicateEvaluacion();
+                  }}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setEvaluacionToDuplicate(null);
+                  setDuplicateNombre('');
+                }}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn btn-primary"
+                onClick={handleDuplicateEvaluacion}
+                disabled={loading || !duplicateNombre.trim()}
+              >
+                {loading ? 'Duplicando...' : 'Duplicar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de creación */}
       {showCreateModal && (
