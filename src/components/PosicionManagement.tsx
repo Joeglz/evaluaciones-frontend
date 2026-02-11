@@ -123,14 +123,14 @@ const PosicionManagement: React.FC = () => {
       if (statusFilter) params.is_active = statusFilter === 'active';
       if (areaFilter) params.area = areaFilter;
       
-      const response = await apiService.getPosiciones(params);
-      setPosiciones(response.results);
+      const data = await apiService.getPosiciones(params);
+      setPosiciones(data);
       setError(null);
       
       // Cargar niveles para cada posición
       const niveles: Record<number, NivelPosicion[]> = {};
-      if (response.results && response.results.length > 0) {
-        for (const posicion of response.results) {
+      if (data && data.length > 0) {
+        for (const posicion of data) {
           try {
             const nivelesResponse = await apiService.getNivelesPosicion({ posicion_id: posicion.id });
             niveles[posicion.id] = nivelesResponse.results || [];

@@ -498,8 +498,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       ]);
       
       setAreas(areasData.results);
-      setGrupos(gruposData.results);
-      setPosiciones(posicionesData.results);
+      setGrupos(gruposData);
+      setPosiciones(posicionesData);
       setUsuarios(usuariosAll);
       setUsuariosRegulares(usuariosAll.filter(user => user.role === 'USUARIO'));
       const esRolSupervisor = (role?: string | null) =>

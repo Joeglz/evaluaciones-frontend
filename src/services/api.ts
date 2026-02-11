@@ -1033,16 +1033,14 @@ class ApiService {
     search?: string; 
     area?: number;
     is_active?: boolean;
-    page?: number;
-  }): Promise<GruposListResponse> {
+  }): Promise<Grupo[]> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.area) searchParams.append('area', params.area.toString());
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
-    if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
-    return this.request<GruposListResponse>(`/users/grupos/${queryString ? '?' + queryString : ''}`);
+    return this.request<Grupo[]>(`/users/grupos/${queryString ? '?' + queryString : ''}`);
   }
 
   async getGrupo(id: number): Promise<Grupo> {
@@ -1093,16 +1091,14 @@ class ApiService {
     search?: string; 
     area?: number;
     is_active?: boolean;
-    page?: number;
-  }): Promise<PosicionesListResponse> {
+  }): Promise<Posicion[]> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.area) searchParams.append('area', params.area.toString());
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
-    if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
-    return this.request<PosicionesListResponse>(`/users/posiciones/${queryString ? '?' + queryString : ''}`);
+    return this.request<Posicion[]>(`/users/posiciones/${queryString ? '?' + queryString : ''}`);
   }
 
   async getPosicion(id: number): Promise<Posicion> {

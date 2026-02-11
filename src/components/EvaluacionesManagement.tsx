@@ -106,7 +106,7 @@ const [firmaForm, setFirmaForm] = useState({
       
       setEvaluaciones(evaluacionesData);
       setAreas(areasData.results);
-      setPosiciones(posicionesData.results);
+      setPosiciones(posicionesData);
       setSupervisores(supervisoresData.results);
     } catch (error) {
       console.error('Error loading data:', error);

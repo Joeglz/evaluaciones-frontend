@@ -354,8 +354,8 @@ const UserManagement: React.FC = () => {
 
   const loadPosiciones = async () => {
     try {
-      const response = await apiService.getPosiciones({ is_active: true });
-      setPosiciones(response.results);
+      const data = await apiService.getPosiciones({ is_active: true });
+      setPosiciones(data);
     } catch (err) {
       console.error('Error al cargar posiciones:', err);
     }
@@ -363,8 +363,8 @@ const UserManagement: React.FC = () => {
 
   const loadGrupos = async () => {
     try {
-      const response = await apiService.getGrupos({ is_active: true });
-      setGrupos(response.results);
+      const data = await apiService.getGrupos({ is_active: true });
+      setGrupos(data);
     } catch (err) {
       console.error('Error al cargar grupos:', err);
     }
@@ -797,7 +797,7 @@ const UserManagement: React.FC = () => {
 
       // Buscar la posición dentro del área
       const posicionesData = await apiService.getPosiciones({ is_active: true });
-      const posicion = posicionesData.results.find(
+      const posicion = posicionesData.find(
         p => p.area === area.id && p.name.toLowerCase() === item.posicion.toLowerCase()
       );
 

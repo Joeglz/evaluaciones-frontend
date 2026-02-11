@@ -112,8 +112,8 @@ const GrupoManagement: React.FC = () => {
       if (statusFilter) params.is_active = statusFilter === 'active';
       if (areaFilter) params.area = areaFilter;
       
-      const response = await apiService.getGrupos(params);
-      setGrupos(response.results);
+      const data = await apiService.getGrupos(params);
+      setGrupos(data);
       setError(null);
     } catch (err) {
       setError('Error al cargar grupos');
