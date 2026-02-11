@@ -244,11 +244,11 @@ const PosicionManagement: React.FC = () => {
       const evaluaciones: Record<number, Evaluacion[]> = {};
       for (const nivel of response.results) {
         try {
-          const evalResponse = await apiService.getEvaluaciones({ 
+          const evalList = await apiService.getEvaluacionesAll({ 
             nivel_posicion_id: nivel.id,
             es_plantilla: false
           });
-          evaluaciones[nivel.id] = evalResponse.results;
+          evaluaciones[nivel.id] = evalList;
         } catch (err) {
           console.error(`Error al cargar evaluaciones para nivel ${nivel.id}:`, err);
           evaluaciones[nivel.id] = [];

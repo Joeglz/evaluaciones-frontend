@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   FaPlus, 
   FaEdit, 
@@ -36,6 +36,11 @@ const UserManagement: React.FC = () => {
   const { toasts, removeToast, showSuccess, showError } = useToast();
 
   const [users, setUsers] = useState<User[]>([]);
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextPage, setNextPage] = useState<number | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -460,22 +465,30 @@ const UserManagement: React.FC = () => {
     return grupos.filter(grupo => grupo.area === areaId);
   };
 
-  const loadUsers = async () => {
+  const loadUsers = async (append = false) => {
     try {
-      // Solo mostrar loading completo en la carga inicial
-      if (users.length === 0) {
-        setLoading(true);
+      if (!append) {
+        if (users.length === 0) setLoading(true);
+        else setSearching(true);
       } else {
-        setSearching(true);
+        setLoadingMore(true);
       }
-      
-      const params: any = {};
+
+      const params: Record<string, string | number | boolean> = {};
       if (searchTerm) params.search = searchTerm;
       if (roleFilter) params.role = roleFilter;
       if (statusFilter) params.is_active = statusFilter === 'active';
-      
+      if (append && nextPage) params.page = nextPage;
+
       const response = await apiService.getUsers(params);
-      setUsers(response.results);
+      if (append) {
+        setUsers((prev) => [...prev, ...response.results]);
+        setNextPage(response.next && nextPage ? nextPage + 1 : null);
+      } else {
+        setUsers(response.results);
+        setNextPage(response.next ? 2 : null);
+      }
+      setHasMoreUsers(!!response.next);
       setError(null);
     } catch (err) {
       setError('Error al cargar usuarios');
@@ -483,8 +496,29 @@ const UserManagement: React.FC = () => {
     } finally {
       setLoading(false);
       setSearching(false);
+      setLoadingMore(false);
     }
   };
+
+  const loadMoreUsers = useCallback(() => {
+    if (!hasMoreUsers || loadingMore || loading) return;
+    loadUsers(true);
+  }, [hasMoreUsers, loadingMore, loading, nextPage, searchTerm, roleFilter, statusFilter]);
+
+  // IntersectionObserver para cargar más al hacer scroll
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    const container = tableContainerRef.current;
+    if (!sentinel || !container || !hasMoreUsers) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreUsers();
+      },
+      { root: container, rootMargin: '80px', threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreUsers, loadMoreUsers]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1701,7 +1735,7 @@ const UserManagement: React.FC = () => {
 
       {error && <div className="error-message">{error}</div>}
 
-      <div className="users-table-container">
+      <div className="users-table-container" ref={tableContainerRef}>
         <table className="users-table">
           <thead>
             <tr>
@@ -1769,6 +1803,19 @@ const UserManagement: React.FC = () => {
             ))}
           </tbody>
         </table>
+        {hasMoreUsers && (
+          <div
+            ref={loadMoreSentinelRef}
+            className="load-more-sentinel"
+            style={{ height: 1, visibility: 'hidden' }}
+          />
+        )}
+        {loadingMore && (
+          <div className="load-more-indicator">
+            <div className="spinner" />
+            <span>Cargando más usuarios...</span>
+          </div>
+        )}
       </div>
 
       {/* Modal: Cambiar contraseña */}

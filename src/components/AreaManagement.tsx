@@ -336,14 +336,14 @@ const AreaManagement: React.FC = () => {
         const nivelesResponse = await apiService.getNivelesPosicion({ posicion_id: posicionId });
         niveles[posicionId] = nivelesResponse.results || [];
         
-        // Cargar evaluaciones para cada nivel
+        // Cargar evaluaciones para cada nivel (todas las páginas)
         for (const nivel of nivelesResponse.results || []) {
           try {
-            const evalResponse = await apiService.getEvaluaciones({ 
+            const evalList = await apiService.getEvaluacionesAll({ 
               nivel_posicion_id: nivel.id,
               es_plantilla: false
             });
-            evaluaciones[nivel.id] = evalResponse.results || [];
+            evaluaciones[nivel.id] = evalList;
           } catch (err) {
             console.error(`Error al cargar evaluaciones para nivel ${nivel.id}:`, err);
             evaluaciones[nivel.id] = [];

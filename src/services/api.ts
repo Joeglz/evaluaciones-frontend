@@ -813,6 +813,27 @@ class ApiService {
     return this.request<UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
   }
 
+  /**
+   * Obtiene todos los usuarios (todas las páginas) según los filtros.
+   * Necesario para Evaluaciones donde se filtran por área/grupo/posición.
+   */
+  async getUsersAll(params?: {
+    search?: string;
+    role?: string;
+    is_active?: boolean;
+  }): Promise<User[]> {
+    const all: User[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const res = await this.getUsers({ ...params, page });
+      all.push(...res.results);
+      hasMore = res.next != null && res.results.length > 0;
+      page += 1;
+    }
+    return all;
+  }
+
   async getUser(id: number): Promise<User> {
     return this.request<User>(`/users/${id}/`);
   }

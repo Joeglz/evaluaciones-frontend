@@ -3,6 +3,9 @@
 .settings-container {
   background: white;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 /* Navegación */
@@ -13,6 +16,7 @@
   background: #f8f9fa;
   border-bottom: 1px solid #e0e0e0;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .back-button {

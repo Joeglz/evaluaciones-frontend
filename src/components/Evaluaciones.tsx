@@ -489,24 +489,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const loadData = async () => {
     try {
       setLoading(true);
-      const [areasData, gruposData, posicionesData, usuariosData, listasData] = await Promise.all([
+      const [areasData, gruposData, posicionesData, usuariosAll, listasData] = await Promise.all([
         apiService.getAreas({ is_active: true }),
         apiService.getGrupos({ is_active: true }),
         apiService.getPosiciones({ is_active: true }),
-        apiService.getUsers({ is_active: true }),
+        apiService.getUsersAll({ is_active: true }),
         apiService.getListasAsistencia({ is_active: true })
       ]);
       
       setAreas(areasData.results);
       setGrupos(gruposData.results);
       setPosiciones(posicionesData.results);
-      setUsuarios(usuariosData.results);
-      setUsuariosRegulares(usuariosData.results.filter(user => user.role === 'USUARIO'));
+      setUsuarios(usuariosAll);
+      setUsuariosRegulares(usuariosAll.filter(user => user.role === 'USUARIO'));
       const esRolSupervisor = (role?: string | null) =>
         role === 'ADMIN' || role === 'ENTRENADOR' || role === 'SUPERVISOR';
 
-      setSupervisores(usuariosData.results.filter(user => esRolSupervisor(user.role)));
-      setInstructores(usuariosData.results.filter(user => esRolSupervisor(user.role)));
+      setSupervisores(usuariosAll.filter(user => esRolSupervisor(user.role)));
+      setInstructores(usuariosAll.filter(user => esRolSupervisor(user.role)));
       setListasAsistencia(listasData.results);
     } catch (err: any) {
       setError(err.message);

@@ -3,7 +3,16 @@
 .user-management {
   padding: 2rem;
   background: white;
-  min-height: 100vh;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Cuando está dentro de Settings, ocupa el espacio disponible */
+.settings-container .user-management {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Estilos para errores de validación */
@@ -45,14 +54,15 @@
   margin-bottom: 2rem;
   flex-wrap: wrap;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .header-actions {
   display: flex;
-  flex-direction: row !important;
+  flex-direction: row;
   gap: 0.5rem;
   align-items: center;
-  flex-wrap: nowrap !important;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   margin-left: auto;
 }
@@ -70,12 +80,27 @@
 
 .user-management-filters {
   display: flex;
-  flex-direction: row !important;
+  flex-direction: row;
   gap: 0.75rem;
   margin-bottom: 2rem;
-  flex-wrap: nowrap !important;
+  flex-wrap: wrap;
   align-items: center;
   width: 100%;
+  flex-shrink: 0;
+}
+/* Solo los botones bajan de línea; búsqueda + filtros (4 selects) permanecen en una sola línea */
+.user-management-filters .search-box,
+.user-management-filters .filter-group {
+  flex-shrink: 0;
+}
+
+/* Mayor especificidad para anular .filter-group de otros módulos (EvaluacionesManagement, Reportes) */
+.user-management .user-management-filters .filter-group {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .search-box {
@@ -105,6 +130,25 @@
   height: 1rem;
 }
 
+.load-more-sentinel {
+  flex-shrink: 0;
+}
+
+.load-more-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.load-more-indicator .spinner {
+  width: 18px;
+  height: 18px;
+}
+
 .spinner {
   width: 12px;
   height: 12px;
@@ -130,12 +174,11 @@
 
 .filter-group {
   display: flex;
-  flex-direction: row !important;
+  flex-direction: row;
   align-items: center;
   gap: 0.5rem;
-  flex: 0 0 40%;
-  width: 40%;
-  flex-wrap: nowrap !important;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   white-space: nowrap;
 }
 
@@ -177,20 +220,24 @@
   font-style: italic;
 }
 
-/* Tabla */
+/* Tabla: ocupa el espacio disponible entre filtros y footer */
 .users-table-container {
   background: white;
   border: 2px solid #e0e0e0;
   border-radius: 12px;
   overflow-x: auto;
   overflow-y: auto;
-  max-height: calc(100vh - 400px);
+  flex: 1;
+  min-height: 200px;
+  max-height: calc(100vh - 320px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .users-table {
   width: 100%;
   border-collapse: collapse;
+  height: 100%;
+  min-height: 100%;
 }
 
 .users-table thead {
@@ -626,7 +673,19 @@
   border-color: #e12026;
 }
 
-/* Responsive */
+/* Responsive: botones a segunda fila; búsqueda + 4 filtros siguen en una sola línea */
+@media (max-width: 1024px) {
+  .user-management-filters .header-actions {
+    flex-basis: 100%;
+    margin-left: 0;
+    margin-top: 0.25rem;
+    justify-content: flex-start;
+  }
+  .user-management-filters {
+    overflow-x: auto;
+  }
+}
+
 @media (max-width: 768px) {
   .user-management {
     padding: 1rem;
@@ -644,24 +703,24 @@
 
   .user-management-filters {
     flex-direction: row;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
   }
 
   .search-box {
-    flex: 0 0 60%;
-    width: 60%;
-    flex-direction: row;
+    flex: 0 0 auto;
+    min-width: 180px;
+    max-width: 50%;
   }
 
-  .filter-group {
-    flex: 0 0 40%;
-    width: 40%;
+  .user-management .user-management-filters .filter-group {
+    flex: 0 0 auto;
     flex-direction: row;
+    flex-wrap: nowrap;
   }
 
-  .filter-group select {
+  .user-management .user-management-filters .filter-group select {
     flex: 1 1 0;
     min-width: 0;
     font-size: 0.85rem;
@@ -671,6 +730,7 @@
   .users-table-container {
     overflow-x: auto;
     overflow-y: auto;
+    flex: 1;
     max-height: calc(100vh - 350px);
   }
 
@@ -727,14 +787,22 @@
     max-width: 100%;
   }
 
-  .filter-group {
+  /* Los 4 filtros siempre en una sola línea; scroll horizontal si no caben */
+  .user-management .user-management-filters .filter-group {
     width: 100%;
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    gap: 0.5rem;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .filter-group select {
-    width: 100%;
+  .user-management .user-management-filters .filter-group select {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
   }
 
   .btn-primary, .btn-secondary, .btn-danger {
