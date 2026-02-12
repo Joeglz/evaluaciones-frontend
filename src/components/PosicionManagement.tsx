@@ -102,8 +102,8 @@ const PosicionManagement: React.FC = () => {
 
   const loadAreas = async () => {
     try {
-      const response = await apiService.getAreas();
-      setAreas(response.results);
+      const data = await apiService.getAreas();
+      setAreas(data);
     } catch (err) {
       console.error('Error al cargar áreas:', err);
     }
@@ -266,8 +266,8 @@ const PosicionManagement: React.FC = () => {
   const loadEvaluacionesPlantillas = async () => {
     try {
       setLoadingEvaluaciones(true);
-      const response = await apiService.getEvaluaciones({ es_plantilla: true });
-      setEvaluacionesPlantillas(response.results);
+      const data = await apiService.getEvaluaciones({ es_plantilla: true });
+      setEvaluacionesPlantillas(data);
     } catch (err) {
       console.error('Error al cargar evaluaciones plantillas:', err);
       setEvaluacionesPlantillas([]);
@@ -352,13 +352,13 @@ const PosicionManagement: React.FC = () => {
       });
       
       // Recargar evaluaciones para este nivel
-      const evalResponse = await apiService.getEvaluaciones({ 
+      const evalData = await apiService.getEvaluaciones({ 
         nivel_posicion_id: nivelPosicionId,
         es_plantilla: false
       });
       setEvaluacionesPorNivel(prev => ({
         ...prev,
-        [nivelPosicionId]: evalResponse.results
+        [nivelPosicionId]: evalData
       }));
       
       // Limpiar campos

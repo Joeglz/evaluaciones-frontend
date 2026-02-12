@@ -36,10 +36,6 @@ const UserManagement: React.FC = () => {
   const { toasts, removeToast, showSuccess, showError } = useToast();
 
   const [users, setUsers] = useState<User[]>([]);
-  const [hasMoreUsers, setHasMoreUsers] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextPage, setNextPage] = useState<number | null>(null);
-  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
@@ -345,8 +341,8 @@ const UserManagement: React.FC = () => {
 
   const loadAreas = async () => {
     try {
-      const response = await apiService.getAreas({ is_active: true });
-      setAreas(response.results);
+      const data = await apiService.getAreas({ is_active: true });
+      setAreas(data);
     } catch (err) {
       console.error('Error al cargar áreas:', err);
     }
@@ -465,30 +461,18 @@ const UserManagement: React.FC = () => {
     return grupos.filter(grupo => grupo.area === areaId);
   };
 
-  const loadUsers = async (append = false) => {
+  const loadUsers = async () => {
     try {
-      if (!append) {
-        if (users.length === 0) setLoading(true);
-        else setSearching(true);
-      } else {
-        setLoadingMore(true);
-      }
+      if (users.length === 0) setLoading(true);
+      else setSearching(true);
 
       const params: Record<string, string | number | boolean> = {};
       if (searchTerm) params.search = searchTerm;
       if (roleFilter) params.role = roleFilter;
       if (statusFilter) params.is_active = statusFilter === 'active';
-      if (append && nextPage) params.page = nextPage;
 
       const response = await apiService.getUsers(params);
-      if (append) {
-        setUsers((prev) => [...prev, ...response.results]);
-        setNextPage(response.next && nextPage ? nextPage + 1 : null);
-      } else {
-        setUsers(response.results);
-        setNextPage(response.next ? 2 : null);
-      }
-      setHasMoreUsers(!!response.next);
+      setUsers(response.results ?? []);
       setError(null);
     } catch (err) {
       setError('Error al cargar usuarios');
@@ -496,29 +480,8 @@ const UserManagement: React.FC = () => {
     } finally {
       setLoading(false);
       setSearching(false);
-      setLoadingMore(false);
     }
   };
-
-  const loadMoreUsers = useCallback(() => {
-    if (!hasMoreUsers || loadingMore || loading) return;
-    loadUsers(true);
-  }, [hasMoreUsers, loadingMore, loading, nextPage, searchTerm, roleFilter, statusFilter]);
-
-  // IntersectionObserver para cargar más al hacer scroll
-  useEffect(() => {
-    const sentinel = loadMoreSentinelRef.current;
-    const container = tableContainerRef.current;
-    if (!sentinel || !container || !hasMoreUsers) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMoreUsers();
-      },
-      { root: container, rootMargin: '80px', threshold: 0 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMoreUsers, loadMoreUsers]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -787,7 +750,7 @@ const UserManagement: React.FC = () => {
     try {
       // Buscar el área
       const areasData = await apiService.getAreas({ is_active: true });
-      const area = areasData.results.find(a => a.name.toLowerCase() === item.area.toLowerCase());
+      const area = areasData.find(a => a.name.toLowerCase() === item.area.toLowerCase());
       
       if (!area) {
         setEvaluacionesNivel([]);
@@ -811,35 +774,21 @@ const UserManagement: React.FC = () => {
       const nivelesData = await apiService.getNivelesPosicion({ posicion_id: posicion.id });
       const niveles = nivelesData.results.filter(n => n.nivel <= nivelNum && n.is_active);
 
-      // Obtener evaluaciones para cada nivel (obtener todas las páginas)
+      // Obtener evaluaciones para cada nivel
       const evaluacionesPorNivel: Array<{ nivel: number; evaluaciones: Evaluacion[] }> = [];
       
       for (const nivel of niveles) {
         try {
-          let allEvaluaciones: Evaluacion[] = [];
-          let currentPage = 1;
-          let hasMore = true;
-          
-          while (hasMore) {
-            const evalResponse = await apiService.getEvaluaciones({
-              nivel_posicion_id: nivel.id,
-              area_id: area.id,
-              posicion_id: posicion.id,
-              es_plantilla: false,
-              page: currentPage
-            });
-            
-            if (evalResponse.results && evalResponse.results.length > 0) {
-              allEvaluaciones = [...allEvaluaciones, ...evalResponse.results];
-            }
-            
-            hasMore = evalResponse.next !== null && evalResponse.next !== undefined;
-            currentPage++;
-          }
+          const evalData = await apiService.getEvaluaciones({
+            nivel_posicion_id: nivel.id,
+            area_id: area.id,
+            posicion_id: posicion.id,
+            es_plantilla: false
+          });
           
           evaluacionesPorNivel.push({
             nivel: nivel.nivel,
-            evaluaciones: allEvaluaciones
+            evaluaciones: evalData || []
           });
         } catch (err) {
           console.error(`Error al cargar evaluaciones para nivel ${nivel.nivel}:`, err);
@@ -1803,19 +1752,6 @@ const UserManagement: React.FC = () => {
             ))}
           </tbody>
         </table>
-        {hasMoreUsers && (
-          <div
-            ref={loadMoreSentinelRef}
-            className="load-more-sentinel"
-            style={{ height: 1, visibility: 'hidden' }}
-          />
-        )}
-        {loadingMore && (
-          <div className="load-more-indicator">
-            <div className="spinner" />
-            <span>Cargando más usuarios...</span>
-          </div>
-        )}
       </div>
 
       {/* Modal: Cambiar contraseña */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaUser, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
+import { FaUser, FaEdit, FaSave, FaTimes, FaKey } from 'react-icons/fa';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import { apiService, getMediaUrl } from '../services/api';
@@ -24,6 +24,10 @@ const UserProfile: React.FC<UserProfileProps> = () => {
   const [removeProfilePhoto, setRemoveProfilePhoto] = useState(false);
   const [errors, setErrors] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ new_password: '', new_password_confirm: '' });
+  const [passwordErrors, setPasswordErrors] = useState<any>({});
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const { toasts, showSuccess, showError, removeToast } = useToast();
 
   const isAdmin = user?.role === 'ADMIN';
@@ -247,6 +251,36 @@ const startEditingProfile = () => {
     loadUserData(); // Recargar datos originales
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordErrors({});
+    if (passwordForm.new_password !== passwordForm.new_password_confirm) {
+      setPasswordErrors({ new_password_confirm: 'Las contraseñas no coinciden.' });
+      return;
+    }
+    if (passwordForm.new_password.length < 8) {
+      setPasswordErrors({ new_password: 'La contraseña debe tener al menos 8 caracteres.' });
+      return;
+    }
+    try {
+      setPasswordLoading(true);
+      await apiService.changeOwnPassword(passwordForm);
+      setShowPasswordModal(false);
+      setPasswordForm({ new_password: '', new_password_confirm: '' });
+      showSuccess('Contraseña actualizada exitosamente');
+    } catch (error: any) {
+      const errData = error?.response?.data || {};
+      setPasswordErrors(errData);
+      if (errData.detail) {
+        showError(typeof errData.detail === 'string' ? errData.detail : 'Error al cambiar contraseña');
+      } else if (Object.keys(errData).length === 0) {
+        showError('Error al cambiar contraseña');
+      }
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   const getDisplayName = () => {
     if (!user) return 'Usuario';
     
@@ -272,14 +306,23 @@ const startEditingProfile = () => {
           <div className="section-header">
             <FaUser className="section-icon" />
             <h2>Información Personal</h2>
-            {!isEditing && isAdmin && (
-              <button 
-                className="btn-edit"
-                onClick={startEditingProfile}
+            <div className="section-header-actions">
+              <button
+                type="button"
+                className="btn-change-password"
+                onClick={() => setShowPasswordModal(true)}
               >
-                <FaEdit /> Editar
+                <FaKey /> Cambiar contraseña
               </button>
-            )}
+              {!isEditing && isAdmin && (
+                <button 
+                  className="btn-edit"
+                  onClick={startEditingProfile}
+                >
+                  <FaEdit /> Editar
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="profile-info">
@@ -433,6 +476,59 @@ const startEditingProfile = () => {
         </div>
         
       </div>
+
+      {/* Modal: Cambiar contraseña */}
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={() => !passwordLoading && setShowPasswordModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Cambiar contraseña</h2>
+            <form onSubmit={handleChangePassword}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Nueva contraseña</label>
+                  <input
+                    type="password"
+                    value={passwordForm.new_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                    placeholder="Mínimo 8 caracteres"
+                    required
+                    minLength={8}
+                  />
+                  {passwordErrors.new_password && (
+                    <span className="error-message">{Array.isArray(passwordErrors.new_password) ? passwordErrors.new_password[0] : passwordErrors.new_password}</span>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label>Confirmar contraseña</label>
+                  <input
+                    type="password"
+                    value={passwordForm.new_password_confirm}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password_confirm: e.target.value })}
+                    placeholder="Repite la nueva contraseña"
+                    required
+                  />
+                  {passwordErrors.new_password_confirm && (
+                    <span className="error-message">{Array.isArray(passwordErrors.new_password_confirm) ? passwordErrors.new_password_confirm[0] : passwordErrors.new_password_confirm}</span>
+                  )}
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => !passwordLoading && setShowPasswordModal(false)}
+                  disabled={passwordLoading}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={passwordLoading}>
+                  {passwordLoading ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />

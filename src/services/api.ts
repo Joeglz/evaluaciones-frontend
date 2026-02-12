@@ -85,6 +85,7 @@ export interface Area {
   posiciones: Posicion[];
   supervisores?: AreaSupervisor[];
   is_active: boolean;
+  include_onboarding?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -284,6 +285,7 @@ export interface AreaCreateWithGroups {
   posiciones?: PosicionNested[];
   supervisores?: number[];
   is_active?: boolean;
+  include_onboarding?: boolean;
 }
 
 export interface AreaUpdateWithGroups {
@@ -292,6 +294,7 @@ export interface AreaUpdateWithGroups {
   posiciones?: PosicionNested[];
   supervisores?: number[];
   is_active?: boolean;
+  include_onboarding?: boolean;
 }
 
 export interface UsersListResponse {
@@ -801,16 +804,18 @@ class ApiService {
     search?: string; 
     role?: string; 
     is_active?: boolean;
-    page?: number;
   }): Promise<UsersListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.role) searchParams.append('role', params.role);
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
-    if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
-    return this.request<UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
+    const response = await this.request<User[] | UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
+    if (Array.isArray(response)) {
+      return { results: response, next: null, previous: null, count: response.length };
+    }
+    return response;
   }
 
   /**
@@ -822,16 +827,8 @@ class ApiService {
     role?: string;
     is_active?: boolean;
   }): Promise<User[]> {
-    const all: User[] = [];
-    let page = 1;
-    let hasMore = true;
-    while (hasMore) {
-      const res = await this.getUsers({ ...params, page });
-      all.push(...res.results);
-      hasMore = res.next != null && res.results.length > 0;
-      page += 1;
-    }
-    return all;
+    const res = await this.getUsers(params);
+    return res.results ?? [];
   }
 
   async getUser(id: number): Promise<User> {
@@ -885,6 +882,13 @@ class ApiService {
 
   async changeUserPassword(id: number, passwordData: ChangePassword): Promise<{ detail: string }> {
     return this.request<{ detail: string }>(`/users/${id}/change_password/`, {
+      method: 'POST',
+      body: JSON.stringify(passwordData),
+    });
+  }
+
+  async changeOwnPassword(passwordData: ChangePassword): Promise<{ detail: string }> {
+    return this.request<{ detail: string }>('/users/me/change_password/', {
       method: 'POST',
       body: JSON.stringify(passwordData),
     });
@@ -973,15 +977,13 @@ class ApiService {
   async getAreas(params?: { 
     search?: string; 
     is_active?: boolean;
-    page?: number;
-  }): Promise<AreasListResponse> {
+  }): Promise<Area[]> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
-    if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
-    return this.request<AreasListResponse>(`/users/areas/${queryString ? '?' + queryString : ''}`);
+    return this.request<Area[]>(`/users/areas/${queryString ? '?' + queryString : ''}`);
   }
 
   async getArea(id: number): Promise<Area> {
@@ -1260,8 +1262,7 @@ class ApiService {
     plantilla_id?: number;
     es_plantilla?: boolean;
     search?: string;
-    page?: number;
-  }): Promise<EvaluacionesListResponse> {
+  }): Promise<Evaluacion[]> {
     const searchParams = new URLSearchParams();
     if (params?.area_id) searchParams.append('area_id', params.area_id.toString());
     if (params?.posicion_id) searchParams.append('posicion_id', params.posicion_id.toString());
@@ -1271,36 +1272,17 @@ class ApiService {
     if (params?.plantilla_id) searchParams.append('plantilla_id', params.plantilla_id.toString());
     if (params?.es_plantilla !== undefined) searchParams.append('es_plantilla', params.es_plantilla.toString());
     if (params?.search) searchParams.append('search', params.search);
-    if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
-    return this.request<EvaluacionesListResponse>(`/users/evaluaciones/${queryString ? '?' + queryString : ''}`);
+    const response = await this.request<Evaluacion[] | { results: Evaluacion[] }>(`/users/evaluaciones/${queryString ? '?' + queryString : ''}`);
+    return Array.isArray(response) ? response : (response?.results ?? []);
   }
 
   /**
-   * Obtiene todas las evaluaciones (todas las páginas) según los filtros.
-   * Útil para listas completas como la de plantillas.
+   * Alias de getEvaluaciones (sin paginación en backend).
    */
-  async getEvaluacionesAll(params?: {
-    area_id?: number;
-    posicion_id?: number;
-    supervisor_id?: number;
-    nivel?: number;
-    nivel_posicion_id?: number;
-    plantilla_id?: number;
-    es_plantilla?: boolean;
-    search?: string;
-  }): Promise<Evaluacion[]> {
-    const all: Evaluacion[] = [];
-    let page = 1;
-    let hasMore = true;
-    while (hasMore) {
-      const res = await this.getEvaluaciones({ ...params, page });
-      all.push(...res.results);
-      hasMore = res.next != null && res.results.length > 0;
-      page += 1;
-    }
-    return all;
+  async getEvaluacionesAll(params?: Parameters<ApiService['getEvaluaciones']>[0]): Promise<Evaluacion[]> {
+    return this.getEvaluaciones(params);
   }
 
   async getEvaluacion(id: number): Promise<Evaluacion> {

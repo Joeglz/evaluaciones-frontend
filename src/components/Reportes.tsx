@@ -1,6 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { FaFileExcel, FaChartBar, FaTable } from 'react-icons/fa';
+import * as XLSX from 'xlsx';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import { apiService, Area, AvanceGlobalResponse } from '../services/api';
 import './Reportes.css';
+
+// Colores corporativos
+const COLORS = {
+  red: '#e12026',
+  redLight: '#eb6b6f',
+  white: '#ffffff',
+  black: '#1a1a1a',
+  gray: '#666666',
+  grayLight: '#e0e0e0',
+  grayBg: '#f5f5f5',
+};
 
 type TabType = 'avance-global' | 'advance-training-monthly' | 'advance-training-matrix';
 
@@ -16,6 +39,7 @@ const Reportes: React.FC = () => {
   const [matrixReportData, setMatrixReportData] = useState<any[]>([]);
   const [matrixSelectedWeek, setMatrixSelectedWeek] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
 
   // Helper para obtener el número de semana ISO
   const getWeekNumber = (date: Date): number => {
@@ -40,7 +64,7 @@ const Reportes: React.FC = () => {
     const loadAreas = async () => {
       try {
         const areasData = await apiService.getAreas();
-        setAreas(areasData.results);
+        setAreas(areasData);
       } catch (error) {
         console.error('Error al cargar áreas:', error);
       }
@@ -75,6 +99,57 @@ const Reportes: React.FC = () => {
 
   const formatPercentage = (value: number): string => {
     return `${value.toFixed(2)}%`;
+  };
+
+  const exportToExcel = (data: AvanceGlobalResponse[] | any[]) => {
+    const dataArr = Array.isArray(data) ? data : [data];
+    
+    if (dataArr.length === 0) return;
+    
+    const wb = XLSX.utils.book_new();
+    
+    dataArr.forEach((areaData, idx) => {
+      const areaName = areaData.area_nombre || `Area_${idx + 1}`;
+      
+      const rows = [['Grupo', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4', 'Entrenamiento']];
+      (areaData.grupos || []).forEach((g: any) => {
+        rows.push([
+          g.grupo_nombre,
+          formatPercentage(g.nivel_1),
+          formatPercentage(g.nivel_2),
+          formatPercentage(g.nivel_3),
+          formatPercentage(g.nivel_4),
+          formatPercentage(g.entrenamiento),
+        ]);
+      });
+      
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const colWidths = [{ wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+      ws['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, ws, `${areaName.substring(0, 31)}`);
+    });
+    
+    const fileName = `Reporte_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const getChartData = (data: AvanceGlobalResponse[]): { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number; Entrenamiento: number }[] => {
+    const result: { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number; Entrenamiento: number }[] = [];
+    data.forEach((areaData) => {
+      (areaData.grupos || []).forEach((g) => {
+        if (g.grupo_nombre.toUpperCase() !== 'PROMEDIO') {
+          result.push({
+            name: g.grupo_nombre,
+            Nivel1: g.nivel_1,
+            Nivel2: g.nivel_2,
+            Nivel3: g.nivel_3,
+            Nivel4: g.nivel_4,
+            Entrenamiento: g.entrenamiento,
+          });
+        }
+      });
+    });
+    return result;
   };
 
   const isAverageRow = (grupoNombre: string): boolean => {
@@ -178,10 +253,61 @@ const Reportes: React.FC = () => {
             onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : null)}
           />
         </div>
+        <div className="reportes-actions">
+          <div className="view-toggle">
+            <button
+              type="button"
+              className={`btn-view ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+            >
+              <FaTable /> Tabla
+            </button>
+            <button
+              type="button"
+              className={`btn-view ${viewMode === 'chart' ? 'active' : ''}`}
+              onClick={() => setViewMode('chart')}
+            >
+              <FaChartBar /> Gráfica
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn-export-excel"
+            onClick={() => exportToExcel(reportData)}
+            disabled={reportData.length === 0}
+          >
+            <FaFileExcel /> Exportar a Excel
+          </button>
+        </div>
         </div>
 
       {loading ? (
         <div className="reportes-loading">Cargando datos...</div>
+      ) : viewMode === 'chart' ? (
+        <div className="reportes-chart-container">
+          {reportData.map((areaData) => (
+            <div key={areaData.area_id} className="reporte-chart-block">
+              <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                  <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
+                  <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                  <Legend />
+                  <Bar dataKey="Nivel1" fill={COLORS.red} name="Nivel 1" />
+                  <Bar dataKey="Nivel2" fill={COLORS.redLight} name="Nivel 2" />
+                  <Bar dataKey="Nivel3" fill={COLORS.gray} name="Nivel 3" />
+                  <Bar dataKey="Nivel4" fill={COLORS.black} name="Nivel 4" />
+                  <Bar dataKey="Entrenamiento" fill="#333" name="Entrenamiento" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ))}
+          {reportData.length === 0 && (
+            <div className="reportes-empty">No hay datos disponibles para los filtros seleccionados.</div>
+          )}
+        </div>
       ) : (
         <div className="reportes-content">
           {reportData.map((areaData) => (
@@ -272,10 +398,63 @@ const Reportes: React.FC = () => {
             onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : null)}
           />
           </div>
+        <div className="reportes-actions">
+          <div className="view-toggle">
+            <button
+              type="button"
+              className={`btn-view ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+            >
+              <FaTable /> Tabla
+            </button>
+            <button
+              type="button"
+              className={`btn-view ${viewMode === 'chart' ? 'active' : ''}`}
+              onClick={() => setViewMode('chart')}
+            >
+              <FaChartBar /> Gráfica
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn-export-excel"
+            onClick={() => exportToExcel(monthlyReportData)}
+            disabled={monthlyReportData.length === 0}
+          >
+            <FaFileExcel /> Exportar a Excel
+          </button>
+        </div>
         </div>
 
       {loading ? (
         <div className="reportes-loading">Cargando datos...</div>
+      ) : viewMode === 'chart' ? (
+        <div className="reportes-chart-container">
+          {monthlyReportData.map((areaData) => (
+            <div key={areaData.area_id} className="reporte-chart-block">
+              <h3 className="reporte-chart-title">
+                {new Date(areaData.year, areaData.month - 1).toLocaleString('es-ES', { month: 'long', year: 'numeric' })} - {areaData.area_nombre}
+              </h3>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                  <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
+                  <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                  <Legend />
+                  <Bar dataKey="Nivel1" fill={COLORS.red} name="Nivel 1" />
+                  <Bar dataKey="Nivel2" fill={COLORS.redLight} name="Nivel 2" />
+                  <Bar dataKey="Nivel3" fill={COLORS.gray} name="Nivel 3" />
+                  <Bar dataKey="Nivel4" fill={COLORS.black} name="Nivel 4" />
+                  <Bar dataKey="Entrenamiento" fill="#333" name="Entrenamiento" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ))}
+          {monthlyReportData.length === 0 && (
+            <div className="reportes-empty">No hay datos disponibles para los filtros seleccionados.</div>
+          )}
+        </div>
       ) : (
         <div className="reportes-content">
           {monthlyReportData.map((areaData) => (
@@ -358,16 +537,50 @@ const Reportes: React.FC = () => {
             />
           </div>
 
-          <div className="filter-group">
-            <label>Año:</label>
-            <input
-              type="number"
-              min="2020"
-              max="2100"
-              value={selectedYear || ''}
-              onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : null)}
-            />
-          </div>
+        <div className="filter-group">
+          <label>Año:</label>
+          <input
+            type="number"
+            min="2020"
+            max="2100"
+            value={selectedYear || ''}
+            onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : null)}
+          />
+        </div>
+        <div className="reportes-actions">
+          <button
+            type="button"
+            className="btn-export-excel"
+            onClick={() => {
+              const rows: (string | number)[][] = [['Nivel', ...areas.map(a => a.name), 'Average']];
+              const levels = ['training', 'nivel_1', 'nivel_2', 'nivel_3', 'nivel_4'];
+              const levelNames: Record<string, string> = {
+                training: 'Training',
+                nivel_1: 'Nivel 1',
+                nivel_2: 'Nivel 2',
+                nivel_3: 'Nivel 3',
+                nivel_4: 'Nivel 4',
+              };
+              levels.forEach((level) => {
+                const levelData = matrixReportData.find((d: any) => d.nivel === level && !d.is_average);
+                const row = [levelNames[level]];
+                areas.forEach((area) => {
+                  const areaData = levelData?.areas?.find((a: any) => a.area_id === area.id);
+                  row.push(areaData ? areaData.porcentaje.toFixed(2) + '%' : '0.00%');
+                });
+                row.push(levelData ? levelData.porcentaje.toFixed(2) + '%' : '0.00%');
+                rows.push(row);
+              });
+              const wb = XLSX.utils.book_new();
+              const ws = XLSX.utils.aoa_to_sheet(rows);
+              XLSX.utils.book_append_sheet(wb, ws, 'Matrix');
+              XLSX.writeFile(wb, `Reporte_Matrix_CW${matrixSelectedWeek}.xlsx`);
+            }}
+            disabled={matrixReportData.length === 0}
+          >
+            <FaFileExcel /> Exportar a Excel
+          </button>
+        </div>
         </div>
 
         {loading ? (

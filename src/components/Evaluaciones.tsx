@@ -174,6 +174,19 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const isRegularUser = effectiveUserRole === 'USUARIO';
   const currentUserId = currentUser?.id ?? null;
 
+  const isSupervisorOrEntrenador = effectiveUserRole === 'SUPERVISOR' || effectiveUserRole === 'ENTRENADOR';
+  const userAreaIds = useMemo(() => {
+    const a = currentUser?.areas;
+    if (!a || !Array.isArray(a)) return [];
+    return a.map((id: unknown) => Number(id)).filter((n) => !Number.isNaN(n));
+  }, [currentUser?.areas]);
+
+  const visibleAreas = useMemo(() => {
+    if (!isSupervisorOrEntrenador) return areas;
+    if (userAreaIds.length === 0) return [];
+    return areas.filter((area) => userAreaIds.includes(area.id));
+  }, [areas, isSupervisorOrEntrenador, userAreaIds]);
+
   useEffect(() => {
     if (!isRegularUser) {
     loadData();
@@ -448,7 +461,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             guardadasMap[registro.evaluacion] = registro;
           });
 
-          const { completados } = calcularResumenNiveles(evaluaciones.results || [], guardadasMap);
+          const { completados } = calcularResumenNiveles(evaluaciones || [], guardadasMap);
 
           console.log(`Resumen de niveles para usuario ${usuario.id} (${usuario.full_name}):`, completados);
 
@@ -497,16 +510,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         apiService.getListasAsistencia({ is_active: true })
       ]);
       
-      setAreas(areasData.results);
+      setAreas(areasData);
       setGrupos(gruposData);
       setPosiciones(posicionesData);
-      setUsuarios(usuariosAll);
-      setUsuariosRegulares(usuariosAll.filter(user => user.role === 'USUARIO'));
+      const usuariosOrdenados = [...usuariosAll].sort((a, b) => {
+        const na = a.numero_empleado ?? '';
+        const nb = b.numero_empleado ?? '';
+        if (!na && !nb) return 0;
+        if (!na) return 1;
+        if (!nb) return -1;
+        return na.localeCompare(nb);
+      });
+      setUsuarios(usuariosOrdenados);
+      setUsuariosRegulares(usuariosOrdenados.filter(user => user.role === 'USUARIO'));
       const esRolSupervisor = (role?: string | null) =>
         role === 'ADMIN' || role === 'ENTRENADOR' || role === 'SUPERVISOR';
 
-      setSupervisores(usuariosAll.filter(user => esRolSupervisor(user.role)));
-      setInstructores(usuariosAll.filter(user => esRolSupervisor(user.role)));
+      setSupervisores(usuariosOrdenados.filter(user => esRolSupervisor(user.role)));
+      setInstructores(usuariosOrdenados.filter(user => esRolSupervisor(user.role)));
       setListasAsistencia(listasData.results);
     } catch (err: any) {
       setError(err.message);
@@ -593,11 +614,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         guardadasMap[registro.evaluacion] = registro;
       });
 
-      setEvaluacionesUsuario(evaluaciones.results);
+      setEvaluacionesUsuario(evaluaciones);
       setEvaluacionesUsuarioGuardadas(guardadasMap);
 
       const nivelesSet = new Set<number>();
-      (evaluaciones.results || []).forEach((evaluacionItem: any) => {
+      (evaluaciones || []).forEach((evaluacionItem: any) => {
         const nivelItem =
           evaluacionItem.nivel_posicion_data?.nivel ??
           evaluacionItem.nivel ??
@@ -616,7 +637,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         return nivelesOrdenados.length > 0 ? nivelesOrdenados[0] : null;
       });
  
-      const { completados } = calcularResumenNiveles(evaluaciones.results || [], guardadasMap);
+      const { completados } = calcularResumenNiveles(evaluaciones || [], guardadasMap);
       setNivelesCompletos(completados);
       setNivelesCompletosPorUsuario((prev) => ({
         ...prev,
@@ -1544,19 +1565,25 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         <h2>Áreas</h2>
         <p>Selecciona un área para continuar</p>
       </div>
-      <div className="areas-grid">
-        {areas.map((area) => (
-          <div 
-            key={area.id} 
-            className={`area-card ${selectedArea?.id === area.id ? 'active' : ''}`}
-            onClick={() => handleAreaClick(area)}
-          >
-            <div className="card-content">
-              <h3>{area.name}</h3>
+      {visibleAreas.length === 0 && isSupervisorOrEntrenador ? (
+        <div className="no-areas-message">
+          <p>No tienes áreas asignadas. Contacta al administrador.</p>
+        </div>
+      ) : (
+        <div className="areas-grid">
+          {visibleAreas.map((area) => (
+            <div 
+              key={area.id} 
+              className={`area-card ${selectedArea?.id === area.id ? 'active' : ''}`}
+              onClick={() => handleAreaClick(area)}
+            >
+              <div className="card-content">
+                <h3>{area.name}</h3>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -1575,16 +1602,18 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           <p>Selecciona un grupo para ver sus posiciones o ONBOARDING para listas de asistencia</p>
         </div>
         <div className="grupos-grid">
-          {/* Botón fijo de ONBOARDING */}
-          <div 
-            className="grupo-card onboarding-card"
-            onClick={() => handleOnboardingClick(null)}
-          >
-            <div className="card-content">
-              <h3>ONBOARDING</h3>
-              <p>Listas de Asistencia</p>
+          {/* Botón de ONBOARDING - solo si el área lo incluye */}
+          {(selectedArea as AreaWithSupervisores & { include_onboarding?: boolean })?.include_onboarding !== false && (
+            <div 
+              className="grupo-card onboarding-card"
+              onClick={() => handleOnboardingClick(null)}
+            >
+              <div className="card-content">
+                <h3>ONBOARDING</h3>
+                <p>Listas de Asistencia</p>
+              </div>
             </div>
-          </div>
+          )}
           
           {/* Grupos del área */}
           {gruposDelArea.map((grupo) => (

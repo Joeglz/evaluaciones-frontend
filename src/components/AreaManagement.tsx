@@ -119,6 +119,7 @@ const AreaManagement: React.FC = () => {
   const [createForm, setCreateForm] = useState({
     name: '',
     is_active: true,
+    include_onboarding: true,
     grupos: [] as GrupoNested[],
     posiciones: [] as PosicionNested[],
     supervisores: [] as number[]
@@ -127,6 +128,7 @@ const AreaManagement: React.FC = () => {
   const [editForm, setEditForm] = useState({
     name: '',
     is_active: true,
+    include_onboarding: true,
     grupos: [] as GrupoNested[],
     posiciones: [] as PosicionNested[],
     supervisores: [] as number[]
@@ -181,8 +183,8 @@ const AreaManagement: React.FC = () => {
       if (searchTerm) params.search = searchTerm;
       if (statusFilter) params.is_active = statusFilter === 'active';
       
-      const response = await apiService.getAreas(params);
-      setAreas(response.results);
+      const data = await apiService.getAreas(params);
+      setAreas(data);
       setError(null);
     } catch (err) {
       setError('Error al cargar áreas');
@@ -265,22 +267,11 @@ const AreaManagement: React.FC = () => {
     }
 
     try {
-      let page = 1;
-      let nextPage: string | null = null;
-      const acumulados: User[] = [];
-
-      do {
-        const response = await apiService.getUsers({
-          role: 'ADMIN,EVALUADOR',
-          is_active: true,
-          page
-        });
-        acumulados.push(...(response.results || []));
-        nextPage = response.next;
-        page += 1;
-      } while (nextPage);
-
-      const ordenados = acumulados.sort((a, b) =>
+      const response = await apiService.getUsers({
+        role: 'ADMIN,EVALUADOR',
+        is_active: true
+      });
+      const ordenados = (response.results || []).sort((a, b) =>
         a.full_name.localeCompare(b.full_name, 'es', { sensitivity: 'base' })
       );
       setSupervisoresDisponibles(ordenados);
@@ -299,6 +290,7 @@ const AreaManagement: React.FC = () => {
     setEditForm({
       name: area.name,
       is_active: area.is_active,
+      include_onboarding: (area as Area & { include_onboarding?: boolean }).include_onboarding !== false,
       grupos: area.grupos || [],
       posiciones: area.posiciones || [],
       supervisores: supervisoresIds
@@ -343,7 +335,7 @@ const AreaManagement: React.FC = () => {
               nivel_posicion_id: nivel.id,
               es_plantilla: false
             });
-            evaluaciones[nivel.id] = evalList;
+            evaluaciones[nivel.id] = Array.isArray(evalList) ? evalList : [];
           } catch (err) {
             console.error(`Error al cargar evaluaciones para nivel ${nivel.id}:`, err);
             evaluaciones[nivel.id] = [];
@@ -362,7 +354,7 @@ const AreaManagement: React.FC = () => {
   const loadEvaluacionesPlantillas = async () => {
     try {
       const list = await apiService.getEvaluacionesAll({ es_plantilla: true });
-      setEvaluacionesPlantillas(list || []);
+      setEvaluacionesPlantillas(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error('Error al cargar evaluaciones plantillas:', err);
       setEvaluacionesPlantillas([]);
@@ -402,6 +394,7 @@ const AreaManagement: React.FC = () => {
     setEditForm({
       name: '',
       is_active: true,
+      include_onboarding: true,
       grupos: [],
       posiciones: [],
       supervisores: []
@@ -963,6 +956,7 @@ const AreaManagement: React.FC = () => {
     setCreateForm({
       name: '',
       is_active: true,
+      include_onboarding: true,
       grupos: [],
       posiciones: [],
       supervisores: []
@@ -1347,7 +1341,12 @@ const AreaManagement: React.FC = () => {
   return (
     <div className="area-management">
       <div className="area-management-header">
-        <h1>{currentView === 'edit' ? `Editar Área${selectedArea ? `: ${selectedArea.name}` : ''}` : 'Gestión de Áreas'}</h1>
+        <h1>
+          {currentView === 'edit'
+            ? `Editar Área${selectedArea ? `: ${selectedArea.name}` : ''}`
+            : `Gestión de Áreas (${areas.length})`
+          }
+        </h1>
         {currentView === 'edit' ? (
           <button className="btn-secondary btn-back" onClick={volverALista}>
             <FaArrowLeft /> Volver
@@ -1457,6 +1456,17 @@ const AreaManagement: React.FC = () => {
                   </label>
                 </div>
 
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={editForm.include_onboarding}
+                      onChange={(e) => setEditForm({...editForm, include_onboarding: e.target.checked})}
+                    />
+                    Incluir Onboarding (Listas de Asistencia)
+                  </label>
+                </div>
+
               <div className="form-group full-width">
                 <label>Supervisores del Área</label>
                 {supervisoresDisponibles.length === 0 ? (
@@ -1485,7 +1495,7 @@ const AreaManagement: React.FC = () => {
               <div className="edit-sections">
                 <section className="edit-section grupos-edit">
                   <div className="section-title">
-                  <h3><FaUsers /> Grupos</h3>
+                  <h3><FaUsers /> Grupos ({editForm.grupos.length})</h3>
                   <button 
                     type="button" 
                     className="btn-add-grupo"
@@ -1531,7 +1541,7 @@ const AreaManagement: React.FC = () => {
 
                 <section className="edit-section posiciones-edit">
                   <div className="section-title">
-                  <h3><FaBriefcase /> Posiciones</h3>
+                  <h3><FaBriefcase /> Posiciones ({editForm.posiciones.length})</h3>
                   <button 
                     type="button" 
                     className="btn-add-posicion"
@@ -1616,7 +1626,7 @@ const AreaManagement: React.FC = () => {
                                   {nivelesDisponibles.map((nivelNum: number) => {
                                     const nivelExistente = niveles.find((n: NivelPosicion) => n.nivel === nivelNum);
                                     const nivelId = nivelExistente?.id ?? 0;
-                                    const evalList = nivelId ? (evaluacionesPorNivel[nivelId] || []) : [];
+                                    const evalList = nivelId ? (Array.isArray(evaluacionesPorNivel[nivelId]) ? evaluacionesPorNivel[nivelId] : []) : [];
                                     const nivelKey = `${posicionId}-${nivelNum}`;
                                     const defaultOpen = !!nivelExistente;
                                     const isOpen = nivelesAbiertos.hasOwnProperty(nivelKey)
@@ -1641,7 +1651,7 @@ const AreaManagement: React.FC = () => {
                                           >
                                             {nivelExistente ? (isOpen ? <FaChevronDown /> : <FaChevronRight />) : <FaChevronRight />}
                                           </button>
-                                          <span className="nivel-badge">Nivel {nivelNum}</span>
+                                          <span className="nivel-badge">Nivel {nivelNum} ({evalList.length})</span>
                                           <div className="nivel-header-actions">
                                             {nivelExistente ? (
                                               <button
@@ -1805,6 +1815,17 @@ const AreaManagement: React.FC = () => {
                   </label>
                 </div>
 
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={createForm.include_onboarding}
+                      onChange={(e) => setCreateForm({...createForm, include_onboarding: e.target.checked})}
+                    />
+                    Incluir Onboarding (Listas de Asistencia)
+                  </label>
+                </div>
+
               <div className="form-group full-width">
                 <label>Supervisores del Área</label>
                 {supervisoresDisponibles.length === 0 ? (
@@ -1833,7 +1854,7 @@ const AreaManagement: React.FC = () => {
               {/* Sección de Grupos */}
               <div className="grupos-section">
                 <div className="section-header">
-                  <h3><FaUsers /> Grupos</h3>
+                  <h3><FaUsers /> Grupos ({createForm.grupos.length})</h3>
                   <button 
                     type="button" 
                     className="btn-add-grupo"
@@ -1875,7 +1896,7 @@ const AreaManagement: React.FC = () => {
               {/* Sección de Posiciones */}
               <div className="posiciones-section">
                 <div className="section-header">
-                  <h3><FaBriefcase /> Posiciones</h3>
+                  <h3><FaBriefcase /> Posiciones ({createForm.posiciones.length})</h3>
                   <button 
                     type="button" 
                     className="btn-add-posicion"

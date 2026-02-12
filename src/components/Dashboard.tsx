@@ -14,8 +14,8 @@ import './Dashboard.css';
 
 const ROLE_MENU: Record<string, string[]> = {
   ADMIN: ['home', 'evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
-  ENTRENADOR: ['evaluaciones', 'notificaciones', 'ajustes'],
-  SUPERVISOR: ['evaluaciones', 'notificaciones', 'ajustes'],
+  ENTRENADOR: ['evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
+  SUPERVISOR: ['evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
   USUARIO: ['evaluaciones', 'notificaciones', 'ajustes'],
 };
 

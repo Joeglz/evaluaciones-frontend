@@ -332,6 +332,10 @@
   width: 100%;
 }
 
+.area-card .card-content h3 {
+  color: white;
+}
+
 .grupo-card .card-content h3 {
   color: white;
   font-size: 1.1rem;
@@ -672,6 +676,17 @@
   text-align: center;
   padding: 3rem 2rem;
   color: #6c757d;
+}
+
+.no-areas-message {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: #6c757d;
+}
+
+.no-areas-message p {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .no-results svg {

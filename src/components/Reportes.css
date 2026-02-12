@@ -1,7 +1,19 @@
+/* Colores corporativos: rojo #e12026, blanco #fff, negro #1a1a1a, gris #666 */
+:root {
+  --reporte-red: #e12026;
+  --reporte-red-light: #eb6b6f;
+  --reporte-white: #ffffff;
+  --reporte-black: #1a1a1a;
+  --reporte-gray: #666666;
+  --reporte-gray-light: #e0e0e0;
+  --reporte-gray-bg: #f5f5f5;
+}
+
 .reportes-container {
   padding: 2rem;
-  background: white;
+  background: var(--reporte-white);
   min-height: 100vh;
+  color: var(--reporte-black);
 }
 
 .reportes-header {
@@ -9,7 +21,7 @@
 }
 
 .reportes-header h1 {
-  color: #e12026;
+  color: var(--reporte-red);
   font-size: 2rem;
   margin: 0;
 }
@@ -18,7 +30,7 @@
   display: flex;
   gap: 0.5rem;
   margin-bottom: 2rem;
-  border-bottom: 2px solid #e0e0e0;
+  border-bottom: 2px solid var(--reporte-gray-light);
 }
 
 .reportes-tab {
@@ -26,7 +38,7 @@
   background: transparent;
   border: none;
   border-bottom: 3px solid transparent;
-  color: #666;
+  color: var(--reporte-gray);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -36,14 +48,14 @@
 }
 
 .reportes-tab:hover {
-  color: #e12026;
-  background: #f9f9f9;
+  color: var(--reporte-red);
+  background: var(--reporte-gray-bg);
 }
 
 .reportes-tab.active {
-  color: #e12026;
-  border-bottom-color: #e12026;
-  background: white;
+  color: var(--reporte-red);
+  border-bottom-color: var(--reporte-red);
+  background: var(--reporte-white);
 }
 
 .reportes-tab-content {
@@ -55,10 +67,98 @@
   gap: 1.5rem;
   margin-bottom: 2rem;
   padding: 1.5rem;
-  background: #f5f5f5;
+  background: var(--reporte-gray-bg);
   border-radius: 8px;
   flex-wrap: wrap;
   align-items: flex-end;
+}
+
+.reportes-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 0;
+  border: 2px solid var(--reporte-gray-light);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.btn-view {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--reporte-white);
+  border: none;
+  color: var(--reporte-gray);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-view:hover {
+  background: var(--reporte-gray-bg);
+  color: var(--reporte-red);
+}
+
+.btn-view.active {
+  background: var(--reporte-red);
+  color: var(--reporte-white);
+}
+
+.btn-export-excel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--reporte-red);
+  color: var(--reporte-white);
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-export-excel:hover:not(:disabled) {
+  background: #c9181e;
+}
+
+.btn-export-excel:disabled {
+  background: var(--reporte-gray);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.reportes-chart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.reporte-chart-block {
+  background: var(--reporte-white);
+  border: 2px solid var(--reporte-gray-light);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.reporte-chart-title {
+  margin: 0 0 1rem 0;
+  color: var(--reporte-red);
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: center;
 }
 
 .filter-group {
@@ -69,14 +169,14 @@
 
 .filter-group label {
   font-weight: 600;
-  color: #333;
+  color: var(--reporte-black);
   font-size: 0.9rem;
 }
 
 .filter-group select,
 .filter-group input {
   padding: 0.75rem 1rem;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--reporte-gray-light);
   border-radius: 8px;
   font-size: 1rem;
   outline: none;
@@ -85,15 +185,15 @@
 
 .filter-group select:focus,
 .filter-group input:focus {
-  border-color: #e12026;
-  box-shadow: 0 0 0 3px rgba(225, 32, 38, 0.1);
+  border-color: var(--reporte-red);
+  box-shadow: 0 0 0 3px rgba(225, 32, 38, 0.15);
 }
 
 .reportes-loading {
   text-align: center;
   padding: 3rem;
   font-size: 1.2rem;
-  color: #666;
+  color: var(--reporte-gray);
 }
 
 .reportes-content {
@@ -103,16 +203,16 @@
 }
 
 .reporte-table-container {
-  background: white;
-  border: 2px solid #e0e0e0;
+  background: var(--reporte-white);
+  border: 2px solid var(--reporte-gray-light);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .reporte-table-header {
-  background: #e12026;
-  color: white;
+  background: var(--reporte-red);
+  color: var(--reporte-white);
   padding: 1rem 1.5rem;
   display: flex;
   justify-content: space-between;
@@ -142,7 +242,7 @@
 }
 
 .reporte-table thead {
-  background: #f5f5f5;
+  background: var(--reporte-gray-bg);
 }
 
 .reporte-table th {
@@ -150,27 +250,27 @@
   text-align: left;
   font-weight: 600;
   font-size: 0.95rem;
-  color: #333;
-  border-bottom: 2px solid #ddd;
+  color: var(--reporte-black);
+  border-bottom: 2px solid var(--reporte-gray-light);
 }
 
 .reporte-table tbody tr {
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--reporte-gray-light);
   transition: background 0.2s;
 }
 
 .reporte-table tbody tr:hover:not(.average-row) {
-  background: #f9f9f9;
+  background: var(--reporte-gray-bg);
 }
 
 .reporte-table tbody tr.average-row {
-  background: #8b4513;
-  color: white;
+  background: var(--reporte-red-light);
+  color: var(--reporte-white);
   font-weight: 600;
 }
 
 .reporte-table tbody tr.average-row:hover {
-  background: #a0522d;
+  background: #f08a8e;
 }
 
 .reporte-table td {
@@ -185,7 +285,7 @@
 .reportes-empty {
   text-align: center;
   padding: 3rem;
-  color: #666;
+  color: var(--reporte-gray);
   font-size: 1.1rem;
 }
 
@@ -193,17 +293,22 @@
 @media (max-width: 768px) {
   .reportes-container {
     padding: 1rem;
-}
+  }
 
   .reportes-filters {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .reportes-actions {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
   .filter-group select,
   .filter-group input {
     width: 100%;
-}
+  }
 
   .reporte-table-header {
   flex-direction: column;
@@ -241,13 +346,13 @@
 }
 
 .matrix-report-table thead {
-  background: #e12026;
-  color: white;
+  background: var(--reporte-red);
+  color: var(--reporte-white);
 }
 
 .matrix-header-level {
-  background: #e12026;
-  color: white;
+  background: var(--reporte-red);
+  color: var(--reporte-white);
   padding: 1rem;
   text-align: center;
   font-weight: 600;
@@ -323,7 +428,7 @@
   padding: 0.75rem;
   text-align: center;
   border: 1px solid #ddd;
-  background: #8b0000;
+  background: var(--reporte-red-light);
   color: white;
   font-weight: 600;
 }

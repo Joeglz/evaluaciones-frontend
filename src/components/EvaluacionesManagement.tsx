@@ -89,9 +89,10 @@ const [firmaForm, setFirmaForm] = useState({
   }, []);
 
   const filteredEvaluaciones = useMemo(() => {
-    if (!nombreFilter.trim()) return evaluaciones;
+    const list = Array.isArray(evaluaciones) ? evaluaciones : [];
+    if (!nombreFilter.trim()) return list;
     const term = nombreFilter.trim().toLowerCase();
-    return evaluaciones.filter((e) => (e.nombre || '').toLowerCase().includes(term));
+    return list.filter((e) => (e.nombre || '').toLowerCase().includes(term));
   }, [evaluaciones, nombreFilter]);
 
   const loadData = async () => {
@@ -104,10 +105,10 @@ const [firmaForm, setFirmaForm] = useState({
         apiService.getUsers({ role: 'ADMIN,EVALUADOR', is_active: true })
       ]);
       
-      setEvaluaciones(evaluacionesData);
-      setAreas(areasData.results);
-      setPosiciones(posicionesData);
-      setSupervisores(supervisoresData.results);
+      setEvaluaciones(Array.isArray(evaluacionesData) ? evaluacionesData : []);
+      setAreas(Array.isArray(areasData) ? areasData : []);
+      setPosiciones(Array.isArray(posicionesData) ? posicionesData : []);
+      setSupervisores(supervisoresData?.results ?? []);
     } catch (error) {
       console.error('Error loading data:', error);
       showError('Error al cargar los datos');
@@ -546,7 +547,13 @@ const [firmaForm, setFirmaForm] = useState({
   return (
     <div className="evaluaciones-management">
       <div className="management-header">
-        <h2>Gestión de Plantillas</h2>
+        <h2>
+          Gestión de Plantillas
+          {nombreFilter.trim()
+            ? ` (${filteredEvaluaciones.length} de ${evaluaciones.length})`
+            : ` (${evaluaciones.length})`
+          }
+        </h2>
         <button 
           className="btn btn-primary"
           onClick={() => setShowCreateModal(true)}

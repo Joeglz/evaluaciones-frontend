@@ -1086,7 +1086,9 @@
 }
 
 .modal-user-detail {
-  max-width: 560px;
+  max-width: 520px;
+  min-width: 480px;
+  width: 100%;
   align-items: center;
   text-align: center;
 }
@@ -1123,6 +1125,8 @@
   border-radius: 10px;
   padding: 1rem;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .user-detail-field .label {
@@ -1139,6 +1143,8 @@
   font-size: 1rem;
   font-weight: 600;
   color: #111827;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .user-detail-field .areas-value {
@@ -1152,6 +1158,14 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.75rem;
   width: 100%;
+}
+
+@media (max-width: 600px) {
+  .modal-user-detail {
+    min-width: auto;
+    width: 95%;
+    max-width: none;
+  }
 }
 
 @media (max-width: 768px) {

@@ -92,8 +92,8 @@ const GrupoManagement: React.FC = () => {
 
   const loadAreas = async () => {
     try {
-      const response = await apiService.getAreas();
-      setAreas(response.results);
+      const data = await apiService.getAreas();
+      setAreas(data);
     } catch (err) {
       console.error('Error al cargar áreas:', err);
     }
