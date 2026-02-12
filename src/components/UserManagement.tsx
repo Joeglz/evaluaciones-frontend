@@ -120,6 +120,8 @@ const UserManagement: React.FC = () => {
   // Estados para mostrar/ocultar contraseñas
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [showPasswordChangeNew, setShowPasswordChangeNew] = useState(false);
+  const [showPasswordChangeConfirm, setShowPasswordChangeConfirm] = useState(false);
   const [editProfilePhotoPreview, setEditProfilePhotoPreview] = useState<string | null>(null);
   const [removeProfilePhoto, setRemoveProfilePhoto] = useState<boolean>(false);
   
@@ -494,10 +496,19 @@ const UserManagement: React.FC = () => {
       setShowPasswordModal(false);
       setSelectedUser(null);
       resetPasswordForm();
-      alert('Contraseña actualizada exitosamente');
+      showSuccess('Contraseña actualizada exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setPasswordErrors(validationErrors);
+      const d = validationErrors.detail;
+      const np = validationErrors.new_password;
+      const npc = validationErrors.new_password_confirm;
+      const errorMsg = (Array.isArray(d) ? d[0] : typeof d === 'string' ? d : null)
+        || (Array.isArray(np) ? np[0] : null)
+        || (Array.isArray(npc) ? npc[0] : null)
+        || err.message
+        || 'Error al cambiar contraseña';
+      showError(typeof errorMsg === 'string' ? errorMsg : 'Error al cambiar contraseña');
     }
   };
 
@@ -921,6 +932,8 @@ const UserManagement: React.FC = () => {
       new_password: '',
       new_password_confirm: ''
     });
+    setShowPasswordChangeNew(false);
+    setShowPasswordChangeConfirm(false);
   };
 
   const handleFillDefaultPassword = async () => {
@@ -1763,24 +1776,44 @@ const UserManagement: React.FC = () => {
               <div className="modal-body">
                 <div className="form-group">
                   <label>Nueva contraseña</label>
-                  <input
-                    type="password"
-                    value={passwordForm.new_password}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
-                    required
-                  />
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showPasswordChangeNew ? 'text' : 'password'}
+                      value={passwordForm.new_password}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn-toggle-password"
+                      onClick={() => setShowPasswordChangeNew(!showPasswordChangeNew)}
+                      title={showPasswordChangeNew ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showPasswordChangeNew ? <FaEyeSlash /> : <FaEye />}
+                    </button>
+                  </div>
                   <FieldError errors={passwordErrors.new_password} />
                 </div>
                 <div className="form-group">
                   <label>Confirmar contraseña</label>
-                  <input
-                    type="password"
-                    value={passwordForm.new_password_confirm}
-                    onChange={(e) =>
-                      setPasswordForm({ ...passwordForm, new_password_confirm: e.target.value })
-                    }
-                    required
-                  />
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showPasswordChangeConfirm ? 'text' : 'password'}
+                      value={passwordForm.new_password_confirm}
+                      onChange={(e) =>
+                        setPasswordForm({ ...passwordForm, new_password_confirm: e.target.value })
+                      }
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn-toggle-password"
+                      onClick={() => setShowPasswordChangeConfirm(!showPasswordChangeConfirm)}
+                      title={showPasswordChangeConfirm ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showPasswordChangeConfirm ? <FaEyeSlash /> : <FaEye />}
+                    </button>
+                  </div>
                   <FieldError errors={passwordErrors.new_password_confirm} />
                 </div>
               </div>
