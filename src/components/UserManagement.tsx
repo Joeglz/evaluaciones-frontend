@@ -468,7 +468,7 @@ const UserManagement: React.FC = () => {
       if (users.length === 0) setLoading(true);
       else setSearching(true);
 
-      const params: Record<string, string | number | boolean> = {};
+      const params: Record<string, string | number | boolean> = { table: true };
       if (searchTerm) params.search = searchTerm;
       if (roleFilter) params.role = roleFilter;
       if (statusFilter) params.is_active = statusFilter === 'active';

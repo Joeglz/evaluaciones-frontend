@@ -83,7 +83,6 @@ export interface Area {
   name: string;
   grupos: Grupo[];
   posiciones: Posicion[];
-  supervisores?: AreaSupervisor[];
   is_active: boolean;
   include_onboarding?: boolean;
   created_at: string;
@@ -94,8 +93,9 @@ export interface Grupo {
   id: number;
   name: string;
   area: number;
-  posiciones: Posicion[];
+  posiciones?: Posicion[];
   is_active: boolean;
+  supervisores?: AreaSupervisor[];
   created_at: string;
   updated_at: string;
 }
@@ -277,13 +277,13 @@ export interface PosicionNested {
 export interface GrupoNested {
   name: string;
   is_active?: boolean;
+  supervisores?: number[];
 }
 
 export interface AreaCreateWithGroups {
   name: string;
   grupos?: GrupoNested[];
   posiciones?: PosicionNested[];
-  supervisores?: number[];
   is_active?: boolean;
   include_onboarding?: boolean;
 }
@@ -292,7 +292,6 @@ export interface AreaUpdateWithGroups {
   name: string;
   grupos?: GrupoNested[];
   posiciones?: PosicionNested[];
-  supervisores?: number[];
   is_active?: boolean;
   include_onboarding?: boolean;
 }
@@ -804,11 +803,15 @@ class ApiService {
     search?: string; 
     role?: string; 
     is_active?: boolean;
+    minimal?: boolean;
+    table?: boolean;
   }): Promise<UsersListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.role) searchParams.append('role', params.role);
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
+    if (params?.minimal) searchParams.append('minimal', '1');
+    if (params?.table) searchParams.append('table', '1');
     
     const queryString = searchParams.toString();
     const response = await this.request<User[] | UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
@@ -826,6 +829,7 @@ class ApiService {
     search?: string;
     role?: string;
     is_active?: boolean;
+    minimal?: boolean;
   }): Promise<User[]> {
     const res = await this.getUsers(params);
     return res.results ?? [];
@@ -977,10 +981,12 @@ class ApiService {
   async getAreas(params?: { 
     search?: string; 
     is_active?: boolean;
+    minimal?: boolean;
   }): Promise<Area[]> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
+    if (params?.minimal) searchParams.append('minimal', '1');
     
     const queryString = searchParams.toString();
     return this.request<Area[]>(`/users/areas/${queryString ? '?' + queryString : ''}`);

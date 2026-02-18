@@ -11,7 +11,8 @@ import {
   FaBriefcase,
   FaArrowLeft,
   FaChevronDown,
-  FaChevronRight
+  FaChevronRight,
+  FaTimes
 } from 'react-icons/fa';
 import { apiService, Area, GrupoNested, PosicionNested, NivelPosicion, Evaluacion, User, FirmaEvaluacion, PuntoEvaluacion, CriterioEvaluacion } from '../services/api';
 import './AreaManagement.css';
@@ -23,8 +24,6 @@ const slugifyText = (value: string): string =>
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-');
-
-type AreaWithSupervisores = Area & { supervisores?: Array<{ id: number }> };
 
 const AreaManagement: React.FC = () => {
   const [areas, setAreas] = useState<Area[]>([]);
@@ -57,9 +56,9 @@ const AreaManagement: React.FC = () => {
   const [nivelesAbiertos, setNivelesAbiertos] = useState<Record<string, boolean>>({});
   const [showAgregarEvaluacionModal, setShowAgregarEvaluacionModal] = useState(false);
   const [nivelModalInfo, setNivelModalInfo] = useState<{ nivelId: number; posicionId: number } | null>(null);
-  const [modalPlantillaId, setModalPlantillaId] = useState<number | null>(null);
+  const [modalPlantillaIds, setModalPlantillaIds] = useState<number[]>([]);
+  const [modalNombresPorPlantilla, setModalNombresPorPlantilla] = useState<Record<number, string>>({});
   const [modalPlantillaDetalle, setModalPlantillaDetalle] = useState<Evaluacion | null>(null);
-  const [modalNombreEvaluacion, setModalNombreEvaluacion] = useState<string>('');
   const [modalMinimoAprobatorio, setModalMinimoAprobatorio] = useState<string>('70');
   const [modalError, setModalError] = useState<string | null>(null);
   const [modalFirmasDisponibles, setModalFirmasDisponibles] = useState<FirmaEvaluacion[]>([]);
@@ -103,6 +102,10 @@ const AreaManagement: React.FC = () => {
     return evaluacionesPlantillas.filter((p) => (p.nombre || '').toLowerCase().includes(q));
   }, [evaluacionesPlantillas, plantillaSearchQuery]);
 
+  const plantillasDisponiblesParaAgregar = useMemo(() => {
+    return plantillasFiltradas.filter((p) => !modalPlantillaIds.includes(p.id));
+  }, [plantillasFiltradas, modalPlantillaIds]);
+
   useEffect(() => {
     if (!showAgregarEvaluacionModal || !plantillaDropdownOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -121,17 +124,15 @@ const AreaManagement: React.FC = () => {
     is_active: true,
     include_onboarding: true,
     grupos: [] as GrupoNested[],
-    posiciones: [] as PosicionNested[],
-    supervisores: [] as number[]
+    posiciones: [] as PosicionNested[]
   });
-  
+
   const [editForm, setEditForm] = useState({
     name: '',
     is_active: true,
     include_onboarding: true,
     grupos: [] as GrupoNested[],
-    posiciones: [] as PosicionNested[],
-    supervisores: [] as number[]
+    posiciones: [] as PosicionNested[]
   });
 
   // Debounce para la búsqueda
@@ -268,7 +269,7 @@ const AreaManagement: React.FC = () => {
 
     try {
       const response = await apiService.getUsers({
-        role: 'ADMIN,EVALUADOR',
+        role: 'ADMIN,SUPERVISOR',
         is_active: true
       });
       const ordenados = (response.results || []).sort((a, b) =>
@@ -284,16 +285,18 @@ const AreaManagement: React.FC = () => {
   const openEditModal = async (area: Area) => {
     setSelectedArea(area);
     setEditErrors({});
-    const areaSupervisores = (area as AreaWithSupervisores).supervisores ?? [];
-    const supervisoresIds = areaSupervisores.map((supervisor) => supervisor.id);
+    const gruposConSupervisores = (area.grupos || []).map((g) => ({
+      name: g.name,
+      is_active: g.is_active ?? true,
+      supervisores: (g.supervisores ?? []).map((s) => s.id)
+    }));
 
     setEditForm({
       name: area.name,
       is_active: area.is_active,
       include_onboarding: (area as Area & { include_onboarding?: boolean }).include_onboarding !== false,
-      grupos: area.grupos || [],
-      posiciones: area.posiciones || [],
-      supervisores: supervisoresIds
+      grupos: gruposConSupervisores,
+      posiciones: area.posiciones || []
     });
     
     if (supervisoresDisponibles.length === 0) {
@@ -396,8 +399,7 @@ const AreaManagement: React.FC = () => {
       is_active: true,
       include_onboarding: true,
       grupos: [],
-      posiciones: [],
-      supervisores: []
+      posiciones: []
     });
     setNivelesPorPosicion({});
     setEvaluacionesPorNivel({});
@@ -406,8 +408,8 @@ const AreaManagement: React.FC = () => {
     setNivelesAbiertos({});
     setShowAgregarEvaluacionModal(false);
     setNivelModalInfo(null);
-    setModalPlantillaId(null);
-    setModalNombreEvaluacion('');
+    setModalPlantillaIds([]);
+    setModalNombresPorPlantilla({});
     setModalMinimoAprobatorio('');
     setModalError(null);
 
@@ -475,8 +477,8 @@ const AreaManagement: React.FC = () => {
 
   const abrirModalAgregarEvaluacion = (nivelId: number, posicionId: number) => {
     setNivelModalInfo({ nivelId, posicionId });
-    setModalPlantillaId(null);
-    setModalNombreEvaluacion('');
+    setModalPlantillaIds([]);
+    setModalNombresPorPlantilla({});
     setModalError(null);
     setModalMinimoAprobatorio('70');
     setModalFormulaDivisor('17');
@@ -487,8 +489,8 @@ const AreaManagement: React.FC = () => {
   const cerrarModalAgregarEvaluacion = () => {
     setShowAgregarEvaluacionModal(false);
     setNivelModalInfo(null);
-    setModalPlantillaId(null);
-    setModalNombreEvaluacion('');
+    setModalPlantillaIds([]);
+    setModalNombresPorPlantilla({});
     setModalError(null);
     setModalPlantillaDetalle(null);
     setModalFirmasDisponibles([]);
@@ -524,17 +526,15 @@ const AreaManagement: React.FC = () => {
     setEditarEvaluacionPaso(1);
   };
 
-  const handleModalPlantillaChange = async (value: string) => {
+  const agregarPlantillaAlModal = async (plantillaId: number) => {
+    if (modalPlantillaIds.includes(plantillaId)) return;
     setModalError(null);
-    const plantillaId = value ? parseInt(value, 10) : null;
-    setModalPlantillaId(plantillaId);
-    setModalError(null);
+    const plantilla = evaluacionesPlantillas.find(p => p.id === plantillaId);
+    setModalPlantillaIds(prev => [...prev, plantillaId]);
+    setModalNombresPorPlantilla(prev => ({ ...prev, [plantillaId]: plantilla?.nombre ?? '' }));
 
-    if (plantillaId) {
+    if (modalPlantillaIds.length === 0) {
       try {
-        const plantilla = evaluacionesPlantillas.find(p => p.id === plantillaId);
-        setModalNombreEvaluacion(plantilla ? plantilla.nombre : '');
-
         const detalle = await apiService.getEvaluacion(plantillaId);
         setModalPlantillaDetalle(detalle);
         const firmasDisponibles = detalle.firmas || [];
@@ -585,14 +585,20 @@ const AreaManagement: React.FC = () => {
         console.error('Error al cargar la plantilla seleccionada:', error);
         setModalPlantillaDetalle(null);
         setModalFirmasDisponibles([]);
-        setModalFirmasSeleccionadas({});
-        setModalFirmasExtras([]);
-        setModalFirmaExtraNombre('');
-        setModalFirmaExtraIdentificador('');
         setModalError('No se pudieron cargar los datos de la plantilla seleccionada');
       }
-    } else {
-      setModalNombreEvaluacion('');
+    }
+  };
+
+  const quitarPlantillaDelModal = (plantillaId: number) => {
+    setModalPlantillaIds(prev => prev.filter(id => id !== plantillaId));
+    setModalNombresPorPlantilla(prev => {
+      const next = { ...prev };
+      delete next[plantillaId];
+      return next;
+    });
+    setModalError(null);
+    if (modalPlantillaIds.length === 1 && modalPlantillaIds[0] === plantillaId) {
       setModalPlantillaDetalle(null);
       setModalFirmasDisponibles([]);
       setModalFirmasSeleccionadas({});
@@ -607,13 +613,16 @@ const AreaManagement: React.FC = () => {
 
   const handleConfirmAgregarEvaluacion = async () => {
     if (!nivelModalInfo) return;
-    if (!modalPlantillaId) {
-      setModalError('Selecciona una plantilla');
+    if (modalPlantillaIds.length === 0) {
+      setModalError('Selecciona al menos una plantilla');
       return;
     }
-    if (!modalNombreEvaluacion.trim()) {
-      setModalError('Ingresa un nombre para la evaluación');
-      return;
+    for (const pid of modalPlantillaIds) {
+      if (!(modalNombresPorPlantilla[pid] ?? '').trim()) {
+        const nombrePlantilla = evaluacionesPlantillas.find(p => p.id === pid)?.nombre ?? 'Plantilla';
+        setModalError(`Ingresa un nombre para la evaluación de "${nombrePlantilla}"`);
+        return;
+      }
     }
 
     setModalError(null);
@@ -682,30 +691,32 @@ const AreaManagement: React.FC = () => {
     }
 
     try {
-      const plantillaCompleta = modalPlantillaDetalle ?? await apiService.getEvaluacion(modalPlantillaId);
-      await apiService.createEvaluacion({
-        nombre: modalNombreEvaluacion.trim(),
-        es_plantilla: false,
-        nivel_posicion: nivelModalInfo.nivelId,
-        plantilla: modalPlantillaId,
-        supervisor: null,
-        minimo_aprobatorio: minimoParsed,
-        formula_divisor: divisorParsed,
-        formula_multiplicador: multiplicadorParsed,
-        is_active: true,
-        puntos_evaluacion: plantillaCompleta.puntos_evaluacion.map(p => ({
-          pregunta: p.pregunta,
-          orden: p.orden
-        })),
-        criterios_evaluacion: plantillaCompleta.criterios_evaluacion.map(c => ({
-          criterio: c.criterio,
-          orden: c.orden
-        })),
-        firmas: allFirmas.map((firma, index) => ({
-          ...firma,
-          orden: firma.orden && firma.orden > 0 ? firma.orden : index + 1
-        }))
-      });
+      for (const plantillaId of modalPlantillaIds) {
+        const detalle = (modalPlantillaDetalle?.id === plantillaId ? modalPlantillaDetalle : null) ?? await apiService.getEvaluacion(plantillaId);
+        await apiService.createEvaluacion({
+          nombre: (modalNombresPorPlantilla[plantillaId] ?? '').trim(),
+          es_plantilla: false,
+          nivel_posicion: nivelModalInfo.nivelId,
+          plantilla: plantillaId,
+          supervisor: null,
+          minimo_aprobatorio: minimoParsed,
+          formula_divisor: divisorParsed,
+          formula_multiplicador: multiplicadorParsed,
+          is_active: true,
+          puntos_evaluacion: detalle.puntos_evaluacion.map(p => ({
+            pregunta: p.pregunta,
+            orden: p.orden
+          })),
+          criterios_evaluacion: detalle.criterios_evaluacion.map(c => ({
+            criterio: c.criterio,
+            orden: c.orden
+          })),
+          firmas: allFirmas.map((firma, index) => ({
+            ...firma,
+            orden: firma.orden && firma.orden > 0 ? firma.orden : index + 1
+          }))
+        });
+      }
 
       await loadNivelesYEvaluaciones([nivelModalInfo.posicionId]);
       cerrarModalAgregarEvaluacion();
@@ -958,35 +969,16 @@ const AreaManagement: React.FC = () => {
       is_active: true,
       include_onboarding: true,
       grupos: [],
-      posiciones: [],
-      supervisores: []
+      posiciones: []
     });
-  };
-
-  const handleSupervisorChange = (
-    formType: 'create' | 'edit',
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const supervisorId = parseInt(event.target.value, 10);
-
-    if (formType === 'create') {
-      setCreateForm((prev) => ({
-        ...prev,
-        supervisores: supervisorId ? [supervisorId] : []
-      }));
-    } else {
-      setEditForm((prev) => ({
-        ...prev,
-        supervisores: supervisorId ? [supervisorId] : []
-      }));
-    }
   };
 
   // Funciones para gestionar grupos y posiciones
   const addGrupo = (formType: 'create' | 'edit') => {
     const newGrupo: GrupoNested = {
       name: '',
-      is_active: true
+      is_active: true,
+      supervisores: []
     };
     
     if (formType === 'create') {
@@ -1466,30 +1458,6 @@ const AreaManagement: React.FC = () => {
                     Incluir Onboarding (Listas de Asistencia)
                   </label>
                 </div>
-
-              <div className="form-group full-width">
-                <label>Supervisores del Área</label>
-                {supervisoresDisponibles.length === 0 ? (
-                  <div className="field-helper">
-                    No hay supervisores disponibles para asignar.
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      value={editForm.supervisores[0]?.toString() || ''}
-                      onChange={(event) => handleSupervisorChange('edit', event)}
-                    >
-                      <option value="">Seleccionar supervisor...</option>
-                      {supervisoresDisponibles.map((supervisor) => (
-                        <option key={supervisor.id} value={supervisor.id}>
-                          {supervisor.full_name} — {supervisor.role_display}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
-                <FieldError errors={editErrors.supervisores} />
-                </div>
               </div>
 
               <div className="edit-sections">
@@ -1524,17 +1492,32 @@ const AreaManagement: React.FC = () => {
                       </button>
                     </div>
                           <div className="grupo-card-edit-body">
-                        <label>Nombre del Grupo *</label>
-                        <input
-                          type="text"
-                          value={grupo.name}
+                            <label>Nombre del Grupo *</label>
+                            <input
+                              type="text"
+                              value={grupo.name}
                               onChange={(e) => updateGrupo(grupoIndex, 'name', e.target.value, 'edit')}
                               placeholder="Ingresa el nombre del grupo"
-                          required
-                        />
-                    </div>
-                  </div>
-                ))}
+                              required
+                            />
+                            <label>Supervisor del grupo</label>
+                            <select
+                              value={(grupo.supervisores && grupo.supervisores[0])?.toString() || ''}
+                              onChange={(e) => {
+                                const id = e.target.value ? parseInt(e.target.value, 10) : null;
+                                updateGrupo(grupoIndex, 'supervisores', id ? [id] : [], 'edit');
+                              }}
+                            >
+                              <option value="">Seleccionar supervisor...</option>
+                              {supervisoresDisponibles.map((sup) => (
+                                <option key={sup.id} value={sup.id}>
+                                  {sup.full_name} — {sup.role_display}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      ))}
               </div>
                   )}
                 </section>
@@ -1825,30 +1808,6 @@ const AreaManagement: React.FC = () => {
                     Incluir Onboarding (Listas de Asistencia)
                   </label>
                 </div>
-
-              <div className="form-group full-width">
-                <label>Supervisores del Área</label>
-                {supervisoresDisponibles.length === 0 ? (
-                  <div className="field-helper">
-                    No hay supervisores disponibles para asignar.
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      value={createForm.supervisores[0]?.toString() || ''}
-                      onChange={(event) => handleSupervisorChange('create', event)}
-                    >
-                      <option value="">Seleccionar supervisor...</option>
-                      {supervisoresDisponibles.map((supervisor) => (
-                        <option key={supervisor.id} value={supervisor.id}>
-                          {supervisor.full_name} — {supervisor.role_display}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
-                <FieldError errors={createErrors.supervisores} />
-                </div>
               </div>
 
               {/* Sección de Grupos */}
@@ -1887,7 +1846,23 @@ const AreaManagement: React.FC = () => {
                           required
                         />
                       </div>
-                      
+                      <div className="form-group">
+                        <label>Supervisor del grupo</label>
+                        <select
+                          value={(grupo.supervisores && grupo.supervisores[0])?.toString() || ''}
+                          onChange={(e) => {
+                            const id = e.target.value ? parseInt(e.target.value, 10) : null;
+                            updateGrupo(grupoIndex, 'supervisores', id ? [id] : [], 'create');
+                          }}
+                        >
+                          <option value="">Seleccionar supervisor...</option>
+                          {supervisoresDisponibles.map((sup) => (
+                            <option key={sup.id} value={sup.id}>
+                              {sup.full_name} — {sup.role_display}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -2002,7 +1977,27 @@ const AreaManagement: React.FC = () => {
             <h2>Agregar evaluación al nivel</h2>
             <div className="modal-body">
               <div className="form-group">
-                <label>Seleccionar Plantilla *</label>
+                <label>Seleccionar Plantillas *</label>
+                {modalPlantillaIds.length > 0 && (
+                  <div className="plantilla-chips">
+                    {modalPlantillaIds.map((plantillaId) => {
+                      const plantilla = evaluacionesPlantillas.find((p) => p.id === plantillaId);
+                      return (
+                        <span key={plantillaId} className="plantilla-chip">
+                          {plantilla?.nombre ?? `ID ${plantillaId}`}
+                          <button
+                            type="button"
+                            className="plantilla-chip-remove"
+                            onClick={() => quitarPlantillaDelModal(plantillaId)}
+                            aria-label={`Quitar ${plantilla?.nombre ?? 'plantilla'}`}
+                          >
+                            <FaTimes />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
                 <div
                   className="plantilla-combobox"
                   ref={plantillaComboboxRef}
@@ -2013,58 +2008,45 @@ const AreaManagement: React.FC = () => {
                     </span>
                     <input
                       type="text"
-                      value={
-                        modalPlantillaId && !plantillaDropdownOpen
-                          ? (evaluacionesPlantillas.find((p) => p.id === modalPlantillaId)?.nombre ?? '')
-                          : plantillaSearchQuery
-                      }
+                      value={plantillaSearchQuery}
                       onChange={(e) => {
                         setPlantillaSearchQuery(e.target.value);
                         setPlantillaDropdownOpen(true);
-                        setPlantillaHighlightedIndex(0);
-                        if (modalPlantillaId) {
-                          setModalPlantillaId(null);
-                          setModalNombreEvaluacion('');
-                          setModalPlantillaDetalle(null);
-                          setModalFirmasDisponibles([]);
-                          setModalFirmasSeleccionadas({});
-                        }
+                        setPlantillaHighlightedIndex(plantillasDisponiblesParaAgregar.length > 0 ? 0 : -1);
                       }}
                       onFocus={() => {
                         setPlantillaDropdownOpen(true);
-                        if (modalPlantillaId) setPlantillaSearchQuery(evaluacionesPlantillas.find((p) => p.id === modalPlantillaId)?.nombre ?? '');
-                        setPlantillaHighlightedIndex(plantillasFiltradas.length > 0 ? 0 : -1);
+                        setPlantillaHighlightedIndex(plantillasDisponiblesParaAgregar.length > 0 ? 0 : -1);
                       }}
                       onKeyDown={(e) => {
                         if (!plantillaDropdownOpen) {
                           if (e.key === 'ArrowDown' || e.key === ' ') {
                             e.preventDefault();
                             setPlantillaDropdownOpen(true);
-                            setPlantillaHighlightedIndex(plantillasFiltradas.length > 0 ? 0 : -1);
+                            setPlantillaHighlightedIndex(plantillasDisponiblesParaAgregar.length > 0 ? 0 : -1);
                           }
                           return;
                         }
                         if (e.key === 'ArrowDown') {
                           e.preventDefault();
                           setPlantillaHighlightedIndex((i) =>
-                            plantillasFiltradas.length === 0 ? -1 : (i + 1) % plantillasFiltradas.length
+                            plantillasDisponiblesParaAgregar.length === 0 ? -1 : (i + 1) % plantillasDisponiblesParaAgregar.length
                           );
                           return;
                         }
                         if (e.key === 'ArrowUp') {
                           e.preventDefault();
                           setPlantillaHighlightedIndex((i) =>
-                            plantillasFiltradas.length === 0 ? -1 : (i - 1 + plantillasFiltradas.length) % plantillasFiltradas.length
+                            plantillasDisponiblesParaAgregar.length === 0 ? -1 : (i - 1 + plantillasDisponiblesParaAgregar.length) % plantillasDisponiblesParaAgregar.length
                           );
                           return;
                         }
-                        if (e.key === 'Enter' && plantillaHighlightedIndex >= 0 && plantillasFiltradas[plantillaHighlightedIndex]) {
+                        if (e.key === 'Enter' && plantillaHighlightedIndex >= 0 && plantillasDisponiblesParaAgregar[plantillaHighlightedIndex]) {
                           e.preventDefault();
-                          const p = plantillasFiltradas[plantillaHighlightedIndex];
-                          handleModalPlantillaChange(String(p.id));
-                          setPlantillaDropdownOpen(false);
-                          setPlantillaSearchQuery(p.nombre ?? '');
-                          setPlantillaHighlightedIndex(-1);
+                          const p = plantillasDisponiblesParaAgregar[plantillaHighlightedIndex];
+                          agregarPlantillaAlModal(p.id);
+                          setPlantillaSearchQuery('');
+                          setPlantillaHighlightedIndex(0);
                           return;
                         }
                         if (e.key === 'Escape') {
@@ -2074,7 +2056,7 @@ const AreaManagement: React.FC = () => {
                         }
                       }}
                       placeholder="Escribe para buscar plantilla..."
-                      aria-label="Buscar y seleccionar plantilla"
+                      aria-label="Buscar y seleccionar plantilla (múltiple)"
                       aria-expanded={plantillaDropdownOpen}
                       aria-autocomplete="list"
                     />
@@ -2089,22 +2071,20 @@ const AreaManagement: React.FC = () => {
                       role="listbox"
                       id="plantilla-combobox-listbox"
                     >
-                      {plantillasFiltradas.length === 0 ? (
+                      {plantillasDisponiblesParaAgregar.length === 0 ? (
                         <li className="plantilla-combobox-empty" role="option">
-                          {plantillaSearchQuery.trim() ? 'Ninguna plantilla coincide con la búsqueda.' : 'Escribe para filtrar plantillas.'}
+                          {plantillaSearchQuery.trim() ? 'Ninguna plantilla disponible o ya están agregadas.' : 'Escribe para filtrar plantillas.'}
                         </li>
                       ) : (
-                        plantillasFiltradas.map((plantilla, index) => (
+                        plantillasDisponiblesParaAgregar.map((plantilla, index) => (
                           <li
                             key={plantilla.id}
                             role="option"
-                            aria-selected={modalPlantillaId === plantilla.id}
-                            className={`plantilla-combobox-option ${index === plantillaHighlightedIndex ? 'highlighted' : ''} ${modalPlantillaId === plantilla.id ? 'selected' : ''}`}
+                            className={`plantilla-combobox-option ${index === plantillaHighlightedIndex ? 'highlighted' : ''}`}
                             onMouseEnter={() => setPlantillaHighlightedIndex(index)}
                             onClick={() => {
-                              handleModalPlantillaChange(String(plantilla.id));
-                              setPlantillaDropdownOpen(false);
-                              setPlantillaSearchQuery(plantilla.nombre ?? '');
+                              agregarPlantillaAlModal(plantilla.id);
+                              setPlantillaSearchQuery('');
                               setPlantillaHighlightedIndex(-1);
                             }}
                           >
@@ -2116,18 +2096,28 @@ const AreaManagement: React.FC = () => {
                   )}
                 </div>
               </div>
-              <div className="form-group">
-                <label>Nombre de la Evaluación *</label>
-                <input
-                  type="text"
-                  value={modalNombreEvaluacion}
-                  onChange={(e) => {
-                    setModalNombreEvaluacion(e.target.value);
-                    if (modalError) setModalError(null);
-                  }}
-                  placeholder="Nombre de la evaluación"
-                />
-              </div>
+              {modalPlantillaIds.length > 0 && (
+                <div className="form-group">
+                  <label>Nombre de cada evaluación *</label>
+                  {modalPlantillaIds.map((plantillaId) => {
+                    const plantilla = evaluacionesPlantillas.find((p) => p.id === plantillaId);
+                    return (
+                      <div key={plantillaId} className="form-group nombre-evaluacion-row">
+                        <label className="nombre-evaluacion-label">{plantilla?.nombre ?? `Plantilla ID ${plantillaId}`}</label>
+                        <input
+                          type="text"
+                          value={modalNombresPorPlantilla[plantillaId] ?? ''}
+                          onChange={(e) => {
+                            setModalNombresPorPlantilla(prev => ({ ...prev, [plantillaId]: e.target.value }));
+                            if (modalError) setModalError(null);
+                          }}
+                          placeholder="Nombre de la evaluación"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="form-group">
                 <label>Mínimo aprobatorio (%) *</label>
@@ -2191,9 +2181,9 @@ const AreaManagement: React.FC = () => {
 
               <div className="form-group">
                 <label>Firmas de la plantilla</label>
-                {modalPlantillaId === null ? (
+                {modalPlantillaIds.length === 0 ? (
                   <div className="field-helper">
-                    Selecciona una plantilla para administrar las firmas.
+                    Selecciona al menos una plantilla para configurar las firmas (común para todas).
                   </div>
                 ) : modalFirmasDisponibles.length === 0 ? (
                   <div className="field-helper">

@@ -96,8 +96,6 @@ const calcularEstadoFirmasUsuario = (firmas: FirmaEvaluacionUsuario[] | undefine
   };
 };
 
-type AreaWithSupervisores = Area & { supervisores?: Array<{ id: number }> };
-
 interface EvaluacionesProps {
   userRole?: string;
   currentUser?: Partial<User> | null;
@@ -109,7 +107,7 @@ const Evaluaciones: React.FC<EvaluacionesProps> = ({ userRole, currentUser }) =>
 
   // Estados para la navegación jerárquica
   const [currentView, setCurrentView] = useState<'areas' | 'grupos' | 'posiciones' | 'usuarios' | 'usuario-detalle' | 'usuario-evaluacion' | 'onboarding' | 'lista-asistencia-form'>('areas');
-  const [selectedArea, setSelectedArea] = useState<AreaWithSupervisores | null>(null);
+  const [selectedArea, setSelectedArea] = useState<Area | null>(null);
   const [selectedGrupo, setSelectedGrupo] = useState<Grupo | null>(null);
   const [selectedPosicion, setSelectedPosicion] = useState<Posicion | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -506,7 +504,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         apiService.getAreas({ is_active: true }),
         apiService.getGrupos({ is_active: true }),
         apiService.getPosiciones({ is_active: true }),
-        apiService.getUsersAll({ is_active: true }),
+        apiService.getUsersAll({ is_active: true, minimal: true }),
         apiService.getListasAsistencia({ is_active: true })
       ]);
       
@@ -538,7 +536,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   // Navegación entre vistas
   const handleAreaClick = (area: Area) => {
-  setSelectedArea(area as AreaWithSupervisores);
+  setSelectedArea(area);
     setCurrentView('grupos');
   };
 
@@ -750,12 +748,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       });
       setSupervisores(supervisoresData.results);
       
-      // Seleccionar supervisor por defecto según la evaluación o el área
+      // Seleccionar supervisor por defecto: evaluación, grupo seleccionado o primer grupo del área
       let supervisorPorDefecto: number | null = null;
       if (evaluacion.supervisor) {
         supervisorPorDefecto = evaluacion.supervisor;
-      } else if (!isRegularUser && selectedArea?.supervisores && selectedArea.supervisores.length > 0) {
-        supervisorPorDefecto = selectedArea.supervisores[0].id;
+      } else if (!isRegularUser && selectedArea?.grupos?.length) {
+        const grupoConSupervisor = selectedArea.grupos.find((g) => g.supervisores?.length);
+        if (grupoConSupervisor?.supervisores?.[0]?.id) {
+          supervisorPorDefecto = grupoConSupervisor.supervisores[0].id;
+        }
       }
       if (
         supervisorPorDefecto &&
@@ -1603,7 +1604,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         </div>
         <div className="grupos-grid">
           {/* Botón de ONBOARDING - solo si el área lo incluye */}
-          {(selectedArea as AreaWithSupervisores & { include_onboarding?: boolean })?.include_onboarding !== false && (
+          {(selectedArea as Area & { include_onboarding?: boolean })?.include_onboarding !== false && (
             <div 
               className="grupo-card onboarding-card"
               onClick={() => handleOnboardingClick(null)}

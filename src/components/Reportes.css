@@ -211,7 +211,7 @@
 }
 
 .reporte-table-header {
-  background: var(--reporte-red);
+  background: var(--reporte-gray);
   color: var(--reporte-white);
   padding: 1rem 1.5rem;
   display: flex;

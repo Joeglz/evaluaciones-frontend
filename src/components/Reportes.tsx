@@ -25,6 +25,9 @@ const COLORS = {
   grayBg: '#f5f5f5',
 };
 
+// Paleta de colores para las gráficas (Nivel 1, Nivel 2, Nivel 3, Nivel 4)
+const CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c'];
+
 type TabType = 'avance-global' | 'advance-training-monthly' | 'advance-training-matrix';
 
 const Reportes: React.FC = () => {
@@ -59,11 +62,11 @@ const Reportes: React.FC = () => {
     setMatrixSelectedWeek(weekNumber);
   }, []);
 
-  // Cargar áreas
+  // Cargar áreas (solo id, name para dropdowns; minimal evita grupos/posiciones)
   useEffect(() => {
     const loadAreas = async () => {
       try {
-        const areasData = await apiService.getAreas();
+        const areasData = await apiService.getAreas({ is_active: true, minimal: true });
         setAreas(areasData);
       } catch (error) {
         console.error('Error al cargar áreas:', error);
@@ -111,7 +114,7 @@ const Reportes: React.FC = () => {
     dataArr.forEach((areaData, idx) => {
       const areaName = areaData.area_nombre || `Area_${idx + 1}`;
       
-      const rows = [['Grupo', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4', 'Entrenamiento']];
+      const rows = [['Grupo', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4']];
       (areaData.grupos || []).forEach((g: any) => {
         rows.push([
           g.grupo_nombre,
@@ -119,12 +122,11 @@ const Reportes: React.FC = () => {
           formatPercentage(g.nivel_2),
           formatPercentage(g.nivel_3),
           formatPercentage(g.nivel_4),
-          formatPercentage(g.entrenamiento),
         ]);
       });
       
       const ws = XLSX.utils.aoa_to_sheet(rows);
-      const colWidths = [{ wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+      const colWidths = [{ wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
       ws['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, ws, `${areaName.substring(0, 31)}`);
     });
@@ -133,8 +135,8 @@ const Reportes: React.FC = () => {
     XLSX.writeFile(wb, fileName);
   };
 
-  const getChartData = (data: AvanceGlobalResponse[]): { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number; Entrenamiento: number }[] => {
-    const result: { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number; Entrenamiento: number }[] = [];
+  const getChartData = (data: AvanceGlobalResponse[]): { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] => {
+    const result: { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] = [];
     data.forEach((areaData) => {
       (areaData.grupos || []).forEach((g) => {
         if (g.grupo_nombre.toUpperCase() !== 'PROMEDIO') {
@@ -144,7 +146,6 @@ const Reportes: React.FC = () => {
             Nivel2: g.nivel_2,
             Nivel3: g.nivel_3,
             Nivel4: g.nivel_4,
-            Entrenamiento: g.entrenamiento,
           });
         }
       });
@@ -295,11 +296,10 @@ const Reportes: React.FC = () => {
                   <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                   <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
                   <Legend />
-                  <Bar dataKey="Nivel1" fill={COLORS.red} name="Nivel 1" />
-                  <Bar dataKey="Nivel2" fill={COLORS.redLight} name="Nivel 2" />
-                  <Bar dataKey="Nivel3" fill={COLORS.gray} name="Nivel 3" />
-                  <Bar dataKey="Nivel4" fill={COLORS.black} name="Nivel 4" />
-                  <Bar dataKey="Entrenamiento" fill="#333" name="Entrenamiento" />
+                  <Bar dataKey="Nivel1" fill={CHART_COLORS[0]} name="Nivel 1" />
+                  <Bar dataKey="Nivel2" fill={CHART_COLORS[1]} name="Nivel 2" />
+                  <Bar dataKey="Nivel3" fill={CHART_COLORS[2]} name="Nivel 3" />
+                  <Bar dataKey="Nivel4" fill={CHART_COLORS[3]} name="Nivel 4" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -324,13 +324,12 @@ const Reportes: React.FC = () => {
                     <th>Nivel 2</th>
                     <th>Nivel 3</th>
                     <th>Nivel 4</th>
-                    <th>ENTRENAMIENTO</th>
                   </tr>
                 </thead>
                 <tbody>
                   {areaData.grupos.map((grupo, index) => (
                     <tr
-                      key={grupo.grupo_id || index}
+                      key={`${areaData.area_id}-${grupo.grupo_id ?? 'promedio'}-${index}`}
                       className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
                     >
                       <td className="grupo-cell">{grupo.grupo_nombre}</td>
@@ -338,7 +337,6 @@ const Reportes: React.FC = () => {
                       <td>{formatPercentage(grupo.nivel_2)}</td>
                       <td>{formatPercentage(grupo.nivel_3)}</td>
                       <td>{formatPercentage(grupo.nivel_4)}</td>
-                      <td>{formatPercentage(grupo.entrenamiento)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -442,11 +440,10 @@ const Reportes: React.FC = () => {
                   <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                   <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
                   <Legend />
-                  <Bar dataKey="Nivel1" fill={COLORS.red} name="Nivel 1" />
-                  <Bar dataKey="Nivel2" fill={COLORS.redLight} name="Nivel 2" />
-                  <Bar dataKey="Nivel3" fill={COLORS.gray} name="Nivel 3" />
-                  <Bar dataKey="Nivel4" fill={COLORS.black} name="Nivel 4" />
-                  <Bar dataKey="Entrenamiento" fill="#333" name="Entrenamiento" />
+                  <Bar dataKey="Nivel1" fill={CHART_COLORS[0]} name="Nivel 1" />
+                  <Bar dataKey="Nivel2" fill={CHART_COLORS[1]} name="Nivel 2" />
+                  <Bar dataKey="Nivel3" fill={CHART_COLORS[2]} name="Nivel 3" />
+                  <Bar dataKey="Nivel4" fill={CHART_COLORS[3]} name="Nivel 4" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -473,13 +470,12 @@ const Reportes: React.FC = () => {
                     <th>Nivel 2</th>
                     <th>Nivel 3</th>
                     <th>Nivel 4</th>
-                    <th>ENTRENAMIENTO</th>
                   </tr>
                 </thead>
                 <tbody>
                   {areaData.grupos.map((grupo: any, index: number) => (
                     <tr
-                      key={grupo.grupo_id || index}
+                      key={`${areaData.area_id}-${grupo.grupo_id ?? 'promedio'}-${index}`}
                       className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
                 >
                       <td className="grupo-cell">{grupo.grupo_nombre}</td>
@@ -487,7 +483,6 @@ const Reportes: React.FC = () => {
                       <td>{formatPercentage(grupo.nivel_2)}</td>
                       <td>{formatPercentage(grupo.nivel_3)}</td>
                       <td>{formatPercentage(grupo.nivel_4)}</td>
-                      <td>{formatPercentage(grupo.entrenamiento)}</td>
                     </tr>
                   ))}
                 </tbody>
