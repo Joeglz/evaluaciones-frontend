@@ -29,8 +29,8 @@ const COLORS = {
   grayBg: '#f5f5f5',
 };
 
-// Paleta de colores para las gráficas (Nivel 1, Nivel 2, Nivel 3, Nivel 4)
-const CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c'];
+// Paleta para Avance Global: Entrenamiento (duplica Nivel 1), Nivel 1, Nivel 2, Nivel 3, Nivel 4
+const CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed'];
 
 // Paleta para varias áreas en la gráfica mensual (todas las áreas vs meses)
 const AREA_CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed', '#0891b2', '#ca8a04', '#c026d3'];
@@ -132,11 +132,13 @@ const Reportes: React.FC = () => {
         { width: 14 },
         { width: 14 },
         { width: 14 },
+        { width: 14 },
       ];
-      ws.addRow(['Grupo', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4']);
+      ws.addRow(['Grupo', 'Entrenamiento', 'Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4']);
       (areaData.grupos || []).forEach((g: any) => {
         ws.addRow([
           g.grupo_nombre,
+          formatPercentage(g.nivel_1),
           formatPercentage(g.nivel_1),
           formatPercentage(g.nivel_2),
           formatPercentage(g.nivel_3),
@@ -236,13 +238,14 @@ const Reportes: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportChartData, exportChartType, exportFileName]);
 
-  const getChartData = (data: AvanceGlobalResponse[]): { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] => {
-    const result: { name: string; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] = [];
+  const getChartData = (data: AvanceGlobalResponse[]): { name: string; Entrenamiento: number; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] => {
+    const result: { name: string; Entrenamiento: number; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] = [];
     data.forEach((areaData) => {
       (areaData.grupos || []).forEach((g) => {
         if (g.grupo_nombre.toUpperCase() !== 'PROMEDIO') {
           result.push({
             name: g.grupo_nombre,
+            Entrenamiento: g.nivel_1,
             Nivel1: g.nivel_1,
             Nivel2: g.nivel_2,
             Nivel3: g.nivel_3,
@@ -416,10 +419,11 @@ const Reportes: React.FC = () => {
                   <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                   <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
                   <Legend />
-                  <Bar dataKey="Nivel1" fill={CHART_COLORS[0]} name="Nivel 1" />
-                  <Bar dataKey="Nivel2" fill={CHART_COLORS[1]} name="Nivel 2" />
-                  <Bar dataKey="Nivel3" fill={CHART_COLORS[2]} name="Nivel 3" />
-                  <Bar dataKey="Nivel4" fill={CHART_COLORS[3]} name="Nivel 4" />
+                  <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
+                  <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
+                  <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
+                  <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
+                  <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -440,6 +444,7 @@ const Reportes: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Grupo</th>
+                    <th>Entrenamiento</th>
                     <th>Nivel 1</th>
                     <th>Nivel 2</th>
                     <th>Nivel 3</th>
@@ -453,6 +458,7 @@ const Reportes: React.FC = () => {
                       className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
                     >
                       <td className="grupo-cell">{grupo.grupo_nombre}</td>
+                      <td>{formatPercentage(grupo.nivel_1)}</td>
                       <td>{formatPercentage(grupo.nivel_1)}</td>
                       <td>{formatPercentage(grupo.nivel_2)}</td>
                       <td>{formatPercentage(grupo.nivel_3)}</td>
@@ -826,10 +832,11 @@ const Reportes: React.FC = () => {
                     <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                     <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
                     <Legend />
-                    <Bar dataKey="Nivel1" fill={CHART_COLORS[0]} name="Nivel 1" />
-                    <Bar dataKey="Nivel2" fill={CHART_COLORS[1]} name="Nivel 2" />
-                    <Bar dataKey="Nivel3" fill={CHART_COLORS[2]} name="Nivel 3" />
-                    <Bar dataKey="Nivel4" fill={CHART_COLORS[3]} name="Nivel 4" />
+                    <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
+                    <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
+                    <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
+                    <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
+                    <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
