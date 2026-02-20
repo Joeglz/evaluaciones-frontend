@@ -805,6 +805,7 @@ class ApiService {
     is_active?: boolean;
     minimal?: boolean;
     table?: boolean;
+    evaluaciones?: boolean;
   }): Promise<UsersListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
@@ -812,6 +813,7 @@ class ApiService {
     if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
     if (params?.minimal) searchParams.append('minimal', '1');
     if (params?.table) searchParams.append('table', '1');
+    if (params?.evaluaciones) searchParams.append('evaluaciones', '1');
     
     const queryString = searchParams.toString();
     const response = await this.request<User[] | UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
@@ -830,6 +832,7 @@ class ApiService {
     role?: string;
     is_active?: boolean;
     minimal?: boolean;
+    evaluaciones?: boolean;
   }): Promise<User[]> {
     const res = await this.getUsers(params);
     return res.results ?? [];

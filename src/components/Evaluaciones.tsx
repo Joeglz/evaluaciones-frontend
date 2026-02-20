@@ -504,7 +504,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         apiService.getAreas({ is_active: true }),
         apiService.getGrupos({ is_active: true }),
         apiService.getPosiciones({ is_active: true }),
-        apiService.getUsersAll({ is_active: true, minimal: true }),
+        apiService.getUsersAll({ is_active: true, evaluaciones: true }),
         apiService.getListasAsistencia({ is_active: true })
       ]);
       
