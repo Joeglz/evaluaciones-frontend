@@ -71,7 +71,18 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       }
     } catch (err: any) {
       console.error('Error en login:', err);
-      setError(err.message || 'Error al conectar con el servidor. Verifica que el backend esté ejecutándose.');
+      let message = 'Error al conectar con el servidor. Verifica que el backend esté ejecutándose.';
+      if (err?.errorData?.message) {
+        message = err.errorData.message;
+      } else if (err?.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (typeof parsed?.message === 'string') message = parsed.message;
+        } catch {
+          if (err.message && !err.message.startsWith('{')) message = err.message;
+        }
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }

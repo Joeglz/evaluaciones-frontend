@@ -170,6 +170,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   const effectiveUserRole = useMemo(() => userRole || currentUser?.role || 'USUARIO', [userRole, currentUser]);
   const isRegularUser = effectiveUserRole === 'USUARIO';
+  const isVisor = effectiveUserRole === 'VISOR';
   const currentUserId = currentUser?.id ?? null;
 
   const isSupervisorOrEntrenador = effectiveUserRole === 'SUPERVISOR' || effectiveUserRole === 'ENTRENADOR';
@@ -730,7 +731,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     try {
       setLoading(true);
       setEvaluacionActual(evaluacion);
-      setEvaluacionModoLectura(isRegularUser);
+      setEvaluacionModoLectura(isRegularUser || isVisor);
       setEvaluacionGuardadaInfo(null);
 
       const nivelEvaluacion =
@@ -1172,6 +1173,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   };
 
   const handleCrearListaAsistencia = () => {
+    if (isVisor) {
+      showError('No tienes permisos para crear listas de asistencia.');
+      return;
+    }
     setFormData(prev => ({ ...prev, area: selectedArea?.id || 0 }));
     setIsEditing(false);
     setEditingListaId(null);
@@ -1179,6 +1184,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   };
 
   const handleEditarLista = (lista: ListaAsistencia) => {
+    if (isVisor) {
+      showError('No tienes permisos para editar listas de asistencia.');
+      return;
+    }
     setFormData({
       nombre: lista.nombre,
       supervisor: lista.supervisor,
@@ -2304,7 +2313,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
                     const puedeFirmarPendiente = esFirmanteActual && !estaFirmada;
                     const puedeEditarPorRol = !evaluacionModoLectura && !estadoEvaluacionCompletada;
-                    const puedeEditarFirma = puedeFirmarPendiente || puedeEditarPorRol;
+                    const puedeEditarFirma = !isVisor && (puedeFirmarPendiente || puedeEditarPorRol);
 
                     return (
                       <div key={slug} className="firma-item">
@@ -2490,7 +2499,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     });
     
     // Solo mostrar el botón "Añadir nueva lista" si se entró desde la tarjeta ONBOARDING (no desde el botón Onboarding del usuario)
-    const mostrarBotonCrearLista = !onboardingUsuarioId && selectedArea !== null;
+    const mostrarBotonCrearLista = !onboardingUsuarioId && selectedArea !== null && !isVisor;
     
     return (
       <div className="evaluaciones-section">

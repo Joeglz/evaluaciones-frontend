@@ -169,7 +169,7 @@ const Reportes: React.FC = () => {
   }, []);
 
   const buildExcelMonthlyWithChart = useCallback(async (
-    dataPoints: { month: string; [k: string]: string | number }[],
+    dataPoints: { month: string; [k: string]: string | number | null }[],
     chartImageBase64: string,
     fileName: string
   ) => {
@@ -261,16 +261,29 @@ const Reportes: React.FC = () => {
     return grupoNombre.toUpperCase() === 'PROMEDIO';
   };
 
-  /** Datos para la gráfica mensual: todas las áreas vs meses (una fila por mes, una serie por área). */
-  const getMonthlyChartData = (): { month: string; [areaName: string]: string | number }[] => {
+  /** Indica si un mes (año + mes 1-12) es futuro respecto a la fecha actual (no mostrar resultados). */
+  const isFutureMonth = (year: number, month1Based: number): boolean => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    return year > currentYear || (year === currentYear && month1Based > currentMonth);
+  };
+
+  /** Datos para la gráfica mensual: todas las áreas vs meses (una fila por mes, una serie por área). Meses futuros sin resultado (null). */
+  const getMonthlyChartData = (): { month: string; [areaName: string]: string | number | null }[] => {
     if (!monthlyReportData.length || monthlyReportData.some((m) => !Array.isArray(m))) return [];
     const year = selectedYear ?? new Date().getFullYear();
     return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((monthIdx) => {
       const monthLabel = new Date(year, monthIdx - 1, 1).toLocaleString('es-ES', { month: 'short', year: 'numeric' });
-      const point: { month: string; [areaName: string]: string | number } = { month: monthLabel };
+      const point: { month: string; [areaName: string]: string | number | null } = { month: monthLabel };
       const monthResponse = monthlyReportData[monthIdx - 1] as any[] | undefined;
+      const isFuture = isFutureMonth(year, monthIdx);
       if (!monthResponse) return point;
       monthResponse.forEach((areaData: any) => {
+        if (isFuture) {
+          point[areaData.area_nombre] = null;
+          return;
+        }
         const prom = areaData.grupos?.find((g: any) => String(g.grupo_nombre).toUpperCase() === 'PROMEDIO');
         const val = prom
           ? (prom.entrenamiento ?? ((prom.nivel_1 + prom.nivel_2 + prom.nivel_3 + prom.nivel_4) / 4))
@@ -560,6 +573,7 @@ const Reportes: React.FC = () => {
                       stroke={AREA_CHART_COLORS[i % AREA_CHART_COLORS.length]}
                       strokeWidth={2}
                       dot={{ r: 4 }}
+                      connectNulls={false}
                     />
                   ))}
                 </LineChart>
@@ -588,9 +602,16 @@ const Reportes: React.FC = () => {
                   {areaNames.map((name) => (
                     <tr key={name}>
                       <td className="grupo-cell">{name}</td>
-                      {monthlyChartData.map((row) => (
-                        <td key={row.month}>{formatPercentage(Number(row[name] ?? 0))}</td>
-                      ))}
+                      {monthlyChartData.map((row, monthIndex) => {
+                        const year = selectedYear ?? new Date().getFullYear();
+                        const isFuture = isFutureMonth(year, monthIndex + 1);
+                        const value = row[name];
+                        return (
+                          <td key={row.month}>
+                            {isFuture || value == null ? '—' : formatPercentage(Number(value))}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>

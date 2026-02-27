@@ -85,6 +85,7 @@ export interface Area {
   posiciones: Posicion[];
   is_active: boolean;
   include_onboarding?: boolean;
+  tipo_area?: 'produccion' | 'soporte';
   created_at: string;
   updated_at: string;
 }
@@ -286,6 +287,7 @@ export interface AreaCreateWithGroups {
   posiciones?: PosicionNested[];
   is_active?: boolean;
   include_onboarding?: boolean;
+  tipo_area?: 'produccion' | 'soporte';
 }
 
 export interface AreaUpdateWithGroups {
@@ -294,6 +296,7 @@ export interface AreaUpdateWithGroups {
   posiciones?: PosicionNested[];
   is_active?: boolean;
   include_onboarding?: boolean;
+  tipo_area?: 'produccion' | 'soporte';
 }
 
 export interface UsersListResponse {

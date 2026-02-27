@@ -27,6 +27,7 @@ const Settings: React.FC<SettingsProps> = ({ userRole }) => {
       case 'SUPERVISOR':
         return ['profile'];
       case 'USUARIO':
+      case 'VISOR':
       default:
         return ['profile'];
     }

@@ -123,6 +123,7 @@ const AreaManagement: React.FC = () => {
     name: '',
     is_active: true,
     include_onboarding: true,
+    tipo_area: 'produccion' as 'produccion' | 'soporte',
     grupos: [] as GrupoNested[],
     posiciones: [] as PosicionNested[]
   });
@@ -131,6 +132,7 @@ const AreaManagement: React.FC = () => {
     name: '',
     is_active: true,
     include_onboarding: true,
+    tipo_area: 'produccion' as 'produccion' | 'soporte',
     grupos: [] as GrupoNested[],
     posiciones: [] as PosicionNested[]
   });
@@ -295,6 +297,7 @@ const AreaManagement: React.FC = () => {
       name: area.name,
       is_active: area.is_active,
       include_onboarding: (area as Area & { include_onboarding?: boolean }).include_onboarding !== false,
+      tipo_area: area.tipo_area === 'soporte' ? 'soporte' : 'produccion',
       grupos: gruposConSupervisores,
       posiciones: area.posiciones || []
     });
@@ -398,6 +401,7 @@ const AreaManagement: React.FC = () => {
       name: '',
       is_active: true,
       include_onboarding: true,
+      tipo_area: 'produccion',
       grupos: [],
       posiciones: []
     });
@@ -968,6 +972,7 @@ const AreaManagement: React.FC = () => {
       name: '',
       is_active: true,
       include_onboarding: true,
+      tipo_area: 'produccion',
       grupos: [],
       posiciones: []
     });
@@ -1458,6 +1463,17 @@ const AreaManagement: React.FC = () => {
                     Incluir Onboarding (Listas de Asistencia)
                   </label>
                 </div>
+
+                <div className="form-group">
+                  <label>Tipo de área</label>
+                  <select
+                    value={editForm.tipo_area}
+                    onChange={(e) => setEditForm({...editForm, tipo_area: e.target.value as 'produccion' | 'soporte'})}
+                  >
+                    <option value="produccion">Producción</option>
+                    <option value="soporte">Soporte</option>
+                  </select>
+                </div>
               </div>
 
               <div className="edit-sections">
@@ -1807,6 +1823,17 @@ const AreaManagement: React.FC = () => {
                     />
                     Incluir Onboarding (Listas de Asistencia)
                   </label>
+                </div>
+
+                <div className="form-group">
+                  <label>Tipo de área</label>
+                  <select
+                    value={createForm.tipo_area}
+                    onChange={(e) => setCreateForm({...createForm, tipo_area: e.target.value as 'produccion' | 'soporte'})}
+                  >
+                    <option value="produccion">Producción</option>
+                    <option value="soporte">Soporte</option>
+                  </select>
                 </div>
               </div>
 

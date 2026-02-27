@@ -17,6 +17,7 @@ const ROLE_MENU: Record<string, string[]> = {
   ENTRENADOR: ['evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
   SUPERVISOR: ['evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
   USUARIO: ['evaluaciones', 'notificaciones', 'ajustes'],
+  VISOR: ['evaluaciones', 'reportes', 'ajustes'],
 };
 
 interface MenuItemConfig {

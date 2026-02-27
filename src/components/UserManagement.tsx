@@ -959,6 +959,8 @@ const UserManagement: React.FC = () => {
         return 'badge-entrenador';
       case 'SUPERVISOR':
         return 'badge-supervisor';
+      case 'VISOR':
+        return 'badge-visor';
       default:
         return 'badge-usuario';
     }
@@ -1335,6 +1337,7 @@ const UserManagement: React.FC = () => {
               <option value="ENTRENADOR">Entrenador</option>
               <option value="SUPERVISOR">Supervisor</option>
               <option value="ADMIN">Administrador</option>
+              <option value="VISOR">Solo lectura</option>
             </select>
             {errors.role && <div className="error-message">{errors.role[0]}</div>}
           </div>
@@ -1650,6 +1653,7 @@ const UserManagement: React.FC = () => {
             <option value="ENTRENADOR">Entrenador</option>
             <option value="SUPERVISOR">Supervisor</option>
             <option value="USUARIO">Usuario Regular</option>
+            <option value="VISOR">Solo lectura</option>
           </select>
           
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -2317,6 +2321,7 @@ const UserManagement: React.FC = () => {
                             <option value="ENTRENADOR">Entrenador</option>
                             <option value="SUPERVISOR">Supervisor</option>
                             <option value="ADMIN">Administrador</option>
+                            <option value="VISOR">Solo lectura</option>
                           </select>
                         </td>
                         <td>
