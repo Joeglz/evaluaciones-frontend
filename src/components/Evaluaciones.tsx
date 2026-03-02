@@ -2020,14 +2020,14 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             >
                               Ver
                             </button>
-                          ) : (
+                          ) : !isVisor ? (
                             <button 
                               className={`btn btn-${isRegularUser ? 'secondary' : 'primary'} btn-sm`}
                               onClick={() => iniciarEvaluacion(evaluacion)}
                             >
                               {isRegularUser ? 'Firmar' : 'Evaluar'}
                             </button>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
