@@ -202,6 +202,16 @@
   gap: 2rem;
 }
 
+.reportes-monthly-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.reporte-tipo-block.reporte-table-container {
+  margin-bottom: 0;
+}
+
 .reporte-table-container {
   background: var(--reporte-white);
   border: 2px solid var(--reporte-gray-light);
@@ -259,17 +269,19 @@
   transition: background 0.2s;
 }
 
-.reporte-table tbody tr:hover:not(.average-row) {
+.reporte-table tbody tr:hover:not(.average-row):not(.promedio-row) {
   background: var(--reporte-gray-bg);
 }
 
-.reporte-table tbody tr.average-row {
+.reporte-table tbody tr.average-row,
+.reporte-table tbody tr.promedio-row {
   background: var(--reporte-red-light);
   color: var(--reporte-white);
   font-weight: 600;
 }
 
-.reporte-table tbody tr.average-row:hover {
+.reporte-table tbody tr.average-row:hover,
+.reporte-table tbody tr.promedio-row:hover {
   background: #f08a8e;
 }
 

@@ -112,6 +112,23 @@
   gap: 1rem;
 }
 
+.areas-tipo-block {
+  margin-bottom: 1.5rem;
+}
+
+.areas-tipo-block:last-child {
+  margin-bottom: 0;
+}
+
+.areas-tipo-title {
+  color: #1a1a1a;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #e12026;
+}
+
 .onboarding-container {
   display: flex;
   justify-content: center;

@@ -176,14 +176,33 @@ const Reportes: React.FC = () => {
     const areaNames = dataPoints.length > 0 ? Object.keys(dataPoints[0]).filter((k) => k !== 'month') : [];
     const workbook = new ExcelJS.Workbook();
     const ws = workbook.addWorksheet('Avance por mes', { views: [{ state: 'normal' }] });
-    ws.columns = [{ width: 22 }, ...dataPoints.map(() => ({ width: 12 }))];
-    ws.addRow(['Área', ...dataPoints.map((row) => row.month)]);
+    ws.columns = [{ width: 22 }, ...dataPoints.map(() => ({ width: 12 })), { width: 14 }];
+    ws.addRow(['Área', ...dataPoints.map((row) => row.month), 'Promedio anual']);
     areaNames.forEach((areaName) => {
-      ws.addRow([areaName, ...dataPoints.map((row) => (row[areaName] != null ? formatPercentage(Number(row[areaName])) : ''))]);
+      const valores = dataPoints.map((row) => row[areaName]).filter((v): v is number => typeof v === 'number');
+      const promedioAnual = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+      ws.addRow([
+        areaName,
+        ...dataPoints.map((row) => (row[areaName] != null ? formatPercentage(Number(row[areaName])) : '')),
+        promedioAnual != null ? formatPercentage(promedioAnual) : '',
+      ]);
     });
+    const promediosMensuales = dataPoints.map((row) => {
+      const valores = areaNames.map((n) => row[n]).filter((v): v is number => typeof v === 'number');
+      return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+    });
+    const promedioGeneral = promediosMensuales.filter((v): v is number => typeof v === 'number');
+    const promedioGeneralVal = promedioGeneral.length
+      ? promedioGeneral.reduce((a, b) => a + b, 0) / promedioGeneral.length
+      : null;
+    ws.addRow([
+      'Promedio',
+      ...promediosMensuales.map((v) => (v != null ? formatPercentage(v) : '')),
+      promedioGeneralVal != null ? formatPercentage(promedioGeneralVal) : '',
+    ]);
     if (chartImageBase64) {
       const imageId = workbook.addImage({ base64: chartImageBase64, extension: 'png' });
-      const startRow = dataPoints.length + 3;
+      const startRow = areaNames.length + 3;
       ws.addImage(imageId, {
         tl: { col: 0, row: startRow },
         ext: { width: 640, height: 350 },
@@ -498,6 +517,35 @@ const Reportes: React.FC = () => {
       ? Object.keys(monthlyChartData[0]).filter((k) => k !== 'month')
       : [];
 
+    const areaNamesProduccion = areaNames.filter(
+      (name) => (areas.find((a) => a.name === name)?.tipo_area ?? 'produccion') === 'produccion'
+    );
+    const areaNamesSoporte = areaNames.filter(
+      (name) => areas.find((a) => a.name === name)?.tipo_area === 'soporte'
+    );
+
+    const yearChart = selectedYear ?? new Date().getFullYear();
+    const monthlyChartDataProduccion = monthlyChartData.length
+      ? monthlyChartData.map((row, monthIndex) => {
+          const isFuture = isFutureMonth(yearChart, monthIndex + 1);
+          const valores = areaNamesProduccion
+            .map((name) => row[name])
+            .filter((v): v is number => typeof v === 'number');
+          const prom = !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+          return { month: row.month, Promedio: prom };
+        })
+      : [];
+    const monthlyChartDataSoporte = monthlyChartData.length
+      ? monthlyChartData.map((row, monthIndex) => {
+          const isFuture = isFutureMonth(yearChart, monthIndex + 1);
+          const valores = areaNamesSoporte
+            .map((name) => row[name])
+            .filter((v): v is number => typeof v === 'number');
+          const prom = !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+          return { month: row.month, Promedio: prom };
+        })
+      : [];
+
     return (
       <>
         <div className="reportes-filters">
@@ -549,76 +597,239 @@ const Reportes: React.FC = () => {
         ) : selectedYear === null ? (
           <div className="reportes-empty">Selecciona un año para ver el avance de todas las áreas por mes.</div>
         ) : viewMode === 'chart' ? (
-          <div className="reportes-chart-container">
-            <div className="reporte-chart-block">
-              <h3 className="reporte-chart-title">
-                Avance por mes - {selectedYear} (todas las áreas)
-              </h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                  <XAxis dataKey="month" stroke={COLORS.black} />
-                  <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <Tooltip
-                    formatter={(value: number | undefined) => (value != null ? [`${Number(value).toFixed(2)}%`, ''] : '')}
-                    contentStyle={{ borderColor: COLORS.red }}
-                  />
-                  <Legend />
-                  {areaNames.map((name, i) => (
+          <div className="reportes-chart-container reportes-chart-dos-graficas">
+            {areaNamesProduccion.length > 0 && (
+              <div className="reporte-chart-block">
+                <h3 className="reporte-chart-title">
+                  Avance por mes - {selectedYear} — Producción
+                </h3>
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={monthlyChartDataProduccion} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                    <XAxis dataKey="month" stroke={COLORS.black} />
+                    <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                    <Tooltip
+                      formatter={(value: number | undefined, name?: string) => (value != null ? [`${Number(value).toFixed(2)}%`, name ?? 'Promedio'] : '')}
+                      contentStyle={{ borderColor: COLORS.red }}
+                    />
+                    <Legend />
                     <Line
-                      key={name}
                       type="monotone"
-                      dataKey={name}
-                      name={name}
-                      stroke={AREA_CHART_COLORS[i % AREA_CHART_COLORS.length]}
+                      dataKey="Promedio"
+                      name="Promedio"
+                      stroke={COLORS.red}
                       strokeWidth={2}
                       dot={{ r: 4 }}
                       connectNulls={false}
                     />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {areaNamesSoporte.length > 0 && (
+              <div className="reporte-chart-block">
+                <h3 className="reporte-chart-title">
+                  Avance por mes - {selectedYear} — Soporte
+                </h3>
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={monthlyChartDataSoporte} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                    <XAxis dataKey="month" stroke={COLORS.black} />
+                    <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                    <Tooltip
+                      formatter={(value: number | undefined, name?: string) => (value != null ? [`${Number(value).toFixed(2)}%`, name ?? 'Promedio'] : '')}
+                      contentStyle={{ borderColor: COLORS.red }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="Promedio"
+                      name="Promedio"
+                      stroke={AREA_CHART_COLORS[1]}
+                      strokeWidth={2}
+                      dot={{ r: 4 }}
+                      connectNulls={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
             {monthlyChartData.length === 0 && !loading && (
               <div className="reportes-empty">No hay datos disponibles para el año seleccionado.</div>
             )}
+            {monthlyChartData.length > 0 && areaNamesProduccion.length === 0 && areaNamesSoporte.length === 0 && (
+              <div className="reportes-empty">No hay áreas de producción ni soporte con datos.</div>
+            )}
           </div>
         ) : (
-          <div className="reportes-content">
-            <div className="reporte-table-container">
-              <div className="reporte-table-header">
-                <h2>Avance por mes - {selectedYear}</h2>
-              </div>
-              <table className="reporte-table">
-                <thead>
-                  <tr>
-                    <th>Área</th>
-                    {monthlyChartData.map((row) => (
-                      <th key={row.month}>{row.month}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {areaNames.map((name) => (
-                    <tr key={name}>
-                      <td className="grupo-cell">{name}</td>
+          <div className="reportes-content reportes-monthly-tables">
+            {areaNamesProduccion.length > 0 && (
+              <div className="reporte-table-container reporte-tipo-block">
+                <div className="reporte-table-header">
+                  <h2>Avance por mes - {selectedYear} — Producción</h2>
+                </div>
+                <table className="reporte-table">
+                  <thead>
+                    <tr>
+                      <th>Área</th>
+                      {monthlyChartData.map((row) => (
+                        <th key={row.month}>{row.month}</th>
+                      ))}
+                      <th>Promedio anual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {areaNamesProduccion.map((name) => {
+                      const valoresAnuales = monthlyChartData
+                        .map((row) => row[name])
+                        .filter((v): v is number => typeof v === 'number');
+                      const promedioAnual = valoresAnuales.length
+                        ? valoresAnuales.reduce((a, b) => a + b, 0) / valoresAnuales.length
+                        : null;
+                      return (
+                        <tr key={name}>
+                          <td className="grupo-cell">{name}</td>
+                          {monthlyChartData.map((row, monthIndex) => {
+                            const year = selectedYear ?? new Date().getFullYear();
+                            const isFuture = isFutureMonth(year, monthIndex + 1);
+                            const value = row[name];
+                            return (
+                              <td key={row.month}>
+                                {isFuture || value == null ? '—' : formatPercentage(Number(value))}
+                              </td>
+                            );
+                          })}
+                          <td className="promedio-anual-cell">
+                            {promedioAnual != null ? formatPercentage(promedioAnual) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="promedio-row">
+                      <td className="grupo-cell">Promedio</td>
                       {monthlyChartData.map((row, monthIndex) => {
                         const year = selectedYear ?? new Date().getFullYear();
                         const isFuture = isFutureMonth(year, monthIndex + 1);
-                        const value = row[name];
+                        const valores = areaNamesProduccion
+                          .map((name) => row[name])
+                          .filter((v): v is number => typeof v === 'number');
+                        const promedioMes = !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
                         return (
                           <td key={row.month}>
-                            {isFuture || value == null ? '—' : formatPercentage(Number(value))}
+                            {promedioMes != null ? formatPercentage(promedioMes) : '—'}
                           </td>
                         );
                       })}
+                      <td className="promedio-anual-cell">
+                        {(() => {
+                          const promediosMensuales = monthlyChartData
+                            .map((row, monthIndex) => {
+                              const year = selectedYear ?? new Date().getFullYear();
+                              const isFuture = isFutureMonth(year, monthIndex + 1);
+                              if (isFuture) return null;
+                              const valores = areaNamesProduccion
+                                .map((name) => row[name])
+                                .filter((v): v is number => typeof v === 'number');
+                              return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+                            })
+                            .filter((v): v is number => typeof v === 'number');
+                          const promedioGeneral = promediosMensuales.length
+                            ? promediosMensuales.reduce((a, b) => a + b, 0) / promediosMensuales.length
+                            : null;
+                          return promedioGeneral != null ? formatPercentage(promedioGeneral) : '—';
+                        })()}
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {areaNamesSoporte.length > 0 && (
+              <div className="reporte-table-container reporte-tipo-block">
+                <div className="reporte-table-header">
+                  <h2>Avance por mes - {selectedYear} — Soporte</h2>
+                </div>
+                <table className="reporte-table">
+                  <thead>
+                    <tr>
+                      <th>Área</th>
+                      {monthlyChartData.map((row) => (
+                        <th key={row.month}>{row.month}</th>
+                      ))}
+                      <th>Promedio anual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {areaNamesSoporte.map((name) => {
+                      const valoresAnuales = monthlyChartData
+                        .map((row) => row[name])
+                        .filter((v): v is number => typeof v === 'number');
+                      const promedioAnual = valoresAnuales.length
+                        ? valoresAnuales.reduce((a, b) => a + b, 0) / valoresAnuales.length
+                        : null;
+                      return (
+                        <tr key={name}>
+                          <td className="grupo-cell">{name}</td>
+                          {monthlyChartData.map((row, monthIndex) => {
+                            const year = selectedYear ?? new Date().getFullYear();
+                            const isFuture = isFutureMonth(year, monthIndex + 1);
+                            const value = row[name];
+                            return (
+                              <td key={row.month}>
+                                {isFuture || value == null ? '—' : formatPercentage(Number(value))}
+                              </td>
+                            );
+                          })}
+                          <td className="promedio-anual-cell">
+                            {promedioAnual != null ? formatPercentage(promedioAnual) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="promedio-row">
+                      <td className="grupo-cell">Promedio</td>
+                      {monthlyChartData.map((row, monthIndex) => {
+                        const year = selectedYear ?? new Date().getFullYear();
+                        const isFuture = isFutureMonth(year, monthIndex + 1);
+                        const valores = areaNamesSoporte
+                          .map((name) => row[name])
+                          .filter((v): v is number => typeof v === 'number');
+                        const promedioMes = !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+                        return (
+                          <td key={row.month}>
+                            {promedioMes != null ? formatPercentage(promedioMes) : '—'}
+                          </td>
+                        );
+                      })}
+                      <td className="promedio-anual-cell">
+                        {(() => {
+                          const promediosMensuales = monthlyChartData
+                            .map((row, monthIndex) => {
+                              const year = selectedYear ?? new Date().getFullYear();
+                              const isFuture = isFutureMonth(year, monthIndex + 1);
+                              if (isFuture) return null;
+                              const valores = areaNamesSoporte
+                                .map((name) => row[name])
+                                .filter((v): v is number => typeof v === 'number');
+                              return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+                            })
+                            .filter((v): v is number => typeof v === 'number');
+                          const promedioGeneral = promediosMensuales.length
+                            ? promediosMensuales.reduce((a, b) => a + b, 0) / promediosMensuales.length
+                            : null;
+                          return promedioGeneral != null ? formatPercentage(promedioGeneral) : '—';
+                        })()}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
             {monthlyChartData.length === 0 && !loading && (
               <div className="reportes-empty">No hay datos disponibles para el año seleccionado.</div>
+            )}
+            {monthlyChartData.length > 0 && areaNamesProduccion.length === 0 && areaNamesSoporte.length === 0 && (
+              <div className="reportes-empty">No hay áreas de producción ni soporte con datos.</div>
             )}
           </div>
         )}

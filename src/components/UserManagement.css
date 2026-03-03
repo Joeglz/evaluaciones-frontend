@@ -1794,8 +1794,13 @@
   border-top: 1px solid #e0e0e0;
 }
 
+/* Ancho cercano al de la pantalla, igual que modal-errors */
+.modal-content.modal-preview {
+  width: 92vw;
+  max-width: 92vw;
+  min-width: 320px;
+}
 .modal-preview {
-  max-width: 95vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -1823,9 +1828,13 @@
   margin-top: auto;
 }
 
-/* Estilos para modal de errores */
+/* Estilos para modal de errores: ancho cercano al de la pantalla */
+.modal-content.modal-errors {
+  width: 92vw;
+  max-width: 92vw;
+  min-width: 320px;
+}
 .modal-errors {
-  max-width: 95vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;

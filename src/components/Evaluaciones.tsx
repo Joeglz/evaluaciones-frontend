@@ -186,6 +186,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     return areas.filter((area) => userAreaIds.includes(area.id));
   }, [areas, isSupervisorOrEntrenador, userAreaIds]);
 
+  const areasProduccion = useMemo(
+    () => visibleAreas.filter((a) => (a.tipo_area ?? 'produccion') === 'produccion'),
+    [visibleAreas]
+  );
+  const areasSoporte = useMemo(
+    () => visibleAreas.filter((a) => a.tipo_area === 'soporte'),
+    [visibleAreas]
+  );
+
   useEffect(() => {
     if (!isRegularUser) {
     loadData();
@@ -1580,19 +1589,44 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           <p>No tienes áreas asignadas. Contacta al administrador.</p>
         </div>
       ) : (
-        <div className="areas-grid">
-          {visibleAreas.map((area) => (
-            <div 
-              key={area.id} 
-              className={`area-card ${selectedArea?.id === area.id ? 'active' : ''}`}
-              onClick={() => handleAreaClick(area)}
-            >
-              <div className="card-content">
-                <h3>{area.name}</h3>
+        <>
+          {areasProduccion.length > 0 && (
+            <div className="areas-tipo-block">
+              <h3 className="areas-tipo-title">Producción</h3>
+              <div className="areas-grid">
+                {areasProduccion.map((area) => (
+                  <div
+                    key={area.id}
+                    className={`area-card ${selectedArea?.id === area.id ? 'active' : ''}`}
+                    onClick={() => handleAreaClick(area)}
+                  >
+                    <div className="card-content">
+                      <h3>{area.name}</h3>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+          {areasSoporte.length > 0 && (
+            <div className="areas-tipo-block">
+              <h3 className="areas-tipo-title">Soporte</h3>
+              <div className="areas-grid">
+                {areasSoporte.map((area) => (
+                  <div
+                    key={area.id}
+                    className={`area-card ${selectedArea?.id === area.id ? 'active' : ''}`}
+                    onClick={() => handleAreaClick(area)}
+                  >
+                    <div className="card-content">
+                      <h3>{area.name}</h3>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -45,7 +45,7 @@ const UserManagement: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('active');
   const [areaFilter, setAreaFilter] = useState<number | ''>('');
   const [grupoFilter, setGrupoFilter] = useState<number | ''>('');
   
