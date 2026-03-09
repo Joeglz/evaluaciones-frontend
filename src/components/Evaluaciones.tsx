@@ -19,6 +19,8 @@ import {
   FaChevronLeft,
   FaChevronRight
 } from 'react-icons/fa';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, FirmaEvaluacionUsuario, EvaluacionUsuario, ProgresoNivel, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
@@ -139,6 +141,8 @@ const [nivelFiltroUsuarios, setNivelFiltroUsuarios] = useState<number | 'todos'>
  
   // Referencia y estados para firmas dinámicas
 const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
+  const abriendoParaEditarAdminRef = useRef(false);
+  const printContentRef = useRef<HTMLDivElement>(null);
 const [isDrawing, setIsDrawing] = useState(false);
 const [hasSignature, setHasSignature] = useState<Record<string, boolean>>({});
 const [signatures, setSignatures] = useState<Record<string, string | null>>({});
@@ -195,6 +199,25 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     [visibleAreas]
   );
 
+  const supervisoresDelArea = useMemo(() => {
+    if (!selectedArea?.grupos?.length) return supervisores;
+    const ids = new Set<number>();
+    selectedArea.grupos.forEach((g: { supervisores?: { id: number }[] }) => {
+      (g.supervisores ?? []).forEach((s) => ids.add(s.id));
+    });
+    if (ids.size === 0) return supervisores;
+    return supervisores.filter((s) => ids.has(s.id));
+  }, [supervisores, selectedArea]);
+
+  const opcionesSupervisor = useMemo(() => {
+    const list = [...supervisoresDelArea];
+    if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
+      const actual = supervisores.find((s) => s.id === supervisorSeleccionado);
+      if (actual) list.push(actual);
+    }
+    return list;
+  }, [supervisoresDelArea, supervisorSeleccionado, supervisores]);
+
   useEffect(() => {
     if (!isRegularUser) {
     loadData();
@@ -203,6 +226,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   }, [isRegularUser]);
 
   useEffect(() => {
+    if (abriendoParaEditarAdminRef.current) {
+      abriendoParaEditarAdminRef.current = false;
+      return;
+    }
     const estadoGuardado = (evaluacionGuardadaInfo?.estado || '').toLowerCase();
     const estadoFirmasGuardado = (evaluacionGuardadaInfo?.estado_firmas_usuario || '').toLowerCase();
     const estadoFirmasActual = (evaluacionActual?.estado_firmas || '').toLowerCase();
@@ -610,15 +637,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         evaluacionesParams.posicion_id = user.posicion;
       }
 
-      const [evaluaciones, evaluacionesGuardadas] = await Promise.all([
+      const [evaluaciones, evaluacionesGuardadasList] = await Promise.all([
         apiService.getEvaluaciones(evaluacionesParams),
-        apiService.getEvaluacionesUsuario({
-          usuario: user.id
-        })
+        apiService.getEvaluacionesUsuarioAll({ usuario: user.id })
       ]);
 
       const guardadasMap: Record<number, EvaluacionUsuario> = {};
-      (evaluacionesGuardadas.results || []).forEach((registro) => {
+      (evaluacionesGuardadasList || []).forEach((registro) => {
         guardadasMap[registro.evaluacion] = registro;
       });
 
@@ -794,7 +819,61 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
+  /**
+   * Abre una evaluación que ya tiene registro guardado (ej. Pendiente de firmas) para que
+   * el supervisor o firmante pueda firmar. Carga evaluacionGuardadaInfo para poder enviar
+   * las firmas al backend.
+   */
+  const abrirEvaluacionParaFirmar = async (evaluacion: any, detalle: EvaluacionUsuario) => {
+    try {
+      setLoading(true);
+      abriendoParaEditarAdminRef.current = false;
+      setEvaluacionActual(evaluacion);
+      setEvaluacionModoLectura(isRegularUser || isVisor);
+      setEvaluacionGuardadaInfo(detalle);
+      setSupervisorSeleccionado(detalle.supervisor ?? null);
+
+      const nivelEvaluacion =
+        evaluacion.nivel ??
+        evaluacion.nivel_posicion_data?.nivel ??
+        null;
+      if (typeof nivelEvaluacion === 'number') {
+        setNivelSeleccionado(nivelEvaluacion);
+      }
+
+      const resultadosConsolidados =
+        evaluacion.puntos_evaluacion?.map((punto: any) => {
+          const resultado = (detalle.resultados_puntos ?? []).find(
+            (registro) => registro.punto_evaluacion === punto.id
+          );
+          return {
+            punto_evaluacion: punto.id,
+            puntuacion: resultado?.puntuacion ?? null,
+            observaciones: resultado?.observaciones ?? ''
+          };
+        }) ?? [];
+      setResultadosEvaluacion(resultadosConsolidados);
+
+      const rolesSupervision = 'ADMIN,ENTRENADOR,SUPERVISOR';
+      const supervisoresData = await apiService.getUsers({
+        role: rolesSupervision,
+        is_active: true
+      });
+      setSupervisores(supervisoresData.results);
+
+      setCurrentView('usuario-evaluacion');
+    } catch (error: any) {
+      console.error('Error abriendo evaluación para firmar:', error);
+      showError('Error al abrir la evaluación');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isAdmin = effectiveUserRole === 'ADMIN';
+
   const verEvaluacionGuardada = (evaluacion: any, detalle: EvaluacionUsuario) => {
+    abriendoParaEditarAdminRef.current = false;
     setEvaluacionActual(evaluacion);
     setEvaluacionModoLectura(true);
     setEvaluacionGuardadaInfo(detalle);
@@ -822,6 +901,86 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
     setResultadosEvaluacion(resultadosConsolidados);
     setCurrentView('usuario-evaluacion');
+  };
+
+  const editarEvaluacionGuardada = (evaluacion: any, detalle: EvaluacionUsuario | undefined) => {
+    if (!detalle || !evaluacion) return;
+    abriendoParaEditarAdminRef.current = true;
+    setEvaluacionActual(evaluacion);
+    setEvaluacionModoLectura(false);
+    setEvaluacionGuardadaInfo(detalle);
+    setSupervisorSeleccionado(detalle.supervisor ?? null);
+
+    const nivelEvaluacion =
+      evaluacion.nivel ??
+      evaluacion.nivel_posicion_data?.nivel ??
+      null;
+    if (typeof nivelEvaluacion === 'number') {
+      setNivelSeleccionado(nivelEvaluacion);
+    }
+
+    const resultadosConsolidados =
+      evaluacion.puntos_evaluacion?.map((punto: any) => {
+        const resultado = (detalle.resultados_puntos ?? []).find(
+          (registro) => registro.punto_evaluacion === punto.id
+        );
+        return {
+          punto_evaluacion: punto.id,
+          puntuacion: resultado?.puntuacion ?? null,
+          observaciones: resultado?.observaciones ?? ''
+        };
+      }) ?? [];
+
+    setResultadosEvaluacion(resultadosConsolidados);
+    setCurrentView('usuario-evaluacion');
+  };
+
+  const handlePrintEvaluaciones = () => {
+    window.print();
+  };
+
+  const handleDownloadEvaluaciones = () => {
+    if (!selectedUser) return;
+    const nivel = nivelSeleccionado ?? null;
+    const lista = evaluacionesUsuario.filter((evaluacion: any) => {
+      const n = evaluacion.nivel_posicion_data?.nivel ?? evaluacion.nivel ?? null;
+      return n === nivel;
+    });
+    const filas = lista.map((evaluacion: any) => {
+      const guardada = evaluacionesUsuarioGuardadas[evaluacion.id];
+      const estado = (guardada?.estado || '').toLowerCase();
+      const estadoFirmas = (guardada?.estado_firmas_usuario || '').toLowerCase();
+      const completada = estado === 'completada' || estadoFirmas === 'firmas_completas' || guardada?.resultado_final != null;
+      const pendienteFirmas = guardada && estadoFirmas !== 'firmas_completas' && !completada;
+      let estadoTexto = 'Pendiente';
+      if (completada) estadoTexto = 'Completada';
+      else if (pendienteFirmas) estadoTexto = guardada?.estado_firmas_usuario_display || 'Pendiente de firmas';
+      return { nombre: evaluacion.nombre, estado: estadoTexto };
+    });
+
+    const doc = new jsPDF();
+    const nivelTitulo = nivel != null ? ` - Nivel ${nivel}` : '';
+    doc.setFontSize(16);
+    doc.text(`Evaluaciones del empleado${nivelTitulo}`, 14, 15);
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(
+      `Empleado: ${selectedUser.full_name} | Número: #${selectedUser.numero_empleado || selectedUser.id} | Fecha: ${new Date().toLocaleDateString('es-ES')}`,
+      14,
+      22
+    );
+    doc.setTextColor(0, 0, 0);
+
+    autoTable(doc, {
+      startY: 28,
+      head: [['Evaluación', 'Estado']],
+      body: filas.map((f) => [f.nombre, f.estado]),
+      headStyles: { fillColor: [225, 32, 38] },
+      margin: { left: 14, right: 14 },
+    });
+
+    const fileName = `Evaluaciones_${selectedUser.full_name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fileName);
   };
 
   const handlePuntuacionChange = (puntoId: number, puntuacion: number) => {
@@ -1136,36 +1295,53 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       return;
     }
 
-    if (evaluacionesUsuarioGuardadas[evaluacionActual.id]) {
-      showError('Esta evaluación ya tiene un resultado guardado. Utiliza el botón "Ver" para consultarlo.');
-      return;
-    }
-
-    // Verificar que todos los puntos tengan puntuación
     const puntosSinPuntuar = resultadosEvaluacion.filter(r => r.puntuacion === null);
     if (puntosSinPuntuar.length > 0) {
       showError('Por favor evalúa todos los puntos de evaluación');
       return;
     }
 
+    const esEdicionAdmin = isAdmin && evaluacionGuardadaInfo != null;
+    if (evaluacionesUsuarioGuardadas[evaluacionActual.id] && !esEdicionAdmin) {
+      showError('Esta evaluación ya tiene un resultado guardado. Utiliza el botón "Ver" para consultarlo.');
+      return;
+    }
+
     try {
       setLoading(true);
-      const evaluacionUsuarioCreada = await apiService.createEvaluacionUsuario({
-        evaluacion: evaluacionActual.id,
-        usuario: selectedUser.id,
-        supervisor: supervisorSeleccionado,
-        resultados_puntos: resultadosEvaluacion.map((resultado) => ({
-          punto_evaluacion: resultado.punto_evaluacion,
-          puntuacion: resultado.puntuacion,
-          observaciones: resultado.observaciones || ''
-        }))
-      });
+      if (esEdicionAdmin) {
+        const divisor = evaluacionActual.formula_divisor ?? (evaluacionActual.puntos_evaluacion?.length || 1);
+        const multiplicador = evaluacionActual.formula_multiplicador ?? 100;
+        const puntosObtenidos = resultadosEvaluacion.reduce((sum, r) => sum + (r.puntuacion || 0), 0);
+        const resultadoFinal = divisor > 0 ? Math.round((puntosObtenidos / divisor) * multiplicador * 100) / 100 : null;
+        await apiService.updateEvaluacionUsuario(evaluacionGuardadaInfo.id, {
+          supervisor: supervisorSeleccionado,
+          resultado_final: resultadoFinal ?? undefined,
+          resultados_puntos: resultadosEvaluacion.map((r) => ({
+            punto_evaluacion: r.punto_evaluacion,
+            puntuacion: r.puntuacion,
+            observaciones: r.observaciones || ''
+          }))
+        });
+        showSuccess('Evaluación actualizada correctamente');
+      } else {
+        const evaluacionUsuarioCreada = await apiService.createEvaluacionUsuario({
+          evaluacion: evaluacionActual.id,
+          usuario: selectedUser.id,
+          supervisor: supervisorSeleccionado,
+          resultados_puntos: resultadosEvaluacion.map((resultado) => ({
+            punto_evaluacion: resultado.punto_evaluacion,
+            puntuacion: resultado.puntuacion,
+            observaciones: resultado.observaciones || ''
+          }))
+        });
 
-      if (evaluacionUsuarioCreada?.id) {
-        await registrarFirmasPendientes(evaluacionUsuarioCreada.id);
+        if (evaluacionUsuarioCreada?.id) {
+          await registrarFirmasPendientes(evaluacionUsuarioCreada.id);
+        }
+        showSuccess('Evaluación guardada exitosamente');
       }
 
-      showSuccess('Evaluación guardada exitosamente');
       await loadEvaluacionesUsuario(selectedUser);
       if (selectedPosicion?.id) {
         await loadProgresosNivel(selectedPosicion.id);
@@ -1924,7 +2100,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     };
 
     return (
-      <div className="evaluaciones-section">
+      <div className="evaluaciones-section" ref={printContentRef}>
         <div className="usuario-detalle-header">
           <div className="usuario-info-header">
             <div className="usuario-avatar-large">
@@ -1942,10 +2118,22 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
               <p className="usuario-id">#{selectedUser.numero_empleado || selectedUser.id}</p>
             </div>
             <div className="usuario-actions">
-              <button className="action-btn">
+              <button
+                type="button"
+                className="action-btn"
+                onClick={handleDownloadEvaluaciones}
+                title="Descargar evaluaciones"
+                aria-label="Descargar evaluaciones"
+              >
                 <FaDownload />
               </button>
-              <button className="action-btn">
+              <button
+                type="button"
+                className="action-btn"
+                onClick={handlePrintEvaluaciones}
+                title="Imprimir"
+                aria-label="Imprimir"
+              >
                 <FaPrint />
               </button>
             </div>
@@ -2012,14 +2200,20 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 {evaluacionesDelNivel.map((evaluacion) => {
                   const evaluacionGuardada = evaluacionesUsuarioGuardadas[evaluacion.id];
                   const evaluacionRegistrada = Boolean(evaluacionGuardada);
-                  const estadoFirmasUsuario = evaluacionGuardada?.estado_firmas_usuario || 'pendiente_firmas';
+                  const estadoFirmasUsuario = (evaluacionGuardada?.estado_firmas_usuario || 'pendiente_firmas').toLowerCase();
                   const textoEstadoFirmasUsuario =
                     evaluacionGuardada?.estado_firmas_usuario_display || 'Pendiente de firmas';
                   const todasFirmasCompletas = estadoFirmasUsuario === 'firmas_completas';
-                  const estaCompletada =
+                  const estadoNormalizado = (evaluacionGuardada?.estado || '').toLowerCase();
+                  const completadaPorRegistro =
                     evaluacionRegistrada &&
-                    (evaluacionGuardada?.estado === 'completada' || todasFirmasCompletas);
-                  const estaPendienteFirmas = evaluacionRegistrada && !todasFirmasCompletas;
+                    (estadoNormalizado === 'completada' ||
+                      todasFirmasCompletas ||
+                      evaluacionGuardada?.resultado_final != null);
+                  const nivelCompletoSegunBackend =
+                    nivelActual !== null && isNivelCompleto(nivelActual);
+                  const estaCompletada = completadaPorRegistro || nivelCompletoSegunBackend;
+                  const estaPendienteFirmas = evaluacionRegistrada && !todasFirmasCompletas && !nivelCompletoSegunBackend;
                   return (
                     <div
                       key={evaluacion.id}
@@ -2048,16 +2242,33 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         </div>
                         <div className="evaluacion-actions">
                           {estaCompletada ? (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => verEvaluacionGuardada(evaluacion, evaluacionGuardada)}
-                            >
-                              Ver
-                            </button>
+                            evaluacionGuardada ? (
+                              <>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => verEvaluacionGuardada(evaluacion, evaluacionGuardada)}
+                                >
+                                  Ver
+                                </button>
+                                {isAdmin && (
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={() => editarEvaluacionGuardada(evaluacion, evaluacionGuardada)}
+                                  >
+                                    Editar
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <span className="evaluacion-status status-completada">Completada</span>
+                            )
                           ) : !isVisor ? (
                             <button 
                               className={`btn btn-${isRegularUser ? 'secondary' : 'primary'} btn-sm`}
-                              onClick={() => iniciarEvaluacion(evaluacion)}
+                              onClick={() => evaluacionGuardada
+                                ? abrirEvaluacionParaFirmar(evaluacion, evaluacionGuardada)
+                                : iniciarEvaluacion(evaluacion)
+                              }
                             >
                               {isRegularUser ? 'Firmar' : 'Evaluar'}
                             </button>
@@ -2092,7 +2303,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       : null;
 
     return (
-      <div className="evaluaciones-section">
+      <div className="evaluaciones-section" ref={printContentRef}>
 
         <div className="evaluation-content">
           <div className={`evaluation-form ${evaluacionModoLectura ? 'read-only' : ''}`}>
@@ -2169,7 +2380,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                   disabled={evaluacionModoLectura}
                 >
                   <option value="">Selecciona un supervisor</option>
-                  {supervisores.map(supervisor => (
+                  {opcionesSupervisor.map(supervisor => (
                     <option key={supervisor.id} value={supervisor.id}>
                       {supervisor.full_name}
                     </option>
@@ -2245,7 +2456,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         ))}
                         <tr>
                           <td className="criterio-formula">
-                            <strong>EVALUACIÓN = ( PUNTOS OBTENIDOS / 17 ) * 80</strong>
+                            <strong>
+                              EVALUACIÓN = ( PUNTOS OBTENIDOS / {evaluacionActual.formula_divisor ?? (evaluacionActual.puntos_evaluacion?.length || 1)} ) * {evaluacionActual.formula_multiplicador ?? 100}
+                            </strong>
                           </td>
                         </tr>
                       </>
@@ -2346,7 +2559,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                       currentUserId !== null && usuarioAsignadoFirma === currentUserId;
 
                     const puedeFirmarPendiente = esFirmanteActual && !estaFirmada;
-                    const puedeEditarPorRol = !evaluacionModoLectura && !estadoEvaluacionCompletada;
+                    const puedeEditarPorRol = !evaluacionModoLectura && (!estadoEvaluacionCompletada || isAdmin);
                     const puedeEditarFirma = !isVisor && (puedeFirmarPendiente || puedeEditarPorRol);
 
                     return (
@@ -2377,10 +2590,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                           puedeEditarFirma && (
                           <button
                             type="button"
-                            className="btn-agregar-firma"
+                            className="btn-editar-firma"
                             onClick={() => handleOpenFirmaModal(firma)}
                           >
-                            <FaPlus /> Agregar Firma
+                            <FaEdit /> Editar Firma
                           </button>
                           )
                         )}

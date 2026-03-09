@@ -3172,3 +3172,22 @@
   font-size: 0.95rem;
   background: #ffffff;
 }
+
+/* Impresión: solo mostrar el contenido de evaluaciones */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .evaluaciones-section,
+  .evaluaciones-section * {
+    visibility: visible;
+  }
+  .evaluaciones-section {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    background: #fff;
+  }
+}

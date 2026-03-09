@@ -437,6 +437,7 @@ export interface EvaluacionUsuarioUpdate {
   fecha_completada?: string | null;
   resultado_final?: number | null;
   observaciones?: string;
+  resultados_puntos?: ResultadoEvaluacionInput[];
 }
 
 export interface EvaluacionesUsuarioListResponse {
@@ -1426,6 +1427,24 @@ class ApiService {
 
     const queryString = searchParams.toString();
     return this.request<EvaluacionesUsuarioListResponse>(`/users/evaluaciones-usuario/${queryString ? `?${queryString}` : ''}`);
+  }
+
+  /**
+   * Obtiene todas las evaluaciones de usuario para un usuario (todas las páginas).
+   * Evita que evaluaciones completadas no aparezcan como "Completada" por paginación.
+   */
+  async getEvaluacionesUsuarioAll(params: { usuario: number }): Promise<EvaluacionUsuario[]> {
+    const all: EvaluacionUsuario[] = [];
+    let page = 1;
+    while (true) {
+      const res = await this.getEvaluacionesUsuario({ ...params, page });
+      const results = res.results ?? [];
+      if (results.length === 0) break;
+      all.push(...results);
+      if (!res.next) break;
+      page++;
+    }
+    return all;
   }
 
   async getEvaluacionUsuario(id: number): Promise<EvaluacionUsuario> {
