@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FaBell, FaBellSlash, FaCheckCircle, FaSyncAlt, FaTrash } from 'react-icons/fa';
+import { FaBell, FaBellSlash, FaCheckCircle, FaSyncAlt, FaTrash, FaPenFancy } from 'react-icons/fa';
 import { apiService, Notificacion } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Notificaciones.css';
 
-const Notificaciones: React.FC = () => {
+interface NotificacionesProps {
+  onIrAFirmarEvaluacion?: (evaluacionUsuarioId: number) => void;
+  onNotificacionesActualizadas?: () => void;
+}
+
+const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, onNotificacionesActualizadas }) => {
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [cargando, setCargando] = useState<boolean>(false);
   const [soloNoLeidas, setSoloNoLeidas] = useState<boolean>(false);
@@ -36,6 +41,7 @@ const Notificaciones: React.FC = () => {
           item.id === notificacion.id ? { ...item, es_leida: esLeida } : item
         )
       );
+      onNotificacionesActualizadas?.();
       showSuccess(esLeida ? 'Notificación marcada como leída.' : 'Notificación marcada como no leída.');
     } catch (error: any) {
       console.error('Error actualizando notificación', error);
@@ -47,6 +53,7 @@ const Notificaciones: React.FC = () => {
     try {
       await apiService.eliminarNotificacion(notificacion.id);
       setNotificaciones((prev) => prev.filter((item) => item.id !== notificacion.id));
+      onNotificacionesActualizadas?.();
       showSuccess('Notificación eliminada.');
     } catch (error: any) {
       console.error('Error eliminando notificación', error);
@@ -101,49 +108,69 @@ const Notificaciones: React.FC = () => {
           </div>
         ) : null}
 
-        {notificaciones.map((notificacion) => (
-          <div
-            key={notificacion.id}
-            className={`notificacion-item ${notificacion.es_leida ? 'leida' : 'pendiente'}`}
-          >
-            <div className="notificacion-estado">{renderEstadoIcono(notificacion)}</div>
-            <div className="notificacion-contenido">
-              <h3 className="notificacion-titulo">{notificacion.titulo}</h3>
-              <p className="notificacion-mensaje">{notificacion.mensaje}</p>
-              <div className="notificacion-detalles">
-                {notificacion.evaluacion_nombre ? (
+        {notificaciones.map((notificacion) => {
+          const esFirmaPendiente = (notificacion.tipo || '').toLowerCase() === 'firma_pendiente';
+          const evaluacionUsuarioId = notificacion.metadata?.evaluacion_usuario_id;
+          const puedeIrAFirmar = esFirmaPendiente && typeof evaluacionUsuarioId === 'number' && onIrAFirmarEvaluacion;
+
+          return (
+            <div
+              key={notificacion.id}
+              className={`notificacion-item ${notificacion.es_leida ? 'leida' : 'pendiente'}`}
+            >
+              <div className="notificacion-estado">{renderEstadoIcono(notificacion)}</div>
+              <div className="notificacion-contenido">
+                <h3 className="notificacion-titulo">{notificacion.titulo}</h3>
+                <p className="notificacion-mensaje">{notificacion.mensaje}</p>
+                <div className="notificacion-detalles">
+                  {notificacion.evaluacion_nombre ? (
+                    <span className="detalle">
+                      Evaluación: <strong>{notificacion.evaluacion_nombre}</strong>
+                    </span>
+                  ) : null}
+                  {notificacion.firma_tipo_display ? (
+                    <span className="detalle">
+                      Tipo de firma: <strong>{notificacion.firma_tipo_display}</strong>
+                    </span>
+                  ) : null}
                   <span className="detalle">
-                    Evaluación: <strong>{notificacion.evaluacion_nombre}</strong>
+                    Fecha: {new Date(notificacion.created_at).toLocaleString('es-MX')}
                   </span>
-                ) : null}
-                {notificacion.firma_tipo_display ? (
-                  <span className="detalle">
-                    Tipo de firma: <strong>{notificacion.firma_tipo_display}</strong>
-                  </span>
-                ) : null}
-                <span className="detalle">
-                  Fecha: {new Date(notificacion.created_at).toLocaleString('es-MX')}
-                </span>
+                </div>
+              </div>
+              <div className="notificacion-acciones">
+                {puedeIrAFirmar && (
+                  <button
+                    type="button"
+                    className="btn-ir-firmar"
+                    onClick={() => {
+                      onIrAFirmarEvaluacion(evaluacionUsuarioId);
+                      if (!notificacion.es_leida) {
+                        marcarComoLeida(notificacion, true);
+                      }
+                    }}
+                  >
+                    <FaPenFancy /> Ir a firmar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-estado"
+                  onClick={() => marcarComoLeida(notificacion, !notificacion.es_leida)}
+                >
+                  {notificacion.es_leida ? 'Marcar como no leída' : 'Marcar como leída'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-eliminar"
+                  onClick={() => eliminarNotificacion(notificacion)}
+                >
+                  <FaTrash /> Eliminar
+                </button>
               </div>
             </div>
-            <div className="notificacion-acciones">
-              <button
-                type="button"
-                className="btn-estado"
-                onClick={() => marcarComoLeida(notificacion, !notificacion.es_leida)}
-              >
-                {notificacion.es_leida ? 'Marcar como no leída' : 'Marcar como leída'}
-              </button>
-              <button
-                type="button"
-                className="btn-eliminar"
-                onClick={() => eliminarNotificacion(notificacion)}
-              >
-                <FaTrash /> Eliminar
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -21,6 +21,7 @@ import {
 } from 'react-icons/fa';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, FirmaEvaluacionUsuario, EvaluacionUsuario, ProgresoNivel, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
@@ -101,9 +102,16 @@ const calcularEstadoFirmasUsuario = (firmas: FirmaEvaluacionUsuario[] | undefine
 interface EvaluacionesProps {
   userRole?: string;
   currentUser?: Partial<User> | null;
+  evaluacionUsuarioIdParaAbrir?: number | null;
+  onAbiertoEvaluacionParaFirmar?: () => void;
 }
 
-const Evaluaciones: React.FC<EvaluacionesProps> = ({ userRole, currentUser }) => {
+const Evaluaciones: React.FC<EvaluacionesProps> = ({
+  userRole,
+  currentUser,
+  evaluacionUsuarioIdParaAbrir,
+  onAbiertoEvaluacionParaFirmar
+}) => {
   // Hook para manejar toasts
   const { toasts, removeToast, showSuccess, showError } = useToast();
 
@@ -142,6 +150,7 @@ const [nivelFiltroUsuarios, setNivelFiltroUsuarios] = useState<number | 'todos'>
   // Referencia y estados para firmas dinámicas
 const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
   const abriendoParaEditarAdminRef = useRef(false);
+  const editandoEvaluacionComoAdminRef = useRef(false);
   const printContentRef = useRef<HTMLDivElement>(null);
 const [isDrawing, setIsDrawing] = useState(false);
 const [hasSignature, setHasSignature] = useState<Record<string, boolean>>({});
@@ -156,6 +165,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
   
   // Estados para el formulario de lista de asistencia
   const [formData, setFormData] = useState<ListaAsistenciaCreate>({
@@ -218,6 +228,29 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     return list;
   }, [supervisoresDelArea, supervisorSeleccionado, supervisores]);
 
+  // En el formulario de evaluación: solo supervisores (rol SUPERVISOR) del área de la evaluación actual
+  const supervisoresDelAreaDeEvaluacion = useMemo(() => {
+    const soloRolSupervisor = supervisores.filter((s) => s.role === 'SUPERVISOR');
+    if (!evaluacionActual?.area_name || !areas?.length) return soloRolSupervisor;
+    const areaEvaluacion = areas.find((a) => a.name === evaluacionActual.area_name);
+    if (!areaEvaluacion?.grupos?.length) return soloRolSupervisor;
+    const ids = new Set<number>();
+    areaEvaluacion.grupos.forEach((g: { supervisores?: { id: number }[] }) => {
+      (g.supervisores ?? []).forEach((s) => ids.add(s.id));
+    });
+    if (ids.size === 0) return soloRolSupervisor;
+    return soloRolSupervisor.filter((s) => ids.has(s.id));
+  }, [evaluacionActual?.area_name, areas, supervisores]);
+
+  const opcionesSupervisorParaFormulario = useMemo(() => {
+    const list = [...supervisoresDelAreaDeEvaluacion];
+    if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
+      const actual = supervisores.find((s) => s.id === supervisorSeleccionado && s.role === 'SUPERVISOR');
+      if (actual) list.push(actual);
+    }
+    return list;
+  }, [supervisoresDelAreaDeEvaluacion, supervisorSeleccionado, supervisores]);
+
   useEffect(() => {
     if (!isRegularUser) {
     loadData();
@@ -226,8 +259,72 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   }, [isRegularUser]);
 
   useEffect(() => {
+    if (evaluacionUsuarioIdParaAbrir == null || !onAbiertoEvaluacionParaFirmar) return;
+
+    const abrirDesdeNotificacion = async () => {
+      try {
+        setLoading(true);
+        const detalle = await apiService.getEvaluacionUsuario(evaluacionUsuarioIdParaAbrir);
+        const [user, evaluacion, supervisoresData] = await Promise.all([
+          apiService.getUser(detalle.usuario),
+          apiService.getEvaluacion(detalle.evaluacion),
+          apiService.getUsers({ role: 'ADMIN,ENTRENADOR,SUPERVISOR', is_active: true })
+        ]);
+        setSupervisores(supervisoresData.results || []);
+
+        const nivelEvaluacion =
+          evaluacion.nivel ??
+          (evaluacion as any).nivel_posicion_data?.nivel ??
+          null;
+        if (typeof nivelEvaluacion === 'number') {
+          setNivelSeleccionado(nivelEvaluacion);
+        }
+
+        const resultadosConsolidados =
+          (evaluacion as any).puntos_evaluacion?.map((punto: any) => {
+            const resultado = (detalle.resultados_puntos ?? []).find(
+              (r: any) => r.punto_evaluacion === punto.id
+            );
+            return {
+              punto_evaluacion: punto.id,
+              puntuacion: resultado?.puntuacion ?? null,
+              observaciones: resultado?.observaciones ?? ''
+            };
+          }) ?? [];
+
+        const areaId = Array.isArray(user.areas) && user.areas.length > 0 ? user.areas[0] : null;
+        if (areaId != null && areas.length > 0) {
+          const area = areas.find((a) => a.id === areaId);
+          if (area) setSelectedArea(area);
+        }
+
+        setSelectedUser(user);
+        setEvaluacionActual(evaluacion);
+        setEvaluacionGuardadaInfo(detalle);
+        setSupervisorSeleccionado(detalle.supervisor ?? null);
+        setResultadosEvaluacion(resultadosConsolidados);
+        setEvaluacionModoLectura(isRegularUser || isVisor);
+        setCurrentView('usuario-evaluacion');
+        onAbiertoEvaluacionParaFirmar();
+      } catch (err: any) {
+        console.error('Error abriendo evaluación desde notificación:', err);
+        showError(err.message || 'No se pudo abrir la evaluación.');
+        onAbiertoEvaluacionParaFirmar();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    abrirDesdeNotificacion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evaluacionUsuarioIdParaAbrir, onAbiertoEvaluacionParaFirmar]);
+
+  useEffect(() => {
     if (abriendoParaEditarAdminRef.current) {
       abriendoParaEditarAdminRef.current = false;
+      return;
+    }
+    if (editandoEvaluacionComoAdminRef.current) {
       return;
     }
     const estadoGuardado = (evaluacionGuardadaInfo?.estado || '').toLowerCase();
@@ -906,6 +1003,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const editarEvaluacionGuardada = (evaluacion: any, detalle: EvaluacionUsuario | undefined) => {
     if (!detalle || !evaluacion) return;
     abriendoParaEditarAdminRef.current = true;
+    editandoEvaluacionComoAdminRef.current = true;
     setEvaluacionActual(evaluacion);
     setEvaluacionModoLectura(false);
     setEvaluacionGuardadaInfo(detalle);
@@ -935,52 +1033,164 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     setCurrentView('usuario-evaluacion');
   };
 
-  const handlePrintEvaluaciones = () => {
-    window.print();
-  };
-
-  const handleDownloadEvaluaciones = () => {
-    if (!selectedUser) return;
+  const generarPdfEvaluacionesNivel = async (): Promise<{ doc: jsPDF; lista: any[] } | null> => {
+    if (!selectedUser) return null;
     const nivel = nivelSeleccionado ?? null;
     const lista = evaluacionesUsuario.filter((evaluacion: any) => {
       const n = evaluacion.nivel_posicion_data?.nivel ?? evaluacion.nivel ?? null;
       return n === nivel;
     });
-    const filas = lista.map((evaluacion: any) => {
-      const guardada = evaluacionesUsuarioGuardadas[evaluacion.id];
-      const estado = (guardada?.estado || '').toLowerCase();
-      const estadoFirmas = (guardada?.estado_firmas_usuario || '').toLowerCase();
-      const completada = estado === 'completada' || estadoFirmas === 'firmas_completas' || guardada?.resultado_final != null;
-      const pendienteFirmas = guardada && estadoFirmas !== 'firmas_completas' && !completada;
-      let estadoTexto = 'Pendiente';
-      if (completada) estadoTexto = 'Completada';
-      else if (pendienteFirmas) estadoTexto = guardada?.estado_firmas_usuario_display || 'Pendiente de firmas';
-      return { nombre: evaluacion.nombre, estado: estadoTexto };
-    });
+    if (lista.length === 0) return null;
 
-    const doc = new jsPDF();
-    const nivelTitulo = nivel != null ? ` - Nivel ${nivel}` : '';
-    doc.setFontSize(16);
-    doc.text(`Evaluaciones del empleado${nivelTitulo}`, 14, 15);
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(
-      `Empleado: ${selectedUser.full_name} | Número: #${selectedUser.numero_empleado || selectedUser.id} | Fecha: ${new Date().toLocaleDateString('es-ES')}`,
-      14,
-      22
-    );
-    doc.setTextColor(0, 0, 0);
+    const viewAnterior = currentView;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210;
+    const pageH = 297;
 
-    autoTable(doc, {
-      startY: 28,
-      head: [['Evaluación', 'Estado']],
-      body: filas.map((f) => [f.nombre, f.estado]),
-      headStyles: { fillColor: [225, 32, 38] },
-      margin: { left: 14, right: 14 },
-    });
+    for (let i = 0; i < lista.length; i++) {
+      const evaluacion = lista[i];
+      const detalle = evaluacionesUsuarioGuardadas[evaluacion.id];
 
-    const fileName = `Evaluaciones_${selectedUser.full_name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
-    doc.save(fileName);
+      setEvaluacionActual(evaluacion);
+      setEvaluacionModoLectura(true);
+      setEvaluacionGuardadaInfo(detalle ?? null);
+      setSupervisorSeleccionado(detalle?.supervisor ?? null);
+
+      const nivelEval = evaluacion.nivel ?? evaluacion.nivel_posicion_data?.nivel ?? null;
+      if (typeof nivelEval === 'number') {
+        setNivelSeleccionado(nivelEval);
+      }
+
+      const resultadosConsolidados = evaluacion.puntos_evaluacion
+        ? evaluacion.puntos_evaluacion.map((punto: any) => {
+            const resultado = detalle?.resultados_puntos?.find(
+              (r: any) => r.punto_evaluacion === punto.id
+            );
+            return {
+              punto_evaluacion: punto.id,
+              puntuacion: resultado?.puntuacion ?? null,
+              observaciones: resultado?.observaciones ?? '',
+            };
+          })
+        : [];
+      setResultadosEvaluacion(resultadosConsolidados);
+      setCurrentView('usuario-evaluacion');
+
+      await new Promise((r) => setTimeout(r, 550));
+
+      const el = printContentRef.current;
+      if (!el) continue;
+      try {
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        if (i > 0) doc.addPage();
+        const imgAspect = canvas.width / canvas.height;
+        const pageAspect = pageW / pageH;
+        let drawW: number, drawH: number, x: number, y: number;
+        if (imgAspect > pageAspect) {
+          drawH = pageH;
+          drawW = pageH * imgAspect;
+          x = (pageW - drawW) / 2;
+          y = 0;
+        } else {
+          drawW = pageW;
+          drawH = pageW / imgAspect;
+          x = 0;
+          y = (pageH - drawH) / 2;
+        }
+        doc.addImage(imgData, 'JPEG', x, y, drawW, drawH);
+      } catch (err) {
+        console.error('Error capturando evaluación para PDF', err);
+      }
+    }
+
+    setCurrentView(viewAnterior);
+    return { doc, lista };
+  };
+
+  const handlePrintEvaluaciones = async () => {
+    setDescargandoPdf(true);
+    try {
+      const result = await generarPdfEvaluacionesNivel();
+      if (!result) {
+        showError('No hay evaluaciones en este nivel para imprimir.');
+        return;
+      }
+      const blob = result.doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      const printWin = window.open('', '_blank', 'noopener,noreferrer');
+      if (printWin) {
+        const doc = printWin.document;
+        doc.open();
+        doc.write(`
+          <!DOCTYPE html>
+          <html><head><title>Imprimir evaluaciones</title></head>
+          <body style="margin:0;">
+            <iframe src="${url}" style="width:100%;height:100vh;border:none;" title="PDF"></iframe>
+          </body></html>
+        `);
+        doc.close();
+        printWin.onload = () => {};
+        const checkAndPrint = () => {
+          try {
+            const iframe = printWin.document.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+              iframe.onload = () => {
+                setTimeout(() => {
+                  printWin.print();
+                  setTimeout(() => URL.revokeObjectURL(url), 500);
+                }, 800);
+              };
+            } else {
+              setTimeout(() => printWin.print(), 1200);
+              setTimeout(() => URL.revokeObjectURL(url), 2000);
+            }
+          } catch (e) {
+            setTimeout(() => URL.revokeObjectURL(url), 500);
+          }
+        };
+        if (doc.readyState === 'complete') {
+          checkAndPrint();
+        } else {
+          printWin.onload = () => checkAndPrint();
+        }
+        showSuccess(`Listo para imprimir: ${result.lista.length} evaluación(es).`);
+      } else {
+        URL.revokeObjectURL(url);
+        showError('El navegador bloqueó la ventana. Permite ventanas emergentes para este sitio e intenta de nuevo, o descarga el PDF y imprímelo desde ahí.');
+      }
+    } catch (err) {
+      console.error('Error al abrir impresión', err);
+      showError('No se pudo abrir el diálogo de impresión.');
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
+
+  const handleDownloadEvaluaciones = async () => {
+    setDescargandoPdf(true);
+    try {
+      const result = await generarPdfEvaluacionesNivel();
+      if (!result) {
+        showError('No hay evaluaciones en este nivel para descargar.');
+        return;
+      }
+      const nivel = nivelSeleccionado ?? null;
+      const nivelTitulo = nivel != null ? `_Nivel_${nivel}` : '';
+      const fileName = `Evaluaciones_${selectedUser!.full_name.replace(/\s+/g, '_')}${nivelTitulo}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      result.doc.save(fileName);
+      showSuccess(`PDF descargado: ${result.lista.length} evaluación(es).`);
+    } catch (err) {
+      console.error('Error al descargar PDF', err);
+      showError('No se pudo descargar el PDF.');
+    } finally {
+      setDescargandoPdf(false);
+    }
   };
 
   const handlePuntuacionChange = (puntoId: number, puntuacion: number) => {
@@ -1447,6 +1657,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setCurrentView('usuarios');
         break;
       case 'usuario-evaluacion':
+        editandoEvaluacionComoAdminRef.current = false;
         setCurrentView('usuario-detalle');
         setEvaluacionActual(null);
         setResultadosEvaluacion([]);
@@ -2380,7 +2591,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                   disabled={evaluacionModoLectura}
                 >
                   <option value="">Selecciona un supervisor</option>
-                  {opcionesSupervisor.map(supervisor => (
+                  {opcionesSupervisorParaFormulario.map(supervisor => (
                     <option key={supervisor.id} value={supervisor.id}>
                       {supervisor.full_name}
                     </option>
@@ -2637,7 +2848,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     ) : (
                       <div className="firma-firmante-select">
                         <label>Selecciona firmante</label>
-                        {supervisores.length > 0 ? (
+                        {opcionesSupervisorParaFormulario.length > 0 ? (
                           <select
                             value={firmaModalFirmante ?? ''}
                             onChange={(e) =>
@@ -2645,13 +2856,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             }
                           >
                             <option value="">Selecciona un firmante</option>
-                            {supervisores
-                              .filter((supervisor) => supervisor.role !== 'USUARIO')
-                              .map((supervisor) => (
-                                <option key={supervisor.id} value={supervisor.id}>
-                                  {supervisor.full_name}
-                                </option>
-                              ))}
+                            {opcionesSupervisorParaFormulario.map((supervisor) => (
+                              <option key={supervisor.id} value={supervisor.id}>
+                                {supervisor.full_name}
+                              </option>
+                            ))}
                           </select>
                         ) : (
                           <div className="firma-firmante-info">
@@ -2702,6 +2911,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
               <button 
                 className="btn btn-secondary"
                 onClick={() => {
+                  editandoEvaluacionComoAdminRef.current = false;
                   setEvaluacionModoLectura(false);
                   setEvaluacionGuardadaInfo(null);
                   setCurrentView('usuario-detalle');
@@ -3063,6 +3273,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+
+      {/* Overlay de carga al generar PDF */}
+      {descargandoPdf && (
+        <div className="pdf-loading-overlay" aria-live="polite" aria-busy="true">
+          <div className="pdf-loading-box">
+            <div className="pdf-loading-spinner" />
+            <p>Generando PDF...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

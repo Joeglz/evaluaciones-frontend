@@ -1408,6 +1408,53 @@
   background: #5a6268;
 }
 
+/* Overlay de carga al generar PDF */
+.pdf-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.pdf-loading-box {
+  background: #fff;
+  border-radius: 8px;
+  padding: 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.pdf-loading-box p {
+  margin: 0;
+  font-size: 1rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.pdf-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e9ecef;
+  border-top-color: #e12026;
+  border-radius: 50%;
+  animation: pdf-spinner 0.8s linear infinite;
+}
+
+@keyframes pdf-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Modal de Firma */
 .modal-overlay {
   position: fixed;

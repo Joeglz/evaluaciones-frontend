@@ -1194,8 +1194,7 @@ const UserManagement: React.FC = () => {
                   setEditForm({...editForm, username: e.target.value});
                 }}
                 className={errors.username ? 'error' : ''}
-                readOnly
-                title="El nombre de usuario se genera automáticamente desde el número de empleado"
+                placeholder="Nombre para iniciar sesión"
               />
               {errors.username && <div className="error-message">{errors.username[0]}</div>}
             </div>

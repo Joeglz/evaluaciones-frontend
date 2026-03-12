@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   FaClipboardList, 
   FaChartBar, 
@@ -6,6 +6,7 @@ import {
   FaComments, 
   FaCog
 } from 'react-icons/fa';
+import { apiService } from '../services/api';
 import Settings from './Settings';
 import Evaluaciones from './Evaluaciones';
 import Notificaciones from './Notificaciones';
@@ -52,9 +53,39 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<string>('home');
+  const [evaluacionUsuarioIdParaAbrir, setEvaluacionUsuarioIdParaAbrir] = useState<number | null>(null);
+  const [notificacionesNoLeidasCount, setNotificacionesNoLeidasCount] = useState<number>(0);
 
   const role = user?.role || 'USUARIO';
   const allowedMenuItems = useMemo(() => ROLE_MENU[role] || ROLE_MENU.USUARIO, [role]);
+
+  const cargarCantidadNotificacionesNoLeidas = useCallback(async () => {
+    if (!allowedMenuItems.includes('notificaciones')) return;
+    try {
+      const lista = await apiService.obtenerNotificaciones({ solo_no_leidas: true });
+      setNotificacionesNoLeidasCount(Array.isArray(lista) ? lista.length : 0);
+    } catch {
+      setNotificacionesNoLeidasCount(0);
+    }
+  }, [allowedMenuItems]);
+
+  useEffect(() => {
+    cargarCantidadNotificacionesNoLeidas();
+  }, [cargarCantidadNotificacionesNoLeidas]);
+
+  useEffect(() => {
+    if (activeView !== 'notificaciones') {
+      cargarCantidadNotificacionesNoLeidas();
+      return;
+    }
+    const interval = setInterval(cargarCantidadNotificacionesNoLeidas, 30000);
+    return () => clearInterval(interval);
+  }, [activeView, cargarCantidadNotificacionesNoLeidas]);
+
+  const handleIrAFirmarEvaluacion = (evaluacionUsuarioId: number) => {
+    setEvaluacionUsuarioIdParaAbrir(evaluacionUsuarioId);
+    setActiveView('evaluaciones');
+  };
 
   useEffect(() => {
     // Obtener información del usuario desde localStorage
@@ -116,7 +147,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         if (!allowedMenuItems.includes('evaluaciones')) {
           return renderAccessDenied();
         }
-        return <Evaluaciones userRole={role} currentUser={user} />;
+        return (
+          <Evaluaciones
+            userRole={role}
+            currentUser={user}
+            evaluacionUsuarioIdParaAbrir={evaluacionUsuarioIdParaAbrir}
+            onAbiertoEvaluacionParaFirmar={() => setEvaluacionUsuarioIdParaAbrir(null)}
+          />
+        );
       case 'ajustes':
         if (!allowedMenuItems.includes('ajustes')) {
           return renderAccessDenied();
@@ -131,7 +169,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         if (!allowedMenuItems.includes('notificaciones')) {
           return renderAccessDenied();
         }
-        return <Notificaciones />;
+        return (
+          <Notificaciones onIrAFirmarEvaluacion={handleIrAFirmarEvaluacion} onNotificacionesActualizadas={cargarCantidadNotificacionesNoLeidas} />
+        );
       case 'mensajes':
         if (!allowedMenuItems.includes('mensajes')) {
           return renderAccessDenied();
@@ -181,7 +221,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             className={`menu-item ${activeView === item.key ? 'active' : ''}`}
             onClick={() => setActiveView(item.key)}
           >
-            <item.icon className="menu-icon" />
+            <div className="menu-item-icon-wrap">
+              <item.icon className="menu-icon" />
+              {item.key === 'notificaciones' && notificacionesNoLeidasCount > 0 && (
+                <span className="menu-item-badge" aria-label={`${notificacionesNoLeidasCount} notificaciones no leídas`}>
+                  {notificacionesNoLeidasCount > 99 ? '99+' : notificacionesNoLeidasCount}
+                </span>
+              )}
+            </div>
             <span>{item.label}</span>
           </div>
         ))}
