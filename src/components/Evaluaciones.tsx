@@ -1125,40 +1125,30 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       const url = URL.createObjectURL(blob);
       const printWin = window.open('', '_blank', 'noopener,noreferrer');
       if (printWin) {
-        const doc = printWin.document;
-        doc.open();
-        doc.write(`
+        printWin.document.open();
+        printWin.document.write(`
           <!DOCTYPE html>
           <html><head><title>Imprimir evaluaciones</title></head>
           <body style="margin:0;">
-            <iframe src="${url}" style="width:100%;height:100vh;border:none;" title="PDF"></iframe>
+            <iframe id="pdfFrame" src="${url}" style="width:100%;height:100vh;border:none;" title="PDF"></iframe>
           </body></html>
         `);
-        doc.close();
-        printWin.onload = () => {};
-        const checkAndPrint = () => {
+        printWin.document.close();
+        const iframe = printWin.document.getElementById('pdfFrame');
+        let printed = false;
+        const doPrint = () => {
+          if (printed) return;
+          printed = true;
           try {
-            const iframe = printWin.document.querySelector('iframe');
-            if (iframe && iframe.contentWindow) {
-              iframe.onload = () => {
-                setTimeout(() => {
-                  printWin.print();
-                  setTimeout(() => URL.revokeObjectURL(url), 500);
-                }, 800);
-              };
-            } else {
-              setTimeout(() => printWin.print(), 1200);
-              setTimeout(() => URL.revokeObjectURL(url), 2000);
-            }
-          } catch (e) {
-            setTimeout(() => URL.revokeObjectURL(url), 500);
+            printWin.print();
+          } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
           }
         };
-        if (doc.readyState === 'complete') {
-          checkAndPrint();
-        } else {
-          printWin.onload = () => checkAndPrint();
+        if (iframe) {
+          iframe.onload = () => setTimeout(doPrint, 600);
         }
+        setTimeout(doPrint, 2500);
         showSuccess(`Listo para imprimir: ${result.lista.length} evaluación(es).`);
       } else {
         URL.revokeObjectURL(url);
