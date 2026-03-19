@@ -164,7 +164,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         if (!allowedMenuItems.includes('reportes')) {
           return renderAccessDenied();
         }
-        return <Reportes />;
+        return <Reportes userRole={role} />;
       case 'notificaciones':
         if (!allowedMenuItems.includes('notificaciones')) {
           return renderAccessDenied();

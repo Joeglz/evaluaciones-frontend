@@ -141,6 +141,13 @@ export interface NivelesPosicionListResponse {
 }
 
 
+export interface UserPosicionItem {
+  id: number;
+  posicion_id: number;
+  posicion_name: string;
+  es_principal: boolean;
+}
+
 export interface User {
   id: number;
   username: string;
@@ -154,6 +161,7 @@ export interface User {
   areas_list: string[];
   posicion: number | null;
   posicion_name?: string | null;
+  posiciones?: UserPosicionItem[];
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;
@@ -166,7 +174,7 @@ export interface User {
 }
 
 export interface UserCreate {
-  username?: string; // Opcional, se genera automáticamente desde numero_empleado
+  username?: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -174,7 +182,7 @@ export interface UserCreate {
   password_confirm: string;
   role: string;
   areas: number[];
-  posicion: number | null;
+  posiciones: number[];
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;
@@ -189,7 +197,7 @@ export interface UserUpdate {
   last_name: string;
   role: string;
   areas: number[];
-  posicion: number | null;
+  posiciones: number[];
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;
@@ -810,6 +818,9 @@ class ApiService {
     minimal?: boolean;
     table?: boolean;
     evaluaciones?: boolean;
+    area_id?: number;
+    grupo_id?: number;
+    posicion_id?: number;
   }): Promise<UsersListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
@@ -818,6 +829,9 @@ class ApiService {
     if (params?.minimal) searchParams.append('minimal', '1');
     if (params?.table) searchParams.append('table', '1');
     if (params?.evaluaciones) searchParams.append('evaluaciones', '1');
+    if (params?.area_id !== undefined) searchParams.append('area_id', String(params.area_id));
+    if (params?.grupo_id !== undefined) searchParams.append('grupo_id', String(params.grupo_id));
+    if (params?.posicion_id !== undefined) searchParams.append('posicion_id', String(params.posicion_id));
     
     const queryString = searchParams.toString();
     const response = await this.request<User[] | UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
@@ -837,6 +851,9 @@ class ApiService {
     is_active?: boolean;
     minimal?: boolean;
     evaluaciones?: boolean;
+    area_id?: number;
+    grupo_id?: number;
+    posicion_id?: number;
   }): Promise<User[]> {
     const res = await this.getUsers(params);
     return res.results ?? [];
@@ -1557,6 +1574,24 @@ class ApiService {
     return this.request<any[]>(url, {
       method: 'GET',
     });
+  }
+
+  /**
+   * Guarda porcentajes manuales para enero/febrero (solo admin).
+   * Si porcentaje es null, elimina el override de ese área/mes/año.
+   */
+  async saveAdvanceTrainingMonthlyManual(body: {
+    year: number;
+    month: number;
+    items: { area_id: number; porcentaje: number | null }[];
+  }): Promise<{ detail?: string }> {
+    return this.request<{ detail?: string }>(
+      '/users/reportes/advance-training-monthly/manual/',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   async getAdvanceTrainingMatrix(params: {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FaFileExcel, FaChartBar, FaTable } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -37,7 +37,14 @@ const AREA_CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed'
 
 type TabType = 'avance-global' | 'advance-training-monthly' | 'advance-training-matrix';
 
-const Reportes: React.FC = () => {
+type MonthlyRow = { month: string; [areaName: string]: string | number | null };
+
+interface ReportesProps {
+  userRole?: string;
+}
+
+const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
+  const isAdmin = userRole === 'ADMIN';
   const [activeTab, setActiveTab] = useState<TabType>('avance-global');
   const [areas, setAreas] = useState<Area[]>([]);
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
@@ -56,6 +63,9 @@ const Reportes: React.FC = () => {
   const [exportChartType, setExportChartType] = useState<'avance-global' | 'advance-training-monthly' | null>(null);
   const [exportFileName, setExportFileName] = useState<string>('');
   const exportChartsContainerRef = useRef<HTMLDivElement>(null);
+  /** Borradores de % para ene/feb: clave `areaId-mes` (mes 1 o 2) */
+  const [monthlyManualEdits, setMonthlyManualEdits] = useState<Record<string, string>>({});
+  const [savingMonthlyManual, setSavingMonthlyManual] = useState(false);
 
   // Helper para obtener el número de semana ISO
   const getWeekNumber = (date: Date): number => {
@@ -288,13 +298,13 @@ const Reportes: React.FC = () => {
     return year > currentYear || (year === currentYear && month1Based > currentMonth);
   };
 
-  /** Datos para la gráfica mensual: todas las áreas vs meses (una fila por mes, una serie por área). Meses futuros sin resultado (null). */
-  const getMonthlyChartData = (): { month: string; [areaName: string]: string | number | null }[] => {
+  /** Datos mensuales (gráfica y tablas); ene/feb pueden superponer borradores de admin. */
+  const monthlyChartData: MonthlyRow[] = useMemo(() => {
     if (!monthlyReportData.length || monthlyReportData.some((m) => !Array.isArray(m))) return [];
     const year = selectedYear ?? new Date().getFullYear();
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((monthIdx) => {
+    const base: MonthlyRow[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((monthIdx) => {
       const monthLabel = new Date(year, monthIdx - 1, 1).toLocaleString('es-ES', { month: 'short', year: 'numeric' });
-      const point: { month: string; [areaName: string]: string | number | null } = { month: monthLabel };
+      const point: MonthlyRow = { month: monthLabel };
       const monthResponse = monthlyReportData[monthIdx - 1] as any[] | undefined;
       const isFuture = isFutureMonth(year, monthIdx);
       if (!monthResponse) return point;
@@ -311,29 +321,49 @@ const Reportes: React.FC = () => {
       });
       return point;
     });
-  };
+    if (!isAdmin || !Object.keys(monthlyManualEdits).length) return base;
+    return base.map((row, monthIndex) => {
+      const month = monthIndex + 1;
+      if (month !== 1 && month !== 2) return row;
+      const copy = { ...row };
+      areas.forEach((a) => {
+        const k = `${a.id}-${month}`;
+        if (monthlyManualEdits[k] !== undefined) {
+          const n = parseFloat(String(monthlyManualEdits[k]).replace(',', '.'));
+          if (Number.isFinite(n)) {
+            copy[a.name] = n;
+          }
+        }
+      });
+      return copy;
+    });
+  }, [monthlyReportData, selectedYear, monthlyManualEdits, areas, isAdmin]);
 
-  // Cargar datos del reporte mensual: 12 meses del año seleccionado (todas las áreas en una misma gráfica)
-  useEffect(() => {
-    const loadMonthlyReportData = async () => {
-      if (selectedYear === null || activeTab !== 'advance-training-monthly') return;
-
-      setLoading(true);
-      try {
-        const promises = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) =>
-          apiService.getAdvanceTrainingMonthly({ month, year: selectedYear })
-        );
-        const results = await Promise.all(promises);
-        setMonthlyReportData(results);
-      } catch (error) {
-        console.error('Error al cargar reporte mensual:', error);
-        setMonthlyReportData([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadMonthlyReportData();
+  const reloadMonthlyReportData = useCallback(async () => {
+    if (selectedYear === null || activeTab !== 'advance-training-monthly') return;
+    setLoading(true);
+    try {
+      const promises = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) =>
+        apiService.getAdvanceTrainingMonthly({ month, year: selectedYear })
+      );
+      const results = await Promise.all(promises);
+      setMonthlyReportData(results);
+    } catch (error) {
+      console.error('Error al cargar reporte mensual:', error);
+      setMonthlyReportData([]);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedYear, activeTab]);
+
+  // Cargar datos del reporte mensual: 12 meses del año seleccionado
+  useEffect(() => {
+    reloadMonthlyReportData();
+  }, [reloadMonthlyReportData]);
+
+  useEffect(() => {
+    setMonthlyManualEdits({});
+  }, [selectedYear]);
 
   // Inicializar año actual cuando se cambia a la pestaña mensual
   useEffect(() => {
@@ -512,7 +542,6 @@ const Reportes: React.FC = () => {
     );
 
   const renderAdvanceTrainingMonthly = () => {
-    const monthlyChartData = getMonthlyChartData();
     const areaNames = monthlyChartData.length > 0
       ? Object.keys(monthlyChartData[0]).filter((k) => k !== 'month')
       : [];
@@ -545,6 +574,91 @@ const Reportes: React.FC = () => {
           return { month: row.month, Promedio: prom };
         })
       : [];
+
+    const handleSaveMonthlyManual = async () => {
+      if (!isAdmin || selectedYear === null) return;
+      const buildItems = (month: number) => {
+        const monthIdx = month - 1;
+        return areaNames
+          .map((name) => {
+            const aid = areas.find((a) => a.name === name)?.id;
+            if (!aid) return null;
+            const k = `${aid}-${month}`;
+            let v: number;
+            if (monthlyManualEdits[k] !== undefined) {
+              const p = parseFloat(String(monthlyManualEdits[k]).replace(',', '.'));
+              if (!Number.isFinite(p)) return null;
+              v = p;
+            } else {
+              const row = monthlyChartData[monthIdx];
+              const val = row[name];
+              v = typeof val === 'number' ? val : 0;
+            }
+            if (v < 0 || v > 100) {
+              window.alert(`El porcentaje debe estar entre 0 y 100 (${name}).`);
+              return null;
+            }
+            return { area_id: aid, porcentaje: v };
+          })
+          .filter((x): x is { area_id: number; porcentaje: number } => x != null);
+      };
+      setSavingMonthlyManual(true);
+      try {
+        for (const month of [1, 2] as const) {
+          await apiService.saveAdvanceTrainingMonthlyManual({
+            year: selectedYear,
+            month,
+            items: buildItems(month),
+          });
+        }
+        await reloadMonthlyReportData();
+        setMonthlyManualEdits({});
+        window.alert('Valores de enero y febrero guardados correctamente.');
+      } catch (e: unknown) {
+        console.error(e);
+        const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Error al guardar.';
+        window.alert(msg);
+      } finally {
+        setSavingMonthlyManual(false);
+      }
+    };
+
+    const renderMesAreaCell = (
+      areaName: string,
+      monthIndex: number,
+      rawValue: number | string | null | undefined
+    ): React.ReactNode => {
+      const year = selectedYear ?? new Date().getFullYear();
+      const isFuture = isFutureMonth(year, monthIndex + 1);
+      const month = monthIndex + 1;
+      const areaId = areas.find((a) => a.name === areaName)?.id;
+      const editable = isAdmin && !isFuture && (month === 1 || month === 2) && areaId != null;
+      const value = typeof rawValue === 'number' ? rawValue : rawValue == null ? null : Number(rawValue);
+      if (!editable) {
+        return isFuture || value == null ? '—' : formatPercentage(Number(value));
+      }
+      const k = `${areaId}-${month}`;
+      const display =
+        monthlyManualEdits[k] !== undefined
+          ? monthlyManualEdits[k]
+          : value != null
+            ? String(Number(value).toFixed(2))
+            : '';
+      return (
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={0.01}
+          className="reporte-monthly-input"
+          aria-label={`${areaName} ${monthlyChartData[monthIndex]?.month ?? ''}`}
+          value={display}
+          onChange={(e) =>
+            setMonthlyManualEdits((prev) => ({ ...prev, [k]: e.target.value }))
+          }
+        />
+      );
+    };
 
     return (
       <>
@@ -589,6 +703,16 @@ const Reportes: React.FC = () => {
             >
               <FaFileExcel /> {exportingWithCharts ? 'Exportando...' : 'Exportar a Excel'}
             </button>
+            {isAdmin && viewMode === 'table' && (
+              <button
+                type="button"
+                className="btn-save-monthly-manual"
+                onClick={handleSaveMonthlyManual}
+                disabled={savingMonthlyManual || monthlyChartData.length === 0 || selectedYear === null}
+              >
+                {savingMonthlyManual ? 'Guardando...' : 'Guardar ene / feb'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -690,12 +814,10 @@ const Reportes: React.FC = () => {
                         <tr key={name}>
                           <td className="grupo-cell">{name}</td>
                           {monthlyChartData.map((row, monthIndex) => {
-                            const year = selectedYear ?? new Date().getFullYear();
-                            const isFuture = isFutureMonth(year, monthIndex + 1);
                             const value = row[name];
                             return (
                               <td key={row.month}>
-                                {isFuture || value == null ? '—' : formatPercentage(Number(value))}
+                                {renderMesAreaCell(name, monthIndex, value)}
                               </td>
                             );
                           })}
@@ -771,12 +893,10 @@ const Reportes: React.FC = () => {
                         <tr key={name}>
                           <td className="grupo-cell">{name}</td>
                           {monthlyChartData.map((row, monthIndex) => {
-                            const year = selectedYear ?? new Date().getFullYear();
-                            const isFuture = isFutureMonth(year, monthIndex + 1);
                             const value = row[name];
                             return (
                               <td key={row.month}>
-                                {isFuture || value == null ? '—' : formatPercentage(Number(value))}
+                                {renderMesAreaCell(name, monthIndex, value)}
                               </td>
                             );
                           })}

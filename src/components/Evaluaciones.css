@@ -149,12 +149,14 @@
   text-align: center;
 }
 
+/* Grupos y posiciones: tres columnas en pantallas amplias */
 .grupos-grid,
 .posiciones-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
-  max-width: 400px;
+  max-width: min(100%, 75rem);
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -1481,6 +1483,7 @@
 
 .modal-firma {
   max-width: 700px;
+  overscroll-behavior: contain;
 }
 
 .modal-header {
@@ -1529,6 +1532,7 @@
   padding: 1rem;
   background: #f8f9fa;
   border-radius: 8px;
+  touch-action: none;
 }
 
 .firma-canvas {
@@ -1538,6 +1542,9 @@
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: border-color 0.3s ease;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .firma-canvas:hover {
@@ -1745,6 +1752,14 @@
   border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+/* Grupos y posiciones: dos columnas en tablet */
+@media (max-width: 1024px) {
+  .grupos-grid,
+  .posiciones-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Responsive */

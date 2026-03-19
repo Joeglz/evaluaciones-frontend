@@ -149,6 +149,8 @@ const [nivelFiltroUsuarios, setNivelFiltroUsuarios] = useState<number | 'todos'>
  
   // Referencia y estados para firmas dinámicas
 const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
+  const firmaPointerIdRef = useRef<number | null>(null);
+  const firmaHuboTrazoRef = useRef(false);
   const abriendoParaEditarAdminRef = useRef(false);
   const editandoEvaluacionComoAdminRef = useRef(false);
   const printContentRef = useRef<HTMLDivElement>(null);
@@ -228,24 +230,30 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     return list;
   }, [supervisoresDelArea, supervisorSeleccionado, supervisores]);
 
-  // En el formulario de evaluación: solo supervisores (rol SUPERVISOR) del área de la evaluación actual
+  // Formulario de evaluación y modal de firma: supervisores y entrenadores (SUPERVISOR, ENTRENADOR) del área
   const supervisoresDelAreaDeEvaluacion = useMemo(() => {
-    const soloRolSupervisor = supervisores.filter((s) => s.role === 'SUPERVISOR');
-    if (!evaluacionActual?.area_name || !areas?.length) return soloRolSupervisor;
+    const esSupervisorOEntrenador = (role?: string | null) =>
+      role === 'SUPERVISOR' || role === 'ENTRENADOR';
+    const porRol = supervisores.filter((s) => esSupervisorOEntrenador(s.role));
+    if (!evaluacionActual?.area_name || !areas?.length) return porRol;
     const areaEvaluacion = areas.find((a) => a.name === evaluacionActual.area_name);
-    if (!areaEvaluacion?.grupos?.length) return soloRolSupervisor;
+    if (!areaEvaluacion?.grupos?.length) return porRol;
     const ids = new Set<number>();
     areaEvaluacion.grupos.forEach((g: { supervisores?: { id: number }[] }) => {
       (g.supervisores ?? []).forEach((s) => ids.add(s.id));
     });
-    if (ids.size === 0) return soloRolSupervisor;
-    return soloRolSupervisor.filter((s) => ids.has(s.id));
+    if (ids.size === 0) return porRol;
+    return porRol.filter((s) => ids.has(s.id));
   }, [evaluacionActual?.area_name, areas, supervisores]);
 
   const opcionesSupervisorParaFormulario = useMemo(() => {
+    const esSupervisorOEntrenador = (role?: string | null) =>
+      role === 'SUPERVISOR' || role === 'ENTRENADOR';
     const list = [...supervisoresDelAreaDeEvaluacion];
     if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
-      const actual = supervisores.find((s) => s.id === supervisorSeleccionado && s.role === 'SUPERVISOR');
+      const actual = supervisores.find(
+        (s) => s.id === supervisorSeleccionado && esSupervisorOEntrenador(s.role)
+      );
       if (actual) list.push(actual);
     }
     return list;
@@ -352,24 +360,39 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     ctx.lineJoin = 'round';
   }, []);
 
-  // Funciones para dibujar en el canvas de firmas dinámicas
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!firmaModalAbierta) return;
-    const canvas = firmaCanvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
+  // Canvas de firma: Pointer Events (ratón, tacto, lápiz) + captura del puntero para tabletas
+  const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!firmaModalAbierta || !e.isPrimary) return;
+    e.preventDefault();
+    const canvas = e.currentTarget;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+    firmaPointerIdRef.current = e.pointerId;
+    firmaHuboTrazoRef.current = false;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.moveTo(x, y);
     setIsDrawing(true);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !firmaModalAbierta) return;
-
+  const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !firmaModalAbierta || !e.isPrimary) return;
+    if (
+      firmaPointerIdRef.current !== null &&
+      e.pointerId !== firmaPointerIdRef.current
+    ) {
+      return;
+    }
+    e.preventDefault();
     const canvas = firmaCanvasRef.current;
     if (!canvas) return;
 
@@ -379,22 +402,38 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
     ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
     ctx.stroke();
-    setHasSignature(prev => ({
+    firmaHuboTrazoRef.current = true;
+    setHasSignature((prev) => ({
       ...prev,
-      [firmaModalAbierta.tipo]: true
+      [firmaModalAbierta.tipo]: true,
     }));
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e?: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = firmaCanvasRef.current;
+    const idToRelease = e?.pointerId ?? firmaPointerIdRef.current;
+    if (canvas !== null && idToRelease !== null) {
+      try {
+        if (canvas.hasPointerCapture(idToRelease)) {
+          canvas.releasePointerCapture(idToRelease);
+        }
+      } catch {
+        /* noop */
+      }
+    }
+    firmaPointerIdRef.current = null;
+
     if (!isDrawing || !firmaModalAbierta) return;
     setIsDrawing(false);
 
-    const canvas = firmaCanvasRef.current;
-    if (canvas && hasSignature[firmaModalAbierta.tipo]) {
+    const tipo = firmaModalAbierta.tipo;
+    const huboTrazo = firmaHuboTrazoRef.current || Boolean(hasSignature[tipo]);
+    firmaHuboTrazoRef.current = false;
+    if (canvas && huboTrazo) {
       const dataURL = canvas.toDataURL('image/png');
-      setSignatures(prev => ({
+      setSignatures((prev) => ({
         ...prev,
-        [firmaModalAbierta.tipo]: dataURL
+        [tipo]: dataURL,
       }));
     }
   };
@@ -450,6 +489,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    firmaHuboTrazoRef.current = false;
     setHasSignature(prev => ({ ...prev, [firmaModalAbierta.tipo]: false }));
     setSignatures(prev => ({ ...prev, [firmaModalAbierta.tipo]: null }));
     setFirmasPendientes(prev => {
@@ -518,7 +558,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     // Filtrar usuarios en la vista de usuarios cuando cambie el término de búsqueda
     if (currentView === 'usuarios' && searchTerm) {
       const usuariosBase = usuarios.filter(user => {
-        const tienePosicion = user.posicion === selectedPosicion?.id;
+        const tienePosicion = selectedPosicion?.id != null && (
+          user.posiciones?.some((p) => p.posicion_id === selectedPosicion?.id) || user.posicion === selectedPosicion?.id
+        );
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
         const tieneGrupo = user.grupo === selectedGrupo?.id;
         // Incluir usuarios regulares y entrenadores
@@ -535,7 +577,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     } else if (currentView === 'usuarios' && !searchTerm) {
       // Si no hay término de búsqueda, mostrar todos los usuarios filtrados por área/grupo/posición y rol
       const usuariosFiltrados = usuarios.filter(user => {
-        const tienePosicion = user.posicion === selectedPosicion?.id;
+        const tienePosicion = selectedPosicion?.id != null && (
+          user.posiciones?.some((p) => p.posicion_id === selectedPosicion?.id) || user.posicion === selectedPosicion?.id
+        );
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
         const tieneGrupo = user.grupo === selectedGrupo?.id;
         // Incluir usuarios regulares y entrenadores
@@ -631,36 +675,130 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   }, [selectedUser, nivelesCompletosPorUsuario]);
 
+  const ordenarUsuariosPorEmpleado = (lista: User[]) =>
+    [...lista].sort((a, b) => {
+      const na = a.numero_empleado ?? '';
+      const nb = b.numero_empleado ?? '';
+      if (!na && !nb) return 0;
+      if (!na) return 1;
+      if (!nb) return -1;
+      return na.localeCompare(nb);
+    });
+
+  const loadProgresosNivel = async (posicionId?: number | null) => {
+    try {
+      const params = posicionId ? { posicion: posicionId } : undefined;
+      const progresosResponse = await apiService.getProgresosNivel(params);
+      const progresosLista = Array.isArray(progresosResponse)
+        ? progresosResponse
+        : Array.isArray((progresosResponse as any)?.results)
+          ? (progresosResponse as any).results
+          : [];
+      const progresos = (progresosLista as ProgresoNivel[]);
+
+      if (progresos.length === 0) {
+        return;
+      }
+
+      const progresosAgrupados: Record<number, Record<number, ProgresoNivel>> = {};
+      const completadosAgrupados: Record<number, Record<number, boolean>> = {};
+
+      progresos.forEach((progreso) => {
+        if (!progresosAgrupados[progreso.usuario]) {
+          progresosAgrupados[progreso.usuario] = {};
+        }
+        progresosAgrupados[progreso.usuario][progreso.nivel] = progreso;
+
+        if (!completadosAgrupados[progreso.usuario]) {
+          completadosAgrupados[progreso.usuario] = {};
+        }
+        completadosAgrupados[progreso.usuario][progreso.nivel] = progreso.completado;
+      });
+
+      setProgresosNivel((prev) => ({
+        ...prev,
+        ...progresosAgrupados
+      }));
+
+      setNivelesCompletosPorUsuario((prev) => ({
+        ...prev,
+        ...completadosAgrupados
+      }));
+    } catch (error) {
+      console.error('Error al cargar progresos de nivel:', error);
+    }
+  };
+
+  const loadUsuariosEvaluacionesContext = async (
+    posicion: Posicion,
+    area: Area | null | undefined,
+    grupo: Grupo | null | undefined,
+    options?: { manageLoading?: boolean }
+  ) => {
+    const manageLoading = options?.manageLoading !== false;
+    if (!area || !grupo) {
+      return;
+    }
+    try {
+      if (manageLoading) {
+        setLoading(true);
+      }
+      const usuariosAll = await apiService.getUsersAll({
+        is_active: true,
+        evaluaciones: true,
+        area_id: area.id,
+        grupo_id: grupo.id,
+        posicion_id: posicion.id,
+      });
+      const usuariosOrdenados = ordenarUsuariosPorEmpleado(usuariosAll);
+      setUsuarios(usuariosOrdenados);
+      setUsuariosRegulares(usuariosOrdenados.filter((user) => user.role === 'USUARIO'));
+      await loadProgresosNivel(posicion.id);
+    } catch (err) {
+      console.error('Error al cargar usuarios para evaluaciones:', err);
+      showError('No se pudieron cargar los usuarios para este contexto');
+      setUsuarios([]);
+      setUsuariosRegulares([]);
+    } finally {
+      if (manageLoading) {
+        setLoading(false);
+      }
+    }
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
-      const [areasData, gruposData, posicionesData, usuariosAll, listasData] = await Promise.all([
+      const [areasData, gruposData, posicionesData, supervisoresData, listasData] = await Promise.all([
         apiService.getAreas({ is_active: true }),
         apiService.getGrupos({ is_active: true }),
         apiService.getPosiciones({ is_active: true }),
-        apiService.getUsersAll({ is_active: true, evaluaciones: true }),
-        apiService.getListasAsistencia({ is_active: true })
+        apiService.getUsers({
+          is_active: true,
+          role: 'ADMIN,ENTRENADOR,SUPERVISOR',
+          minimal: true,
+        }),
+        apiService.getListasAsistencia({ is_active: true }),
       ]);
-      
+
       setAreas(areasData);
       setGrupos(gruposData);
       setPosiciones(posicionesData);
-      const usuariosOrdenados = [...usuariosAll].sort((a, b) => {
-        const na = a.numero_empleado ?? '';
-        const nb = b.numero_empleado ?? '';
-        if (!na && !nb) return 0;
-        if (!na) return 1;
-        if (!nb) return -1;
-        return na.localeCompare(nb);
-      });
-      setUsuarios(usuariosOrdenados);
-      setUsuariosRegulares(usuariosOrdenados.filter(user => user.role === 'USUARIO'));
-      const esRolSupervisor = (role?: string | null) =>
-        role === 'ADMIN' || role === 'ENTRENADOR' || role === 'SUPERVISOR';
+      setUsuarios([]);
+      setUsuariosRegulares([]);
+      setFilteredUsuarios([]);
 
-      setSupervisores(usuariosOrdenados.filter(user => esRolSupervisor(user.role)));
-      setInstructores(usuariosOrdenados.filter(user => esRolSupervisor(user.role)));
+      const supList = supervisoresData.results ?? [];
+      const esRolSupervision = (role?: string | null) =>
+        role === 'ADMIN' || role === 'ENTRENADOR' || role === 'SUPERVISOR';
+      setSupervisores(supList.filter((u) => esRolSupervision(u.role)));
+      setInstructores(supList.filter((u) => esRolSupervision(u.role)));
       setListasAsistencia(listasData.results);
+      if (selectedArea && selectedGrupo && selectedPosicion) {
+        await loadUsuariosEvaluacionesContext(selectedPosicion, selectedArea, selectedGrupo, {
+          manageLoading: false,
+        });
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -694,17 +832,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     setSelectedPosicion(posicion);
     setCurrentView('usuarios');
     setNivelFiltroUsuarios('todos');
-    
-    // Filtrar usuarios que tengan la posición seleccionada, pertenezcan al área, grupo y sean usuarios regulares
-    const usuariosFiltrados = usuarios.filter(user => {
-      const tienePosicion = user.posicion === posicion.id;
-      const tieneArea = user.areas.includes(selectedArea?.id || 0);
-      const tieneGrupo = user.grupo === selectedGrupo?.id;
-      const esUsuarioRegular = user.role === 'USUARIO';
-      return tienePosicion && tieneArea && tieneGrupo && esUsuarioRegular;
-    });
-    setFilteredUsuarios(usuariosFiltrados);
-    loadProgresosNivel(posicion.id);
+    void loadUsuariosEvaluacionesContext(posicion, selectedArea, selectedGrupo);
   };
 
   const handleUserClick = (user: User) => {
@@ -744,7 +872,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         guardadasMap[registro.evaluacion] = registro;
       });
 
-      setEvaluacionesUsuario(evaluaciones);
+      const ordenadas = [...(evaluaciones || [])].sort((a: any, b: any) => {
+        const aCompleta = guardadasMap[a.id]?.estado === 'completada';
+        const bCompleta = guardadasMap[b.id]?.estado === 'completada';
+        if (aCompleta === bCompleta) return 0;
+        return aCompleta ? 1 : -1;
+      });
+      setEvaluacionesUsuario(ordenadas);
       setEvaluacionesUsuarioGuardadas(guardadasMap);
 
       const nivelesSet = new Set<number>();
@@ -813,50 +947,6 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     initRegular();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRegularUser]);
-
-  const loadProgresosNivel = async (posicionId?: number | null) => {
-    try {
-      const params = posicionId ? { posicion: posicionId } : undefined;
-      const progresosResponse = await apiService.getProgresosNivel(params);
-      const progresosLista = Array.isArray(progresosResponse)
-        ? progresosResponse
-        : Array.isArray((progresosResponse as any)?.results)
-          ? (progresosResponse as any).results
-          : [];
-      const progresos = (progresosLista as ProgresoNivel[]);
- 
-      if (progresos.length === 0) {
-        return;
-      }
-
-      const progresosAgrupados: Record<number, Record<number, ProgresoNivel>> = {};
-      const completadosAgrupados: Record<number, Record<number, boolean>> = {};
-
-      progresos.forEach((progreso) => {
-        if (!progresosAgrupados[progreso.usuario]) {
-          progresosAgrupados[progreso.usuario] = {};
-        }
-        progresosAgrupados[progreso.usuario][progreso.nivel] = progreso;
-
-        if (!completadosAgrupados[progreso.usuario]) {
-          completadosAgrupados[progreso.usuario] = {};
-        }
-        completadosAgrupados[progreso.usuario][progreso.nivel] = progreso.completado;
-      });
-
-      setProgresosNivel((prev) => ({
-        ...prev,
-        ...progresosAgrupados
-      }));
-
-      setNivelesCompletosPorUsuario((prev) => ({
-        ...prev,
-        ...completadosAgrupados
-      }));
-    } catch (error) {
-      console.error('Error al cargar progresos de nivel:', error);
-    }
-  };
 
   const iniciarEvaluacion = async (evaluacion: any) => {
     try {
@@ -2865,10 +2955,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         width={600}
                         height={250}
                         className="firma-canvas"
-                        onMouseDown={startDrawing}
-                        onMouseMove={draw}
-                        onMouseUp={stopDrawing}
-                        onMouseLeave={stopDrawing}
+                        onPointerDown={startDrawing}
+                        onPointerMove={draw}
+                        onPointerUp={stopDrawing}
+                        onPointerCancel={stopDrawing}
+                        onPointerLeave={(ev) => {
+                          if (firmaPointerIdRef.current === ev.pointerId) {
+                            stopDrawing(ev);
+                          }
+                        }}
                       />
                     </div>
                     <div className="firma-controls">

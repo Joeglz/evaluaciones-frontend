@@ -77,6 +77,10 @@ const UserManagement: React.FC = () => {
   // Estado para mostrar acciones en tablet
   const [expandedUserActions, setExpandedUserActions] = useState<number | null>(null);
   
+  // Paso 3: área y posición seleccionadas para agregar (área -> grupo -> posición -> agregar)
+  const [step3AreaId, setStep3AreaId] = useState<number | ''>('');
+  const [step3PosicionId, setStep3PosicionId] = useState<number | ''>('');
+  
   // Formularios
   const [createForm, setCreateForm] = useState<UserCreate>({
     username: '',
@@ -87,7 +91,7 @@ const UserManagement: React.FC = () => {
     password_confirm: '',
     role: 'USUARIO',
     areas: [],
-    posicion: null,
+    posiciones: [],
     grupo: null,
     numero_empleado: null,
     fecha_ingreso: null,
@@ -101,7 +105,7 @@ const UserManagement: React.FC = () => {
     last_name: '',
     role: 'USUARIO',
     areas: [],
-    posicion: null,
+    posiciones: [],
     grupo: null,
     numero_empleado: null,
     fecha_ingreso: null,
@@ -382,13 +386,15 @@ const UserManagement: React.FC = () => {
       password_confirm: '',
       role: 'USUARIO',
       areas: [],
-      posicion: null,
+      posiciones: [],
       grupo: null,
       numero_empleado: null,
       fecha_ingreso: null,
       is_active: true
     });
     setCreateErrors({});
+    setStep3AreaId('');
+    setStep3PosicionId('');
     clearCreateProfilePhoto();
   };
 
@@ -397,6 +403,9 @@ const UserManagement: React.FC = () => {
     setIsEditing(true);
     setCurrentStep(1);
     setSelectedUser(user);
+    const userPosicionesIds = user.posiciones?.length
+      ? user.posiciones.map((p) => p.posicion_id)
+      : (user.posicion != null ? [user.posicion] : []);
     setEditForm({
       username: user.username,
       email: user.email,
@@ -404,13 +413,15 @@ const UserManagement: React.FC = () => {
       last_name: user.last_name,
       role: user.role,
       areas: user.areas,
-      posicion: user.posicion,
+      posiciones: userPosicionesIds,
       grupo: user.grupo,
       numero_empleado: user.numero_empleado,
       fecha_ingreso: user.fecha_ingreso,
       is_active: user.is_active
     });
     setEditErrors({});
+    setStep3AreaId(user.areas?.length ? user.areas[0] : '');
+    setStep3PosicionId('');
 
     if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
       URL.revokeObjectURL(editProfilePhotoPreview);
@@ -450,6 +461,8 @@ const UserManagement: React.FC = () => {
     setIsEditing(false);
     setCurrentStep(1);
     setSelectedUser(null);
+    setStep3AreaId('');
+    setStep3PosicionId('');
     setCreateErrors({});
     setEditErrors({});
   };
@@ -896,7 +909,7 @@ const UserManagement: React.FC = () => {
       password_confirm: '',
       role: 'USUARIO',
       areas: [],
-      posicion: null,
+      posiciones: [],
       grupo: null,
       numero_empleado: null,
       fecha_ingreso: null,
@@ -967,13 +980,16 @@ const UserManagement: React.FC = () => {
   };
 
   const getUserPositionName = (user: User): string => {
+    if (user.posiciones?.length) {
+      const principal = user.posiciones.find((p) => p.es_principal) || user.posiciones[0];
+      if (user.posiciones.length > 1) {
+        return `${principal.posicion_name} (+${user.posiciones.length - 1})`;
+      }
+      return principal.posicion_name;
+    }
     const posicion = posiciones.find((pos) => pos.id === user.posicion);
-    if (posicion) {
-      return posicion.name;
-    }
-    if (user.posicion_name) {
-      return user.posicion_name;
-    }
+    if (posicion) return posicion.name;
+    if (user.posicion_name) return user.posicion_name;
     return 'Sin posición';
   };
 
@@ -1088,7 +1104,7 @@ const UserManagement: React.FC = () => {
     ]);
     const step3Fields = new Set([
       'areas',
-      'posicion',
+      'posiciones',
       'grupo',
     ]);
 
@@ -1402,90 +1418,140 @@ const UserManagement: React.FC = () => {
     );
   };
 
+  const handleAddPosicion = () => {
+    if (step3PosicionId === '' || step3PosicionId === null) return;
+    const form = isCreating ? createForm : editForm;
+    if (form.posiciones.includes(step3PosicionId as number)) return;
+    const pos = posiciones.find((p) => p.id === step3PosicionId);
+    const newPosiciones = [...form.posiciones, step3PosicionId as number];
+    const newAreas = pos && !form.areas.includes(pos.area) ? [...form.areas, pos.area] : form.areas;
+    if (isCreating) {
+      setCreateForm({ ...createForm, posiciones: newPosiciones, areas: newAreas });
+    } else {
+      setEditForm({ ...editForm, posiciones: newPosiciones, areas: newAreas });
+    }
+    setStep3PosicionId('');
+  };
+
+  const handleRemovePosicion = (posicionId: number) => {
+    if (isCreating) {
+      setCreateForm({ ...createForm, posiciones: createForm.posiciones.filter((id) => id !== posicionId) });
+    } else {
+      setEditForm({ ...editForm, posiciones: editForm.posiciones.filter((id) => id !== posicionId) });
+    }
+  };
+
   const renderStep3 = () => {
     const form = isCreating ? createForm : editForm;
     const errors = isCreating ? createErrors : editErrors;
+    const areaId = (step3AreaId !== '' ? step3AreaId : form.areas[0]) || null;
+    const posicionesEnArea = areaId ? getPosicionesByArea(areaId) : [];
+    const gruposEnArea = areaId ? getGruposByArea(areaId) : [];
 
     return (
       <div className="step-content">
-        <h3>Área y Posición</h3>
+        <h3>Área, Grupo y Posiciones</h3>
         <div className="form-grid">
           <div className="form-group">
             <label>Área *</label>
             <select
-              value={form.areas.length > 0 ? form.areas[0] : ''}
+              value={areaId || ''}
               onChange={(e) => {
-                const areaId = parseInt(e.target.value);
+                const id = e.target.value ? parseInt(e.target.value) : '';
+                setStep3AreaId(id);
                 if (isCreating) {
-                  setCreateForm({
-                    ...createForm, 
-                    areas: areaId ? [areaId] : [],
-                    posicion: null, // Reset posición when area changes
-                    grupo: null // Reset grupo when area changes
-                  });
+                  setCreateForm({ ...createForm, grupo: null });
                 } else {
-                  setEditForm({
-                    ...editForm, 
-                    areas: areaId ? [areaId] : [],
-                    posicion: null, // Reset posición when area changes
-                    grupo: null // Reset grupo when area changes
-                  });
+                  setEditForm({ ...editForm, grupo: null });
                 }
+                setStep3PosicionId('');
               }}
               className={errors.areas ? 'error' : ''}
             >
               <option value="">Seleccionar área</option>
-              {areas.map(area => (
+              {areas.map((area) => (
                 <option key={area.id} value={area.id}>{area.name}</option>
               ))}
             </select>
             {errors.areas && <div className="error-message">{errors.areas[0]}</div>}
           </div>
 
-          {form.areas.length > 0 && (
+          {areaId && (
             <>
-              <div className="form-group">
-                <label>Posición</label>
-                <select
-                  value={form.posicion || ''}
-                  onChange={(e) => {
-                    if (isCreating) {
-                      setCreateForm({...createForm, posicion: e.target.value ? parseInt(e.target.value) : null});
-                    } else {
-                      setEditForm({...editForm, posicion: e.target.value ? parseInt(e.target.value) : null});
-                    }
-                  }}
-                  className={errors.posicion ? 'error' : ''}
-                >
-                  <option value="">Seleccionar posición</option>
-                  {getPosicionesByArea(form.areas[0]).map(posicion => (
-                    <option key={posicion.id} value={posicion.id}>{posicion.name}</option>
-                  ))}
-                </select>
-                {errors.posicion && <div className="error-message">{errors.posicion[0]}</div>}
-              </div>
-
               <div className="form-group">
                 <label>Grupo</label>
                 <select
                   value={form.grupo || ''}
                   onChange={(e) => {
                     if (isCreating) {
-                      setCreateForm({...createForm, grupo: e.target.value ? parseInt(e.target.value) : null});
+                      setCreateForm({ ...createForm, grupo: e.target.value ? parseInt(e.target.value) : null });
                     } else {
-                      setEditForm({...editForm, grupo: e.target.value ? parseInt(e.target.value) : null});
+                      setEditForm({ ...editForm, grupo: e.target.value ? parseInt(e.target.value) : null });
                     }
                   }}
                 >
                   <option value="">Seleccionar grupo</option>
-                  {getGruposByArea(form.areas[0]).map(grupo => (
+                  {gruposEnArea.map((grupo) => (
                     <option key={grupo.id} value={grupo.id}>{grupo.name}</option>
                   ))}
                 </select>
               </div>
+
+              <div className="form-group">
+                <label>Posición</label>
+                <select
+                  value={step3PosicionId}
+                  onChange={(e) => setStep3PosicionId(e.target.value ? parseInt(e.target.value) : '')}
+                >
+                  <option value="">Seleccionar posición</option>
+                  {posicionesEnArea.map((pos) => (
+                    <option key={pos.id} value={pos.id}>{pos.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group form-group--button">
+                <label>&nbsp;</label>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleAddPosicion}
+                  disabled={step3PosicionId === '' || form.posiciones.includes(step3PosicionId as number)}
+                >
+                  Agregar
+                </button>
+              </div>
             </>
           )}
         </div>
+
+        {form.posiciones.length > 0 && (
+          <div className="form-group" style={{ marginTop: '1rem' }}>
+            <label>Posiciones asignadas</label>
+            <ul className="posiciones-list">
+              {form.posiciones.map((posId, index) => {
+                const pos = posiciones.find((p) => p.id === posId);
+                const areaName = pos ? areas.find((a) => a.id === pos.area)?.name : '';
+                return (
+                  <li key={posId} className="posiciones-list__item">
+                    <span>
+                      {pos ? `${pos.name}${areaName ? ` (${areaName})` : ''}` : `ID ${posId}`}
+                    </span>
+                    <button
+                      type="button"
+                      className="posiciones-list__remove"
+                      onClick={() => handleRemovePosicion(posId)}
+                      title="Quitar posición"
+                    >
+                      Quitar
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {errors.posiciones && <div className="error-message">{errors.posiciones[0]}</div>}
+          </div>
+        )}
       </div>
     );
   };
@@ -1520,9 +1586,7 @@ const UserManagement: React.FC = () => {
             formData.append('fecha_ingreso', createForm.fecha_ingreso);
           }
 
-          if (createForm.posicion !== null) {
-            formData.append('posicion', String(createForm.posicion));
-          }
+          createForm.posiciones.forEach((posId) => formData.append('posiciones', String(posId)));
 
           if (createForm.grupo !== null) {
             formData.append('grupo', String(createForm.grupo));
@@ -1563,9 +1627,7 @@ const UserManagement: React.FC = () => {
             formData.append('fecha_ingreso', '');
           }
 
-          if (editForm.posicion !== null) {
-            formData.append('posicion', String(editForm.posicion));
-          }
+          editForm.posiciones.forEach((posId) => formData.append('posiciones', String(posId)));
 
           if (editForm.grupo !== null) {
             formData.append('grupo', String(editForm.grupo));
