@@ -230,30 +230,31 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     return list;
   }, [supervisoresDelArea, supervisorSeleccionado, supervisores]);
 
-  // Formulario de evaluación y modal de firma: supervisores y entrenadores (SUPERVISOR, ENTRENADOR) del área
+  // Formulario de evaluación y modal de firma: mismos roles que loadData (ADMIN, ENTRENADOR, SUPERVISOR).
+  // Si el área de la evaluación tiene supervisores asignados por grupo, solo esos usuarios (pueden ser ADMIN).
+  // Antes se filtraba solo SUPERVISOR/ENTRENADOR y los admin asignados al grupo quedaban fuera del listado.
   const supervisoresDelAreaDeEvaluacion = useMemo(() => {
-    const esSupervisorOEntrenador = (role?: string | null) =>
-      role === 'SUPERVISOR' || role === 'ENTRENADOR';
-    const porRol = supervisores.filter((s) => esSupervisorOEntrenador(s.role));
-    if (!evaluacionActual?.area_name || !areas?.length) return porRol;
+    if (!evaluacionActual?.area_name || !areas?.length) {
+      return [...supervisores];
+    }
     const areaEvaluacion = areas.find((a) => a.name === evaluacionActual.area_name);
-    if (!areaEvaluacion?.grupos?.length) return porRol;
+    if (!areaEvaluacion?.grupos?.length) {
+      return [...supervisores];
+    }
     const ids = new Set<number>();
     areaEvaluacion.grupos.forEach((g: { supervisores?: { id: number }[] }) => {
       (g.supervisores ?? []).forEach((s) => ids.add(s.id));
     });
-    if (ids.size === 0) return porRol;
-    return porRol.filter((s) => ids.has(s.id));
+    if (ids.size === 0) {
+      return [...supervisores];
+    }
+    return supervisores.filter((s) => ids.has(s.id));
   }, [evaluacionActual?.area_name, areas, supervisores]);
 
   const opcionesSupervisorParaFormulario = useMemo(() => {
-    const esSupervisorOEntrenador = (role?: string | null) =>
-      role === 'SUPERVISOR' || role === 'ENTRENADOR';
     const list = [...supervisoresDelAreaDeEvaluacion];
     if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
-      const actual = supervisores.find(
-        (s) => s.id === supervisorSeleccionado && esSupervisorOEntrenador(s.role)
-      );
+      const actual = supervisores.find((s) => s.id === supervisorSeleccionado);
       if (actual) list.push(actual);
     }
     return list;
@@ -611,20 +612,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             ? usuario.areas[0] 
             : (typeof usuario.areas === 'number' ? usuario.areas : undefined);
 
-          if (!areaId || !usuario.posicion) {
-            // Si no tiene área o posición, saltar este usuario
-            console.log(`Saltando usuario ${usuario.id}: sin área o posición`, { areaId, posicion: usuario.posicion });
+          const posicionParaResumen = selectedPosicion?.id ?? usuario.posicion;
+          if (!areaId || !posicionParaResumen) {
+            console.log(`Saltando usuario ${usuario.id}: sin área o posición`, {
+              areaId,
+              posicion: posicionParaResumen,
+            });
             continue;
           }
 
           const [evaluaciones, evaluacionesGuardadas] = await Promise.all([
             apiService.getEvaluaciones({
               area_id: areaId,
-              posicion_id: usuario.posicion,
+              posicion_id: posicionParaResumen,
               es_plantilla: false
             }),
             apiService.getEvaluacionesUsuario({
-              usuario: usuario.id
+              usuario: usuario.id,
+              posicion_id: posicionParaResumen,
             })
           ]);
 
@@ -844,8 +849,12 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const loadEvaluacionesUsuario = async (user: User) => {
     try {
       setLoading(true);
-      // Obtener evaluaciones que coincidan con el área y posición del usuario
-      const areaId = Array.isArray(user.areas) && user.areas.length > 0 ? user.areas[0] : undefined;
+      // Área y posición del contexto de navegación (Área > Grupo > Posición > Usuario);
+      // si no hay contexto (ej. usuario regular), usar datos del perfil.
+      const areaId =
+        selectedArea?.id ??
+        (Array.isArray(user.areas) && user.areas.length > 0 ? user.areas[0] : undefined);
+      const posicionId = selectedPosicion?.id ?? user.posicion ?? undefined;
       const evaluacionesParams: {
         area_id?: number;
         posicion_id?: number;
@@ -858,13 +867,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         evaluacionesParams.area_id = areaId;
       }
 
-      if (user.posicion) {
-        evaluacionesParams.posicion_id = user.posicion;
+      if (posicionId) {
+        evaluacionesParams.posicion_id = posicionId;
       }
 
       const [evaluaciones, evaluacionesGuardadasList] = await Promise.all([
         apiService.getEvaluaciones(evaluacionesParams),
-        apiService.getEvaluacionesUsuarioAll({ usuario: user.id })
+        apiService.getEvaluacionesUsuarioAll({
+          usuario: user.id,
+          ...(posicionId != null ? { posicion_id: posicionId } : {}),
+        }),
       ]);
 
       const guardadasMap: Record<number, EvaluacionUsuario> = {};
@@ -2331,23 +2343,38 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       return nivelEvaluacion === nivelActual;
     });
 
+    const posicionVistaDetalle =
+      selectedPosicion?.id ?? selectedUser.posicion ?? null;
+    const nivelesBackendMismaPosicion =
+      posicionVistaDetalle == null ||
+      selectedUser.posicion == null ||
+      Number(selectedUser.posicion) === Number(posicionVistaDetalle);
+
     const isNivelCompleto = (nivel: number): boolean => {
       if (!selectedUser) {
         return false;
       }
 
-      // Usar niveles_completos del backend como fuente principal
-      if (selectedUser.niveles_completos && selectedUser.niveles_completos[nivel] !== undefined) {
-        return Boolean(selectedUser.niveles_completos[nivel]);
+      // Resumen calculado al cargar evaluaciones para la posición del breadcrumb
+      if (Object.prototype.hasOwnProperty.call(nivelesCompletos, nivel)) {
+        return Boolean(nivelesCompletos[nivel]);
       }
 
-      // Fallback: usar nivelesCompletosPorUsuario si no viene del backend
       const resumenUsuario = nivelesCompletosPorUsuario[selectedUser.id];
       if (resumenUsuario && resumenUsuario[nivel] !== undefined) {
         return Boolean(resumenUsuario[nivel]);
       }
 
-      // Si no hay datos en nivelesCompletosPorUsuario, intentar con progresosNivel
+      // niveles_completos del usuario es solo para la posición principal; no usarlo
+      // si estamos viendo otra posición asignada (varias posiciones).
+      if (
+        nivelesBackendMismaPosicion &&
+        selectedUser.niveles_completos &&
+        selectedUser.niveles_completos[nivel] !== undefined
+      ) {
+        return Boolean(selectedUser.niveles_completos[nivel]);
+      }
+
       const progresoUsuario = progresosNivel[selectedUser.id];
       if (progresoUsuario && progresoUsuario[nivel] !== undefined) {
         return progresoUsuario[nivel].completado;
@@ -2501,10 +2528,14 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     (estadoNormalizado === 'completada' ||
                       todasFirmasCompletas ||
                       evaluacionGuardada?.resultado_final != null);
-                  const nivelCompletoSegunBackend =
-                    nivelActual !== null && isNivelCompleto(nivelActual);
-                  const estaCompletada = completadaPorRegistro || nivelCompletoSegunBackend;
-                  const estaPendienteFirmas = evaluacionRegistrada && !todasFirmasCompletas && !nivelCompletoSegunBackend;
+                  // No usar "nivel completo" para marcar cada fila: el resumen por nivel
+                  // puede corresponder a otra posición o estar desfasado; cada evaluación
+                  // debe basarse solo en su registro (EvaluacionUsuario) en esta posición.
+                  const estaCompletada = completadaPorRegistro;
+                  const estaPendienteFirmas =
+                    evaluacionRegistrada &&
+                    !todasFirmasCompletas &&
+                    !completadaPorRegistro;
                   return (
                     <div
                       key={evaluacion.id}

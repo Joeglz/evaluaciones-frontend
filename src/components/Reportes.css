@@ -501,3 +501,88 @@
     padding: 0.5rem;
   }
 }
+
+/* Matrix CER: producción / soporte + gráficas combinadas */
+.matrix-split {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.matrix-tipo-section {
+  margin-bottom: 1rem;
+}
+
+.matrix-section-title {
+  color: var(--reporte-red);
+  font-size: 1.25rem;
+  margin: 0 0 1rem;
+  font-weight: 700;
+}
+
+.matrix-area-block {
+  margin-bottom: 2rem;
+}
+
+.matrix-cer-header {
+  margin-bottom: 0.5rem;
+}
+
+.matrix-cer-table {
+  min-width: 480px;
+}
+
+.matrix-cer-table th.matrix-cer-promedio-col,
+.matrix-cer-table td.matrix-cer-promedio-cell {
+  background: var(--reporte-gray-light);
+  font-weight: 600;
+}
+
+.matrix-cer-first-col {
+  min-width: 11rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.matrix-cer-table .matrix-target-row td {
+  background: #fafafa;
+  font-size: 0.9rem;
+}
+
+.matrix-charts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.matrix-chart-block {
+  background: var(--reporte-white);
+  border: 1px solid var(--reporte-gray-light);
+  border-radius: 8px;
+  padding: 1rem 1rem 0.5rem;
+}
+
+.matrix-chart-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  color: var(--reporte-black);
+}
+
+.matrix-chart-subtitle {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--reporte-gray);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.matrix-cw-target-hint {
+  align-self: center;
+  color: var(--reporte-gray);
+  font-size: 0.95rem;
+}
+
+.reportes-empty-inline {
+  color: var(--reporte-gray);
+  margin: 0.25rem 0 1rem;
+}

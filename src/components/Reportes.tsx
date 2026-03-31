@@ -8,6 +8,7 @@ import {
   Bar,
   LineChart,
   Line,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -50,14 +51,14 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [reportData, setReportData] = useState<AvanceGlobalResponse[]>([]);
   /** Para Advance Training Monthly: array de 12 respuestas (una por mes). Cada elemento es array de datos por área. */
   const [monthlyReportData, setMonthlyReportData] = useState<any[][]>([]);
-  const [matrixReportData, setMatrixReportData] = useState<any[]>([]);
+  const [matrixReportData, setMatrixReportData] = useState<any>(null);
   const [matrixSelectedWeek, setMatrixSelectedWeek] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [matrixViewMode, setMatrixViewMode] = useState<'table' | 'chart'>('table');
   const [exportingWithCharts, setExportingWithCharts] = useState<boolean>(false);
   const [exportChartData, setExportChartData] = useState<AvanceGlobalResponse[] | any[]>([]);
   const [exportChartType, setExportChartType] = useState<'avance-global' | 'advance-training-monthly' | null>(null);
@@ -148,7 +149,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       (areaData.grupos || []).forEach((g: any) => {
         ws.addRow([
           g.grupo_nombre,
-          formatPercentage(g.nivel_1),
+          formatPercentage(g.entrenamiento ?? g.nivel_1),
           formatPercentage(g.nivel_1),
           formatPercentage(g.nivel_2),
           formatPercentage(g.nivel_3),
@@ -272,9 +273,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     data.forEach((areaData) => {
       (areaData.grupos || []).forEach((g) => {
         if (g.grupo_nombre.toUpperCase() !== 'PROMEDIO') {
+          const ent = g.entrenamiento ?? g.nivel_1;
           result.push({
             name: g.grupo_nombre,
-            Entrenamiento: g.nivel_1,
+            Entrenamiento: ent,
             Nivel1: g.nivel_1,
             Nivel2: g.nivel_2,
             Nivel3: g.nivel_3,
@@ -315,7 +317,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         }
         const prom = areaData.grupos?.find((g: any) => String(g.grupo_nombre).toUpperCase() === 'PROMEDIO');
         const val = prom
-          ? (prom.entrenamiento ?? ((prom.nivel_1 + prom.nivel_2 + prom.nivel_3 + prom.nivel_4) / 4))
+          ? (prom.entrenamiento ??
+              (prom.nivel_1 + prom.nivel_2 + prom.nivel_3 + prom.nivel_4) / 4)
           : 0;
         point[areaData.area_nombre] = typeof val === 'number' ? val : 0;
       });
@@ -387,7 +390,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         setMatrixReportData(data);
       } catch (error) {
         console.error('Error al cargar reporte matrix:', error);
-        setMatrixReportData([]);
+        setMatrixReportData(null);
       } finally {
         setLoading(false);
       }
@@ -520,7 +523,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                       className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
                     >
                       <td className="grupo-cell">{grupo.grupo_nombre}</td>
-                      <td>{formatPercentage(grupo.nivel_1)}</td>
+                      <td>{formatPercentage((grupo as any).entrenamiento ?? grupo.nivel_1)}</td>
                       <td>{formatPercentage(grupo.nivel_1)}</td>
                       <td>{formatPercentage(grupo.nivel_2)}</td>
                       <td>{formatPercentage(grupo.nivel_3)}</td>
@@ -958,22 +961,165 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   };
 
   const renderAdvanceTrainingMatrix = () => {
-    // Targets fijos por nivel
-    const targets = {
+    const defaultTargets = {
       training: 100,
       nivel_1: 100,
       nivel_2: 100,
-      nivel_3: 50,
-      nivel_4: 25,
+      nivel_3: 100,
+      nivel_4: 100,
+    };
+    const targets = matrixReportData?.level_targets ?? defaultTargets;
+    const levelDefs: {
+      targetKey: keyof typeof defaultTargets;
+      field: 'entrenamiento' | 'nivel_1' | 'nivel_2' | 'nivel_3' | 'nivel_4';
+      label: string;
+    }[] = [
+      { targetKey: 'training', field: 'entrenamiento', label: 'Entrenamiento' },
+      { targetKey: 'nivel_1', field: 'nivel_1', label: 'Nivel 1' },
+      { targetKey: 'nivel_2', field: 'nivel_2', label: 'Nivel 2' },
+      { targetKey: 'nivel_3', field: 'nivel_3', label: 'Nivel 3' },
+      { targetKey: 'nivel_4', field: 'nivel_4', label: 'Nivel 4' },
+    ];
+
+    const gruposSinPromedio = (grupos: any[]) =>
+      (grupos || []).filter((g) => String(g.grupo_nombre).toUpperCase() !== 'PROMEDIO');
+    const filaPromedio = (grupos: any[]) =>
+      (grupos || []).find((g) => String(g.grupo_nombre).toUpperCase() === 'PROMEDIO');
+
+    const valorGrupo = (g: any, field: (typeof levelDefs)[0]['field']) => {
+      if (field === 'entrenamiento') {
+        const v = g.entrenamiento ?? g.nivel_1;
+        return typeof v === 'number' ? v : 0;
+      }
+      return typeof g[field] === 'number' ? g[field] : 0;
     };
 
-    const levels = ['training', 'nivel_1', 'nivel_2', 'nivel_3', 'nivel_4'];
-    const levelNames: Record<string, string> = {
-      training: 'Training',
-      nivel_1: 'Certification Level 1',
-      nivel_2: 'Certification Level 2',
-      nivel_3: 'Certification Level 3',
-      nivel_4: 'Certification Level 4',
+    const renderMatrixAreaBlock = (areaBlock: any) => {
+      const cols = gruposSinPromedio(areaBlock.grupos);
+      const prom = filaPromedio(areaBlock.grupos);
+      return (
+        <div key={areaBlock.area_id} className="matrix-area-block">
+          <div className="reporte-table-header matrix-cer-header">
+            <div className="reporte-week-label">
+              CW {areaBlock.week} | {areaBlock.area_nombre}
+            </div>
+          </div>
+          <table className="matrix-cer-table reporte-table">
+            <thead>
+              <tr>
+                <th className="matrix-cer-first-col" />
+                {cols.map((c: any) => (
+                  <th key={c.grupo_id ?? c.grupo_nombre}>{c.grupo_nombre}</th>
+                ))}
+                <th className="matrix-cer-promedio-col">Promedio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {levelDefs.map((def) => {
+                const tgt = targets[def.targetKey] ?? 100;
+                return (
+                  <React.Fragment key={def.targetKey}>
+                    <tr className="matrix-target-row">
+                      <td className="matrix-cer-first-col">{def.label} (objetivo)</td>
+                      {cols.map((c: any) => (
+                        <td key={`t-${c.grupo_id}-${def.targetKey}`}>{formatPercentage(tgt)}</td>
+                      ))}
+                      <td className="matrix-cer-promedio-col">{formatPercentage(tgt)}</td>
+                    </tr>
+                    <tr className="matrix-actual-row">
+                      <td className="matrix-cer-first-col">{def.label}</td>
+                      {cols.map((c: any) => (
+                        <td key={`a-${c.grupo_id}-${def.targetKey}`}>
+                          {formatPercentage(valorGrupo(c, def.field))}
+                        </td>
+                      ))}
+                      <td className="matrix-cer-promedio-col matrix-cer-promedio-cell">
+                        {prom ? formatPercentage(valorGrupo(prom, def.field)) : formatPercentage(0)}
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
+
+    const renderMatrixChart = (
+      title: string,
+      data: { label: string; target: number; actual: number }[],
+      subtitle?: string
+    ) => (
+      <div className="matrix-chart-block">
+        <h3 className="matrix-chart-title">
+          {title}
+          {subtitle ? <span className="matrix-chart-subtitle">{subtitle}</span> : null}
+        </h3>
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart data={data} margin={{ top: 16, right: 24, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+            <XAxis dataKey="label" stroke={COLORS.black} />
+            <YAxis
+              stroke={COLORS.black}
+              domain={[0, 125]}
+              tickFormatter={(v) => `${v}%`}
+            />
+            <Tooltip
+              formatter={(v: number | undefined) => (v != null ? `${Number(v).toFixed(2)}%` : '')}
+              contentStyle={{ borderColor: COLORS.red }}
+            />
+            <Legend />
+            <Bar dataKey="actual" name="Avance real" fill="#2563eb" barSize={28} />
+            <Line
+              type="monotone"
+              dataKey="target"
+              name="Objetivo progresivo"
+              stroke="#16a34a"
+              strokeWidth={2}
+              dot={{ r: 4, fill: '#16a34a' }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    );
+
+    const prodAreas = matrixReportData?.produccion?.areas ?? [];
+    const sopAreas = matrixReportData?.soporte?.areas ?? [];
+    const chartsProd = matrixReportData?.charts?.produccion;
+    const chartsSop = matrixReportData?.charts?.soporte;
+    const hasMatrixData = prodAreas.length > 0 || sopAreas.length > 0;
+
+    const exportMatrixExcel = () => {
+      const wb = XLSX.utils.book_new();
+      const appendSection = (sheetName: string, areaList: any[]) => {
+        const rows: (string | number)[][] = [];
+        areaList.forEach((ab) => {
+          rows.push([`CW ${ab.week} | ${ab.area_nombre}`]);
+          const cols = gruposSinPromedio(ab.grupos);
+          rows.push(['', ...cols.map((c: any) => c.grupo_nombre), 'Promedio']);
+          levelDefs.forEach((def) => {
+            const tgt = targets[def.targetKey] ?? 100;
+            const prom = filaPromedio(ab.grupos);
+            rows.push([
+              `${def.label} (obj.)`,
+              ...cols.map(() => `${tgt.toFixed(2)}%`),
+              `${tgt.toFixed(2)}%`,
+            ]);
+            rows.push([
+              def.label,
+              ...cols.map((c: any) => `${valorGrupo(c, def.field).toFixed(2)}%`),
+              prom ? `${valorGrupo(prom, def.field).toFixed(2)}%` : '0.00%',
+            ]);
+          });
+          rows.push([]);
+        });
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
+      };
+      appendSection('Produccion', prodAreas);
+      appendSection('Soporte', sopAreas);
+      XLSX.writeFile(wb, `Reporte_Matrix_CW${matrixSelectedWeek}_${selectedYear}.xlsx`);
     };
 
     return (
@@ -989,115 +1135,102 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               onChange={(e) => setMatrixSelectedWeek(e.target.value ? parseInt(e.target.value) : null)}
             />
           </div>
-
-        <div className="filter-group">
-          <label>Año:</label>
-          <input
-            type="number"
-            min="2020"
-            max="2100"
-            value={selectedYear || ''}
-            onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : null)}
-          />
-        </div>
-        <div className="reportes-actions">
-          <button
-            type="button"
-            className="btn-export-excel"
-            onClick={() => {
-              const rows: (string | number)[][] = [['Nivel', ...areas.map(a => a.name), 'Average']];
-              const levels = ['training', 'nivel_1', 'nivel_2', 'nivel_3', 'nivel_4'];
-              const levelNames: Record<string, string> = {
-                training: 'Training',
-                nivel_1: 'Nivel 1',
-                nivel_2: 'Nivel 2',
-                nivel_3: 'Nivel 3',
-                nivel_4: 'Nivel 4',
-              };
-              levels.forEach((level) => {
-                const levelData = matrixReportData.find((d: any) => d.nivel === level && !d.is_average);
-                const row = [levelNames[level]];
-                areas.forEach((area) => {
-                  const areaData = levelData?.areas?.find((a: any) => a.area_id === area.id);
-                  row.push(areaData ? areaData.porcentaje.toFixed(2) + '%' : '0.00%');
-                });
-                row.push(levelData ? levelData.porcentaje.toFixed(2) + '%' : '0.00%');
-                rows.push(row);
-              });
-              const wb = XLSX.utils.book_new();
-              const ws = XLSX.utils.aoa_to_sheet(rows);
-              XLSX.utils.book_append_sheet(wb, ws, 'Matrix');
-              XLSX.writeFile(wb, `Reporte_Matrix_CW${matrixSelectedWeek}.xlsx`);
-            }}
-            disabled={matrixReportData.length === 0}
-          >
-            <FaFileExcel /> Exportar a Excel
-          </button>
-        </div>
+          <div className="filter-group">
+            <label>Año:</label>
+            <input
+              type="number"
+              min="2020"
+              max="2100"
+              value={selectedYear || ''}
+              onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : null)}
+            />
+          </div>
+          {matrixReportData?.progressive_target_cw != null && (
+            <div className="filter-group matrix-cw-target-hint">
+              <span>
+                Objetivo progresivo (CW {matrixSelectedWeek}):{' '}
+                <strong>{formatPercentage(matrixReportData.progressive_target_cw)}</strong>
+              </span>
+            </div>
+          )}
+          <div className="reportes-actions">
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={`btn-view ${matrixViewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setMatrixViewMode('table')}
+              >
+                <FaTable /> Tabla
+              </button>
+              <button
+                type="button"
+                className={`btn-view ${matrixViewMode === 'chart' ? 'active' : ''}`}
+                onClick={() => setMatrixViewMode('chart')}
+              >
+                <FaChartBar /> Gráfica
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn-export-excel"
+              onClick={exportMatrixExcel}
+              disabled={!hasMatrixData}
+            >
+              <FaFileExcel /> Exportar a Excel
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="reportes-loading">Cargando datos...</div>
+        ) : matrixViewMode === 'chart' ? (
+          <div className="matrix-charts-grid">
+            {!matrixReportData ? (
+              <div className="reportes-empty">No se pudieron cargar los datos de la matriz.</div>
+            ) : (
+              <>
+                <h2 className="matrix-section-title">Producción</h2>
+                {chartsProd?.training?.length
+                  ? renderMatrixChart('% Entrenamiento / Training', chartsProd.training, 'Producción')
+                  : null}
+                {chartsProd?.niveles?.length
+                  ? renderMatrixChart('Certificación N1–N4 (promedio)', chartsProd.niveles, 'Producción')
+                  : null}
+                <h2 className="matrix-section-title">Soporte</h2>
+                {chartsSop?.training?.length
+                  ? renderMatrixChart('% Entrenamiento / Training', chartsSop.training, 'Soporte')
+                  : null}
+                {chartsSop?.niveles?.length
+                  ? renderMatrixChart('Certificación N1–N4 (promedio)', chartsSop.niveles, 'Soporte')
+                  : null}
+              </>
+            )}
+          </div>
         ) : (
-          <div className="matrix-report-container">
-            <table className="matrix-report-table">
-              <thead>
-                <tr>
-                  <th className="matrix-header-level">Nivel</th>
-                  {areas.map((area) => (
-                    <th key={area.id} className="matrix-header-area">
-                      {area.name}
-                    </th>
-                  ))}
-                  <th className="matrix-header-average">
-                    Average CW {matrixSelectedWeek}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {levels.map((level) => {
-                  const levelData = matrixReportData.find((d: any) => d.nivel === level && !d.is_average);
-                  const target = targets[level as keyof typeof targets];
-                  
-                  return (
-                    <React.Fragment key={level}>
-                      {/* Fila Target */}
-                      <tr className="matrix-target-row">
-                        <td className="matrix-level-cell">{levelNames[level]} Target</td>
-                        {areas.map((area) => (
-                          <td key={`${area.id}-${level}-target`} className="matrix-target-cell">
-                            {target}%
-                          </td>
-                        ))}
-                        <td className="matrix-target-cell">{target}%</td>
-                      </tr>
-                      {/* Fila Actual */}
-                      <tr className="matrix-actual-row">
-                        <td className="matrix-level-cell">{levelNames[level]}</td>
-                        {areas.map((area) => {
-                          const areaData = levelData?.areas?.find((a: any) => a.area_id === area.id);
-              return (
-                            <td key={`${area.id}-${level}-actual`} className="matrix-actual-cell">
-                              {areaData ? `${areaData.porcentaje.toFixed(2)}%` : '0.00%'}
-                            </td>
-              );
-                        })}
-                        <td className="matrix-average-cell">
-                          {levelData ? `${levelData.porcentaje.toFixed(2)}%` : '0.00%'}
-                        </td>
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-                </div>
+          <div className="matrix-report-container matrix-split">
+            <section className="matrix-tipo-section">
+              <h2 className="matrix-section-title">Producción</h2>
+              {prodAreas.length === 0 ? (
+                <p className="reportes-empty-inline">Sin áreas de producción con datos.</p>
+              ) : (
+                prodAreas.map((ab: any) => renderMatrixAreaBlock(ab))
+              )}
+            </section>
+            <section className="matrix-tipo-section">
+              <h2 className="matrix-section-title">Soporte</h2>
+              {sopAreas.length === 0 ? (
+                <p className="reportes-empty-inline">Sin áreas de soporte con datos.</p>
+              ) : (
+                sopAreas.map((ab: any) => renderMatrixAreaBlock(ab))
+              )}
+            </section>
+          </div>
         )}
       </>
     );
   };
 
-            return (
+  return (
     <div className="reportes-container">
       <div className="reportes-header">
         <h1>Reportes</h1>

@@ -504,13 +504,14 @@ export interface ProgresoNivel {
 
 
 export interface AvanceGlobalGrupo {
-  grupo_id: number;
+  grupo_id?: number;
   grupo_nombre: string;
   nivel_1: number;
   nivel_2: number;
   nivel_3: number;
   nivel_4: number;
-  entrenamiento: number;
+  /** N1+N2 operaciones (backend); si falta, el front puede usar nivel_1 como antes */
+  entrenamiento?: number;
 }
 
 export interface AvanceGlobalResponse {
@@ -519,6 +520,7 @@ export interface AvanceGlobalResponse {
   week: number;
   year: number;
   grupos: AvanceGlobalGrupo[];
+  tipo_area?: string;
 }
 
 export interface Notificacion {
@@ -1434,6 +1436,8 @@ class ApiService {
     supervisor?: number;
     estado?: string;
     page?: number;
+    /** Filtra por posición de la evaluación (usuario con varias posiciones). */
+    posicion_id?: number;
   }): Promise<EvaluacionesUsuarioListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.usuario) searchParams.append('usuario', params.usuario.toString());
@@ -1441,6 +1445,9 @@ class ApiService {
     if (params?.supervisor) searchParams.append('supervisor', params.supervisor.toString());
     if (params?.estado) searchParams.append('estado', params.estado);
     if (params?.page) searchParams.append('page', params.page.toString());
+    if (params?.posicion_id !== undefined) {
+      searchParams.append('posicion_id', String(params.posicion_id));
+    }
 
     const queryString = searchParams.toString();
     return this.request<EvaluacionesUsuarioListResponse>(`/users/evaluaciones-usuario/${queryString ? `?${queryString}` : ''}`);
@@ -1450,7 +1457,10 @@ class ApiService {
    * Obtiene todas las evaluaciones de usuario para un usuario (todas las páginas).
    * Evita que evaluaciones completadas no aparezcan como "Completada" por paginación.
    */
-  async getEvaluacionesUsuarioAll(params: { usuario: number }): Promise<EvaluacionUsuario[]> {
+  async getEvaluacionesUsuarioAll(params: {
+    usuario: number;
+    posicion_id?: number;
+  }): Promise<EvaluacionUsuario[]> {
     const all: EvaluacionUsuario[] = [];
     let page = 1;
     while (true) {
