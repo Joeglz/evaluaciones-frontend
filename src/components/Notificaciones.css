@@ -66,6 +66,42 @@
   cursor: not-allowed;
 }
 
+.btn-marcar-todas-leidas,
+.btn-eliminar-leidas {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #ffffff;
+  color: #1b1b1f;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.btn-marcar-todas-leidas:hover:not(:disabled) {
+  border-color: #17a398;
+  background-color: rgba(23, 163, 152, 0.1);
+  color: #12786f;
+}
+
+.btn-eliminar-leidas:hover:not(:disabled) {
+  border-color: #e12026;
+  color: #c01921;
+}
+
+.btn-marcar-todas-leidas:disabled,
+.btn-eliminar-leidas:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .notificaciones-lista {
   display: flex;
   flex-direction: column;

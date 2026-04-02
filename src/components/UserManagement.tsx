@@ -80,6 +80,10 @@ const UserManagement: React.FC = () => {
   // Paso 3: área y posición seleccionadas para agregar (área -> grupo -> posición -> agregar)
   const [step3AreaId, setStep3AreaId] = useState<number | ''>('');
   const [step3PosicionId, setStep3PosicionId] = useState<number | ''>('');
+  /** Nivel 1–4 opcional al agregar posición (crear usuario); vacío = no completar evaluaciones automáticamente. */
+  const [step3Nivel, setStep3Nivel] = useState<number | ''>('');
+  /** Solo creación: pares posición + nivel para enviar al backend. */
+  const [createPosicionesNivel, setCreatePosicionesNivel] = useState<Array<{ posicion: number; nivel: number }>>([]);
   
   // Formularios
   const [createForm, setCreateForm] = useState<UserCreate>({
@@ -395,6 +399,8 @@ const UserManagement: React.FC = () => {
     setCreateErrors({});
     setStep3AreaId('');
     setStep3PosicionId('');
+    setStep3Nivel('');
+    setCreatePosicionesNivel([]);
     clearCreateProfilePhoto();
   };
 
@@ -463,6 +469,8 @@ const UserManagement: React.FC = () => {
     setSelectedUser(null);
     setStep3AreaId('');
     setStep3PosicionId('');
+    setStep3Nivel('');
+    setCreatePosicionesNivel([]);
     setCreateErrors({});
     setEditErrors({});
   };
@@ -917,6 +925,8 @@ const UserManagement: React.FC = () => {
     });
     setShowPassword(false);
     setShowPasswordConfirm(false);
+    setStep3Nivel('');
+    setCreatePosicionesNivel([]);
     clearCreateProfilePhoto();
   };
 
@@ -1105,6 +1115,7 @@ const UserManagement: React.FC = () => {
     const step3Fields = new Set([
       'areas',
       'posiciones',
+      'posiciones_nivel',
       'grupo',
     ]);
 
@@ -1425,17 +1436,29 @@ const UserManagement: React.FC = () => {
     const pos = posiciones.find((p) => p.id === step3PosicionId);
     const newPosiciones = [...form.posiciones, step3PosicionId as number];
     const newAreas = pos && !form.areas.includes(pos.area) ? [...form.areas, pos.area] : form.areas;
+    const pid = step3PosicionId as number;
+    const nivelElegido =
+      step3Nivel !== '' && step3Nivel >= 1 && step3Nivel <= 4 ? Number(step3Nivel) : null;
+
     if (isCreating) {
       setCreateForm({ ...createForm, posiciones: newPosiciones, areas: newAreas });
+      if (nivelElegido !== null) {
+        setCreatePosicionesNivel((prev) => [
+          ...prev.filter((x) => x.posicion !== pid),
+          { posicion: pid, nivel: nivelElegido },
+        ]);
+      }
     } else {
       setEditForm({ ...editForm, posiciones: newPosiciones, areas: newAreas });
     }
     setStep3PosicionId('');
+    setStep3Nivel('');
   };
 
   const handleRemovePosicion = (posicionId: number) => {
     if (isCreating) {
       setCreateForm({ ...createForm, posiciones: createForm.posiciones.filter((id) => id !== posicionId) });
+      setCreatePosicionesNivel((prev) => prev.filter((x) => x.posicion !== posicionId));
     } else {
       setEditForm({ ...editForm, posiciones: editForm.posiciones.filter((id) => id !== posicionId) });
     }
@@ -1510,6 +1533,29 @@ const UserManagement: React.FC = () => {
                 </select>
               </div>
 
+              {isCreating && (
+                <div className="form-group">
+                  <label>Nivel (opcional)</label>
+                  <select
+                    value={step3Nivel === '' ? '' : step3Nivel}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setStep3Nivel(v === '' ? '' : parseInt(v, 10));
+                    }}
+                    title="Si eliges un nivel, al crear el usuario se completarán las evaluaciones de esa posición hasta ese nivel (igual que en carga masiva)."
+                  >
+                    <option value="">Sin completar evaluaciones</option>
+                    <option value={1}>Nivel 1</option>
+                    <option value={2}>Nivel 2</option>
+                    <option value={3}>Nivel 3</option>
+                    <option value={4}>Nivel 4</option>
+                  </select>
+                  <small className="form-hint" style={{ display: 'block', marginTop: '0.35rem', color: '#666' }}>
+                    Misma lógica que la columna &quot;Nivel&quot; en carga masiva: completa evaluaciones del 1 al nivel elegido.
+                  </small>
+                </div>
+              )}
+
               <div className="form-group form-group--button">
                 <label>&nbsp;</label>
                 <button
@@ -1532,10 +1578,14 @@ const UserManagement: React.FC = () => {
               {form.posiciones.map((posId, index) => {
                 const pos = posiciones.find((p) => p.id === posId);
                 const areaName = pos ? areas.find((a) => a.id === pos.area)?.name : '';
+                const nivelAsignado = createPosicionesNivel.find((x) => x.posicion === posId)?.nivel;
                 return (
                   <li key={posId} className="posiciones-list__item">
                     <span>
                       {pos ? `${pos.name}${areaName ? ` (${areaName})` : ''}` : `ID ${posId}`}
+                      {isCreating && nivelAsignado != null ? (
+                        <span className="posiciones-list__nivel"> — Nivel hasta {nivelAsignado}</span>
+                      ) : null}
                     </span>
                     <button
                       type="button"
@@ -1593,12 +1643,18 @@ const UserManagement: React.FC = () => {
           }
 
           createForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
+          if (createPosicionesNivel.length > 0) {
+            formData.append('posiciones_nivel', JSON.stringify(createPosicionesNivel));
+          }
           formData.append('profile_photo', createProfilePhotoFile);
           payload = formData;
         } else {
           // No enviar username, el backend lo generará desde numero_empleado
           const { username, ...createPayload } = createForm;
-          payload = createPayload;
+          payload =
+            createPosicionesNivel.length > 0
+              ? { ...createPayload, posiciones_nivel: createPosicionesNivel }
+              : createPayload;
         }
 
         await apiService.createUser(payload);

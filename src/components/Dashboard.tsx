@@ -54,6 +54,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<string>('home');
   const [evaluacionUsuarioIdParaAbrir, setEvaluacionUsuarioIdParaAbrir] = useState<number | null>(null);
+  const [firmaDesdeNotificaciones, setFirmaDesdeNotificaciones] = useState(false);
   const [notificacionesNoLeidasCount, setNotificacionesNoLeidasCount] = useState<number>(0);
 
   const role = user?.role || 'USUARIO';
@@ -74,17 +75,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   }, [cargarCantidadNotificacionesNoLeidas]);
 
   useEffect(() => {
-    if (activeView !== 'notificaciones') {
-      cargarCantidadNotificacionesNoLeidas();
-      return;
+    cargarCantidadNotificacionesNoLeidas();
+    if (activeView === 'notificaciones') {
+      const interval = setInterval(cargarCantidadNotificacionesNoLeidas, 30000);
+      return () => clearInterval(interval);
     }
-    const interval = setInterval(cargarCantidadNotificacionesNoLeidas, 30000);
-    return () => clearInterval(interval);
+    return undefined;
   }, [activeView, cargarCantidadNotificacionesNoLeidas]);
 
   const handleIrAFirmarEvaluacion = (evaluacionUsuarioId: number) => {
+    setFirmaDesdeNotificaciones(true);
     setEvaluacionUsuarioIdParaAbrir(evaluacionUsuarioId);
     setActiveView('evaluaciones');
+  };
+
+  const handleVolverNotificacionesDesdeFirma = () => {
+    setFirmaDesdeNotificaciones(false);
+    setEvaluacionUsuarioIdParaAbrir(null);
+    setActiveView('notificaciones');
+  };
+
+  const handleMenuNavigate = (viewKey: string) => {
+    if (viewKey !== 'evaluaciones') {
+      setFirmaDesdeNotificaciones(false);
+    }
+    setActiveView(viewKey);
   };
 
   useEffect(() => {
@@ -153,6 +168,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             currentUser={user}
             evaluacionUsuarioIdParaAbrir={evaluacionUsuarioIdParaAbrir}
             onAbiertoEvaluacionParaFirmar={() => setEvaluacionUsuarioIdParaAbrir(null)}
+            firmaDesdeNotificaciones={firmaDesdeNotificaciones}
+            onVolverNotificaciones={handleVolverNotificacionesDesdeFirma}
           />
         );
       case 'ajustes':
@@ -219,7 +236,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           <div
             key={item.key}
             className={`menu-item ${activeView === item.key ? 'active' : ''}`}
-            onClick={() => setActiveView(item.key)}
+            onClick={() => handleMenuNavigate(item.key)}
           >
             <div className="menu-item-icon-wrap">
               <item.icon className="menu-icon" />

@@ -64,7 +64,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const [exportChartType, setExportChartType] = useState<'avance-global' | 'advance-training-monthly' | null>(null);
   const [exportFileName, setExportFileName] = useState<string>('');
   const exportChartsContainerRef = useRef<HTMLDivElement>(null);
-  /** Borradores de % para ene/feb: clave `areaId-mes` (mes 1 o 2) */
+  /** Borradores de % para ene–mar: clave `areaId-mes` (mes 1, 2 o 3) */
   const [monthlyManualEdits, setMonthlyManualEdits] = useState<Record<string, string>>({});
   const [savingMonthlyManual, setSavingMonthlyManual] = useState(false);
 
@@ -300,7 +300,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     return year > currentYear || (year === currentYear && month1Based > currentMonth);
   };
 
-  /** Datos mensuales (gráfica y tablas); ene/feb pueden superponer borradores de admin. */
+  /** Datos mensuales (gráfica y tablas); ene–mar pueden superponer borradores de admin. */
   const monthlyChartData: MonthlyRow[] = useMemo(() => {
     if (!monthlyReportData.length || monthlyReportData.some((m) => !Array.isArray(m))) return [];
     const year = selectedYear ?? new Date().getFullYear();
@@ -327,7 +327,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     if (!isAdmin || !Object.keys(monthlyManualEdits).length) return base;
     return base.map((row, monthIndex) => {
       const month = monthIndex + 1;
-      if (month !== 1 && month !== 2) return row;
+      if (month !== 1 && month !== 2 && month !== 3) return row;
       const copy = { ...row };
       areas.forEach((a) => {
         const k = `${a.id}-${month}`;
@@ -607,7 +607,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       };
       setSavingMonthlyManual(true);
       try {
-        for (const month of [1, 2] as const) {
+        for (const month of [1, 2, 3] as const) {
           await apiService.saveAdvanceTrainingMonthlyManual({
             year: selectedYear,
             month,
@@ -616,7 +616,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         }
         await reloadMonthlyReportData();
         setMonthlyManualEdits({});
-        window.alert('Valores de enero y febrero guardados correctamente.');
+        window.alert('Valores de enero, febrero y marzo guardados correctamente.');
       } catch (e: unknown) {
         console.error(e);
         const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Error al guardar.';
@@ -635,7 +635,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       const isFuture = isFutureMonth(year, monthIndex + 1);
       const month = monthIndex + 1;
       const areaId = areas.find((a) => a.name === areaName)?.id;
-      const editable = isAdmin && !isFuture && (month === 1 || month === 2) && areaId != null;
+      const editable =
+        isAdmin && !isFuture && (month === 1 || month === 2 || month === 3) && areaId != null;
       const value = typeof rawValue === 'number' ? rawValue : rawValue == null ? null : Number(rawValue);
       if (!editable) {
         return isFuture || value == null ? '—' : formatPercentage(Number(value));
@@ -713,7 +714,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 onClick={handleSaveMonthlyManual}
                 disabled={savingMonthlyManual || monthlyChartData.length === 0 || selectedYear === null}
               >
-                {savingMonthlyManual ? 'Guardando...' : 'Guardar ene / feb'}
+                {savingMonthlyManual ? 'Guardando...' : 'Guardar ene / feb / mar'}
               </button>
             )}
           </div>
@@ -983,8 +984,6 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
 
     const gruposSinPromedio = (grupos: any[]) =>
       (grupos || []).filter((g) => String(g.grupo_nombre).toUpperCase() !== 'PROMEDIO');
-    const filaPromedio = (grupos: any[]) =>
-      (grupos || []).find((g) => String(g.grupo_nombre).toUpperCase() === 'PROMEDIO');
 
     const valorGrupo = (g: any, field: (typeof levelDefs)[0]['field']) => {
       if (field === 'entrenamiento') {
@@ -994,56 +993,224 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       return typeof g[field] === 'number' ? g[field] : 0;
     };
 
-    const renderMatrixAreaBlock = (areaBlock: any) => {
-      const cols = gruposSinPromedio(areaBlock.grupos);
-      const prom = filaPromedio(areaBlock.grupos);
+    const prodAreas = matrixReportData?.produccion?.areas ?? [];
+    const sopAreas = matrixReportData?.soporte?.areas ?? [];
+    const chartsProd = matrixReportData?.charts?.produccion;
+    const chartsSop = matrixReportData?.charts?.soporte;
+    const hasMatrixData = prodAreas.length > 0 || sopAreas.length > 0;
+
+    type MatrixColDesc = {
+      key: string;
+      areaId: number;
+      areaNombre: string;
+      grupo: any;
+    };
+
+    const buildMatrixColumns = (areaList: any[]): MatrixColDesc[] => {
+      const out: MatrixColDesc[] = [];
+      (areaList || []).forEach((ab) => {
+        gruposSinPromedio(ab.grupos).forEach((c: any) => {
+          out.push({
+            key: `${ab.area_id}-${c.grupo_id ?? c.grupo_nombre}`,
+            areaId: ab.area_id,
+            areaNombre: ab.area_nombre,
+            grupo: c,
+          });
+        });
+      });
+      return out;
+    };
+
+    const groupMatrixColsByArea = (
+      cols: MatrixColDesc[]
+    ): { areaId: number; areaNombre: string; cols: MatrixColDesc[] }[] => {
+      const groups: { areaId: number; areaNombre: string; cols: MatrixColDesc[] }[] = [];
+      for (const cd of cols) {
+        const last = groups[groups.length - 1];
+        if (last && last.areaId === cd.areaId) {
+          last.cols.push(cd);
+        } else {
+          groups.push({ areaId: cd.areaId, areaNombre: cd.areaNombre, cols: [cd] });
+        }
+      }
+      return groups;
+    };
+
+    /** Índice de color por área (0..7) para cabeceras producción / soporte. */
+    const MATRIX_TONE_COUNT = 8;
+    const buildMatrixAreaToneMap = (cols: MatrixColDesc[]): Map<number, number> => {
+      const m = new Map<number, number>();
+      let i = 0;
+      groupMatrixColsByArea(cols).forEach((g) => {
+        m.set(g.areaId, i % MATRIX_TONE_COUNT);
+        i += 1;
+      });
+      return m;
+    };
+
+    const promedioSeccion = (cols: MatrixColDesc[], field: (typeof levelDefs)[0]['field']) => {
+      if (!cols.length) return 0;
+      const vals = cols.map((cd) => valorGrupo(cd.grupo, field));
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+
+    const renderMatrixUnifiedTable = (weekLabel: number | string) => {
+      const prodCols = buildMatrixColumns(prodAreas);
+      const sopCols = buildMatrixColumns(sopAreas);
+      const prodToneByArea = buildMatrixAreaToneMap(prodCols);
+      const sopToneByArea = buildMatrixAreaToneMap(sopCols);
+      if (prodCols.length === 0 && sopCols.length === 0) {
+        return (
+          <p className="reportes-empty-inline">Sin procesos con datos para la semana seleccionada.</p>
+        );
+      }
       return (
-        <div key={areaBlock.area_id} className="matrix-area-block">
+        <div className="matrix-unified-wrap">
           <div className="reporte-table-header matrix-cer-header">
             <div className="reporte-week-label">
-              CW {areaBlock.week} | {areaBlock.area_nombre}
+              CW {weekLabel} | % Training Matrix (producción y soporte)
             </div>
           </div>
-          <table className="matrix-cer-table reporte-table">
-            <thead>
-              <tr>
-                <th className="matrix-cer-first-col" />
-                {cols.map((c: any) => (
-                  <th key={c.grupo_id ?? c.grupo_nombre}>{c.grupo_nombre}</th>
-                ))}
-                <th className="matrix-cer-promedio-col">Promedio</th>
-              </tr>
-            </thead>
-            <tbody>
-              {levelDefs.map((def) => {
-                const tgt = targets[def.targetKey] ?? 100;
-                return (
-                  <React.Fragment key={def.targetKey}>
-                    <tr className="matrix-target-row">
-                      <td className="matrix-cer-first-col">{def.label} (objetivo)</td>
-                      {cols.map((c: any) => (
-                        <td key={`t-${c.grupo_id}-${def.targetKey}`}>{formatPercentage(tgt)}</td>
-                      ))}
-                      <td className="matrix-cer-promedio-col">{formatPercentage(tgt)}</td>
-                    </tr>
-                    <tr className="matrix-actual-row">
-                      <td className="matrix-cer-first-col">{def.label}</td>
-                      {cols.map((c: any) => (
-                        <td key={`a-${c.grupo_id}-${def.targetKey}`}>
-                          {formatPercentage(valorGrupo(c, def.field))}
-                        </td>
-                      ))}
-                      <td className="matrix-cer-promedio-col matrix-cer-promedio-cell">
-                        {prom ? formatPercentage(valorGrupo(prom, def.field)) : formatPercentage(0)}
-                      </td>
-                    </tr>
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="matrix-unified-scroll">
+            <table className="matrix-cer-table matrix-unified-table reporte-table">
+              <thead>
+                <tr>
+                  <th rowSpan={3} className="matrix-cer-first-col matrix-sticky-col">
+                    Métrica
+                  </th>
+                  {prodCols.length > 0 && (
+                    <th colSpan={prodCols.length + 1} className="matrix-section-head matrix-section-prod">
+                      Producción
+                    </th>
+                  )}
+                  {sopCols.length > 0 && (
+                    <th colSpan={sopCols.length + 1} className="matrix-section-head matrix-section-sop">
+                      Soporte
+                    </th>
+                  )}
+                </tr>
+                <tr>
+                  {groupMatrixColsByArea(prodCols).map((g) => (
+                    <th
+                      key={`pg-${g.areaId}`}
+                      colSpan={g.cols.length}
+                      className={`matrix-area-group-head matrix-area-group-prod matrix-tone-prod-${prodToneByArea.get(g.areaId) ?? 0}`}
+                      scope="colgroup"
+                    >
+                      {g.areaNombre}
+                    </th>
+                  ))}
+                  {prodCols.length > 0 && (
+                    <th rowSpan={2} className="matrix-cer-promedio-col matrix-sticky-sep matrix-prom-head">
+                      Prom.
+                    </th>
+                  )}
+                  {groupMatrixColsByArea(sopCols).map((g) => (
+                    <th
+                      key={`sg-${g.areaId}`}
+                      colSpan={g.cols.length}
+                      className={`matrix-area-group-head matrix-area-group-sop matrix-tone-sop-${sopToneByArea.get(g.areaId) ?? 0}`}
+                      scope="colgroup"
+                    >
+                      {g.areaNombre}
+                    </th>
+                  ))}
+                  {sopCols.length > 0 && (
+                    <th rowSpan={2} className="matrix-cer-promedio-col matrix-sticky-sep matrix-prom-head">
+                      Prom.
+                    </th>
+                  )}
+                </tr>
+                <tr>
+                  {prodCols.map((cd) => (
+                    <th
+                      key={`p-${cd.key}`}
+                      className={`matrix-proc-head matrix-proc-grupo-only matrix-tone-prod-${prodToneByArea.get(cd.areaId) ?? 0}`}
+                      title={`${cd.areaNombre} — ${cd.grupo.grupo_nombre}`}
+                    >
+                      {cd.grupo.grupo_nombre}
+                    </th>
+                  ))}
+                  {sopCols.map((cd) => (
+                    <th
+                      key={`s-${cd.key}`}
+                      className={`matrix-proc-head matrix-proc-grupo-only matrix-tone-sop-${sopToneByArea.get(cd.areaId) ?? 0}`}
+                      title={`${cd.areaNombre} — ${cd.grupo.grupo_nombre}`}
+                    >
+                      {cd.grupo.grupo_nombre}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {levelDefs.map((def) => {
+                  const tgt = targets[def.targetKey] ?? 100;
+                  return (
+                    <React.Fragment key={def.targetKey}>
+                      <tr className="matrix-target-row">
+                        <td className="matrix-cer-first-col matrix-sticky-col">{def.label} (objetivo)</td>
+                        {prodCols.map((cd) => (
+                          <td key={`tp-${cd.key}-${def.targetKey}`}>{formatPercentage(tgt)}</td>
+                        ))}
+                        {prodCols.length > 0 && (
+                          <td className="matrix-cer-promedio-col">{formatPercentage(tgt)}</td>
+                        )}
+                        {sopCols.map((cd) => (
+                          <td key={`ts-${cd.key}-${def.targetKey}`}>{formatPercentage(tgt)}</td>
+                        ))}
+                        {sopCols.length > 0 && (
+                          <td className="matrix-cer-promedio-col">{formatPercentage(tgt)}</td>
+                        )}
+                      </tr>
+                      <tr className="matrix-actual-row">
+                        <td className="matrix-cer-first-col matrix-sticky-col">{def.label}</td>
+                        {prodCols.map((cd) => (
+                          <td key={`ap-${cd.key}-${def.targetKey}`}>
+                            {formatPercentage(valorGrupo(cd.grupo, def.field))}
+                          </td>
+                        ))}
+                        {prodCols.length > 0 && (
+                          <td className="matrix-cer-promedio-col matrix-cer-promedio-cell">
+                            {formatPercentage(promedioSeccion(prodCols, def.field))}
+                          </td>
+                        )}
+                        {sopCols.map((cd) => (
+                          <td key={`as-${cd.key}-${def.targetKey}`}>
+                            {formatPercentage(valorGrupo(cd.grupo, def.field))}
+                          </td>
+                        ))}
+                        {sopCols.length > 0 && (
+                          <td className="matrix-cer-promedio-col matrix-cer-promedio-cell">
+                            {formatPercentage(promedioSeccion(sopCols, def.field))}
+                          </td>
+                        )}
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       );
+    };
+
+    const mergeNivelesChartRows = (chartsBlock: {
+      nivel_1?: { month: number; label: string; target: number; actual: number }[];
+      nivel_2?: { month: number; label: string; target: number; actual: number }[];
+      nivel_3?: { month: number; label: string; target: number; actual: number }[];
+      nivel_4?: { month: number; label: string; target: number; actual: number }[];
+    }) => {
+      if (!chartsBlock?.nivel_1?.length) return [];
+      return chartsBlock.nivel_1.map((row, i) => ({
+        month: row.month,
+        label: row.label,
+        target: row.target,
+        actual_n1: chartsBlock.nivel_1![i]?.actual ?? 0,
+        actual_n2: chartsBlock.nivel_2![i]?.actual ?? 0,
+        actual_n3: chartsBlock.nivel_3![i]?.actual ?? 0,
+        actual_n4: chartsBlock.nivel_4![i]?.actual ?? 0,
+      }));
     };
 
     const renderMatrixChart = (
@@ -1084,41 +1251,83 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       </div>
     );
 
-    const prodAreas = matrixReportData?.produccion?.areas ?? [];
-    const sopAreas = matrixReportData?.soporte?.areas ?? [];
-    const chartsProd = matrixReportData?.charts?.produccion;
-    const chartsSop = matrixReportData?.charts?.soporte;
-    const hasMatrixData = prodAreas.length > 0 || sopAreas.length > 0;
+    type MatrixNivelChartRow = {
+      label: string;
+      target: number;
+      actual_n1: number;
+      actual_n2: number;
+      actual_n3: number;
+      actual_n4: number;
+    };
+
+    const renderMatrixNivelesChart = (title: string, data: MatrixNivelChartRow[], subtitle?: string) => (
+      <div className="matrix-chart-block">
+        <h3 className="matrix-chart-title">
+          {title}
+          {subtitle ? <span className="matrix-chart-subtitle">{subtitle}</span> : null}
+        </h3>
+        <ResponsiveContainer width="100%" height={360}>
+          <ComposedChart data={data} margin={{ top: 16, right: 24, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+            <XAxis dataKey="label" stroke={COLORS.black} />
+            <YAxis stroke={COLORS.black} domain={[0, 125]} tickFormatter={(v) => `${v}%`} />
+            <Tooltip
+              formatter={(v: number | undefined) => (v != null ? `${Number(v).toFixed(2)}%` : '')}
+              contentStyle={{ borderColor: COLORS.red }}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="target"
+              name="Objetivo progresivo"
+              stroke="#16a34a"
+              strokeWidth={2}
+              dot={{ r: 3, fill: '#16a34a' }}
+            />
+            <Line type="monotone" dataKey="actual_n1" name="Nivel 1" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="actual_n2" name="Nivel 2" stroke="#ea580c" strokeWidth={2} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="actual_n3" name="Nivel 3" stroke="#7c3aed" strokeWidth={2} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="actual_n4" name="Nivel 4" stroke="#0891b2" strokeWidth={2} dot={{ r: 2 }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    );
 
     const exportMatrixExcel = () => {
       const wb = XLSX.utils.book_new();
-      const appendSection = (sheetName: string, areaList: any[]) => {
-        const rows: (string | number)[][] = [];
-        areaList.forEach((ab) => {
-          rows.push([`CW ${ab.week} | ${ab.area_nombre}`]);
-          const cols = gruposSinPromedio(ab.grupos);
-          rows.push(['', ...cols.map((c: any) => c.grupo_nombre), 'Promedio']);
-          levelDefs.forEach((def) => {
-            const tgt = targets[def.targetKey] ?? 100;
-            const prom = filaPromedio(ab.grupos);
-            rows.push([
-              `${def.label} (obj.)`,
-              ...cols.map(() => `${tgt.toFixed(2)}%`),
-              `${tgt.toFixed(2)}%`,
-            ]);
-            rows.push([
-              def.label,
-              ...cols.map((c: any) => `${valorGrupo(c, def.field).toFixed(2)}%`),
-              prom ? `${valorGrupo(prom, def.field).toFixed(2)}%` : '0.00%',
-            ]);
-          });
-          rows.push([]);
-        });
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
-      };
-      appendSection('Produccion', prodAreas);
-      appendSection('Soporte', sopAreas);
+      const prodCols = buildMatrixColumns(prodAreas);
+      const sopCols = buildMatrixColumns(sopAreas);
+      const wk = matrixReportData?.week ?? matrixSelectedWeek ?? '';
+      const rows: (string | number)[][] = [];
+      rows.push([`CW ${wk} | % Training Matrix (una tabla)`]);
+      rows.push([]);
+      const header = [
+        'Métrica',
+        ...prodCols.map((cd) => `Prod: ${cd.areaNombre} / ${cd.grupo.grupo_nombre}`),
+        ...(prodCols.length ? ['Prom. prod.'] : []),
+        ...sopCols.map((cd) => `Sop: ${cd.areaNombre} / ${cd.grupo.grupo_nombre}`),
+        ...(sopCols.length ? ['Prom. sop.'] : []),
+      ];
+      rows.push(header);
+      levelDefs.forEach((def) => {
+        const tgt = targets[def.targetKey] ?? 100;
+        rows.push([
+          `${def.label} (obj.)`,
+          ...prodCols.map(() => `${tgt.toFixed(2)}%`),
+          ...(prodCols.length ? [`${tgt.toFixed(2)}%`] : []),
+          ...sopCols.map(() => `${tgt.toFixed(2)}%`),
+          ...(sopCols.length ? [`${tgt.toFixed(2)}%`] : []),
+        ]);
+        rows.push([
+          def.label,
+          ...prodCols.map((cd) => `${valorGrupo(cd.grupo, def.field).toFixed(2)}%`),
+          ...(prodCols.length ? [`${promedioSeccion(prodCols, def.field).toFixed(2)}%`] : []),
+          ...sopCols.map((cd) => `${valorGrupo(cd.grupo, def.field).toFixed(2)}%`),
+          ...(sopCols.length ? [`${promedioSeccion(sopCols, def.field).toFixed(2)}%`] : []),
+        ]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Matriz');
       XLSX.writeFile(wb, `Reporte_Matrix_CW${matrixSelectedWeek}_${selectedYear}.xlsx`);
     };
 
@@ -1193,37 +1402,34 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 {chartsProd?.training?.length
                   ? renderMatrixChart('% Entrenamiento / Training', chartsProd.training, 'Producción')
                   : null}
-                {chartsProd?.niveles?.length
-                  ? renderMatrixChart('Certificación N1–N4 (promedio)', chartsProd.niveles, 'Producción')
+                {chartsProd?.nivel_1?.length
+                  ? renderMatrixNivelesChart(
+                      'Certificación N1–N4 por nivel',
+                      mergeNivelesChartRows(chartsProd),
+                      'Producción'
+                    )
                   : null}
                 <h2 className="matrix-section-title">Soporte</h2>
                 {chartsSop?.training?.length
                   ? renderMatrixChart('% Entrenamiento / Training', chartsSop.training, 'Soporte')
                   : null}
-                {chartsSop?.niveles?.length
-                  ? renderMatrixChart('Certificación N1–N4 (promedio)', chartsSop.niveles, 'Soporte')
+                {chartsSop?.nivel_1?.length
+                  ? renderMatrixNivelesChart(
+                      'Certificación N1–N4 por nivel',
+                      mergeNivelesChartRows(chartsSop),
+                      'Soporte'
+                    )
                   : null}
               </>
             )}
           </div>
         ) : (
-          <div className="matrix-report-container matrix-split">
-            <section className="matrix-tipo-section">
-              <h2 className="matrix-section-title">Producción</h2>
-              {prodAreas.length === 0 ? (
-                <p className="reportes-empty-inline">Sin áreas de producción con datos.</p>
-              ) : (
-                prodAreas.map((ab: any) => renderMatrixAreaBlock(ab))
-              )}
-            </section>
-            <section className="matrix-tipo-section">
-              <h2 className="matrix-section-title">Soporte</h2>
-              {sopAreas.length === 0 ? (
-                <p className="reportes-empty-inline">Sin áreas de soporte con datos.</p>
-              ) : (
-                sopAreas.map((ab: any) => renderMatrixAreaBlock(ab))
-              )}
-            </section>
+          <div className="matrix-report-container">
+            {!matrixReportData ? (
+              <div className="reportes-empty">No se pudieron cargar los datos de la matriz.</div>
+            ) : (
+              renderMatrixUnifiedTable(matrixReportData.week ?? matrixSelectedWeek ?? '')
+            )}
           </div>
         )}
       </>

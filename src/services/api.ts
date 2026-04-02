@@ -183,6 +183,8 @@ export interface UserCreate {
   role: string;
   areas: number[];
   posiciones: number[];
+  /** Completar evaluaciones hasta ese nivel por posición (misma lógica que carga masiva). */
+  posiciones_nivel?: Array<{ posicion: number; nivel: number }>;
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;
@@ -404,6 +406,13 @@ export interface ResultadoEvaluacionInput {
   observaciones?: string;
 }
 
+export interface IntentoEvaluacionUsuario {
+  numero: number;
+  resultado_final: number;
+  fecha_registro: string;
+  aprobada: boolean;
+}
+
 export interface EvaluacionUsuario {
   id: number;
   evaluacion: number;
@@ -417,6 +426,7 @@ export interface EvaluacionUsuario {
   fecha_inicio: string | null;
   fecha_completada: string | null;
   resultado_final: number | null;
+  historial_intentos?: IntentoEvaluacionUsuario[];
   observaciones: string;
   resultados_puntos: ResultadoEvaluacionDetalle[];
   firmas_usuario: FirmaEvaluacionUsuario[];
@@ -523,6 +533,19 @@ export interface AvanceGlobalResponse {
   tipo_area?: string;
 }
 
+/** Metadatos opcionales en notificaciones (firma evaluación / contexto operador). */
+export interface NotificacionMetadata {
+  evaluacion_usuario_id?: number;
+  evaluacion_id?: number;
+  firma_id?: number;
+  tipo_firma?: string;
+  operador_nombre?: string;
+  area_nombre?: string;
+  grupo_nombre?: string;
+  posicion_nombre?: string;
+  [key: string]: unknown;
+}
+
 export interface Notificacion {
   id: number;
   titulo: string;
@@ -534,7 +557,7 @@ export interface Notificacion {
   firma_tipo: string | null;
   firma_tipo_display: string | null;
   es_leida: boolean;
-  metadata: Record<string, any>;
+  metadata: NotificacionMetadata;
   created_at: string;
   updated_at: string;
 }
@@ -1492,6 +1515,23 @@ class ApiService {
     });
   }
 
+  /** Solo administrador: borra puntajes, firmas y deja la evaluación en pendiente. */
+  async reiniciarAvanceEvaluacionUsuario(id: number): Promise<EvaluacionUsuario> {
+    return this.request<EvaluacionUsuario>(`/users/evaluaciones-usuario/${id}/reiniciar-avance/`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Tras no aprobar: invalida firmas, borra puntuaciones, en_progreso; conserva historial_intentos.
+   * Roles: administrador, entrenador o supervisor.
+   */
+  async nuevoIntentoEvaluacionUsuario(id: number): Promise<EvaluacionUsuario> {
+    return this.request<EvaluacionUsuario>(`/users/evaluaciones-usuario/${id}/nuevo-intento/`, {
+      method: 'POST',
+    });
+  }
+
   async deleteCriterioEvaluacion(id: number): Promise<void> {
     try {
       await this.request<void>(`/users/criterios-evaluacion/${id}/`, {
@@ -1542,6 +1582,18 @@ class ApiService {
     });
   }
 
+  async marcarTodasNotificacionesLeidas(): Promise<{ actualizadas: number }> {
+    return this.request<{ actualizadas: number }>('/users/notificaciones/marcar-todas-leidas/', {
+      method: 'POST',
+    });
+  }
+
+  async eliminarNotificacionesLeidas(): Promise<{ eliminadas: number }> {
+    return this.request<{ eliminadas: number }>('/users/notificaciones/eliminar-leidas/', {
+      method: 'DELETE',
+    });
+  }
+
   async getAvanceGlobal(params: {
     area_id?: number;
     week?: number;
@@ -1587,7 +1639,7 @@ class ApiService {
   }
 
   /**
-   * Guarda porcentajes manuales para enero/febrero (solo admin).
+   * Guarda porcentajes manuales para enero, febrero o marzo (solo admin).
    * Si porcentaje es null, elimina el override de ese área/mes/año.
    */
   async saveAdvanceTrainingMonthlyManual(body: {

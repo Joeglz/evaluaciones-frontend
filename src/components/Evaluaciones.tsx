@@ -17,7 +17,10 @@ import {
   FaEdit,
   FaEraser,
   FaChevronLeft,
-  FaChevronRight
+  FaChevronRight,
+  FaTrashAlt,
+  FaPen,
+  FaRedo,
 } from 'react-icons/fa';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -26,6 +29,82 @@ import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenc
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Evaluaciones.css';
+
+/** True si el resultado alcanza el mínimo de la evaluación (cada nivel puede tener distinto mínimo). */
+const evaluacionCumpleMinimo = (
+  minimo: number | null | undefined,
+  resultado: number | null | undefined
+): boolean => {
+  if (resultado === null || resultado === undefined) {
+    return false;
+  }
+  const r = Number(resultado);
+  if (Number.isNaN(r)) {
+    return false;
+  }
+  const m = Number(minimo ?? 70);
+  return r >= m;
+};
+
+/** Indica si hay datos de intento o progreso que justifiquen «Borrar avance» (filas no completadas). */
+const evaluacionUsuarioTieneAvanceBorrable = (eu: EvaluacionUsuario): boolean => {
+  const estado = (eu.estado || '').toLowerCase();
+  if (estado === 'en_progreso') {
+    return true;
+  }
+  if (eu.fecha_inicio) {
+    return true;
+  }
+  if (eu.fecha_completada) {
+    return true;
+  }
+  if (eu.resultado_final != null && eu.resultado_final !== undefined) {
+    return true;
+  }
+  if (Array.isArray(eu.historial_intentos) && eu.historial_intentos.length > 0) {
+    return true;
+  }
+  if (
+    Array.isArray(eu.resultados_puntos) &&
+    eu.resultados_puntos.some(
+      (r) =>
+        r.puntuacion != null ||
+        (r.observaciones != null && String(r.observaciones).trim() !== '')
+    )
+  ) {
+    return true;
+  }
+  if (Array.isArray(eu.firmas_usuario) && eu.firmas_usuario.some((f) => f.esta_firmado)) {
+    return true;
+  }
+  if (eu.observaciones != null && String(eu.observaciones).trim() !== '') {
+    return true;
+  }
+  return false;
+};
+
+/** Coincide con la fila «No aprobada» en la lista de evaluaciones asignadas (para ordenar). */
+const esEvaluacionNoAprobadaEnLista = (
+  evaluacion: { id: number; nombre?: string; minimo_aprobatorio?: number | null },
+  guardadasMap: Record<number, EvaluacionUsuario>
+): boolean => {
+  const evaluacionGuardada = guardadasMap[evaluacion.id];
+  if (!evaluacionGuardada) {
+    return false;
+  }
+  const estadoNormalizado = (evaluacionGuardada.estado || '').toLowerCase();
+  const completadaPorRegistro =
+    estadoNormalizado === 'completada' || evaluacionGuardada.resultado_final != null;
+  if (!completadaPorRegistro) {
+    return false;
+  }
+  const minimoEvaluacion = evaluacion.minimo_aprobatorio ?? 70;
+  const resultadoEvaluacion = evaluacionGuardada.resultado_final;
+  const tieneResultadoGuardado =
+    resultadoEvaluacion !== null && resultadoEvaluacion !== undefined;
+  const aprobadaSegunMinimo = evaluacionCumpleMinimo(minimoEvaluacion, resultadoEvaluacion);
+  return tieneResultadoGuardado && !aprobadaSegunMinimo;
+};
 
 const calcularResumenNiveles = (
   evaluacionesLista: any[],
@@ -53,8 +132,10 @@ const calcularResumenNiveles = (
     const estado = (evaluacionGuardada?.estado || '').toLowerCase();
     const estadoFirmasUsuario = (evaluacionGuardada?.estado_firmas_usuario || '').toLowerCase();
     const firmasCompletas = estadoFirmasUsuario === 'firmas_completas';
+    const minimo = evaluacion.minimo_aprobatorio ?? 70;
+    const aprobada = evaluacionCumpleMinimo(minimo, evaluacionGuardada?.resultado_final);
 
-    if (firmasCompletas && (estado === 'completada' || evaluacionGuardada?.resultado_final !== null)) {
+    if (firmasCompletas && aprobada) {
       stats[nivel].completadas += 1;
     }
   });
@@ -104,13 +185,18 @@ interface EvaluacionesProps {
   currentUser?: Partial<User> | null;
   evaluacionUsuarioIdParaAbrir?: number | null;
   onAbiertoEvaluacionParaFirmar?: () => void;
+  /** Si true, «Volver» desde la evaluación regresa al listado de notificaciones (Dashboard). */
+  firmaDesdeNotificaciones?: boolean;
+  onVolverNotificaciones?: () => void;
 }
 
 const Evaluaciones: React.FC<EvaluacionesProps> = ({
   userRole,
   currentUser,
   evaluacionUsuarioIdParaAbrir,
-  onAbiertoEvaluacionParaFirmar
+  onAbiertoEvaluacionParaFirmar,
+  firmaDesdeNotificaciones = false,
+  onVolverNotificaciones,
 }) => {
   // Hook para manejar toasts
   const { toasts, removeToast, showSuccess, showError } = useToast();
@@ -138,6 +224,8 @@ const Evaluaciones: React.FC<EvaluacionesProps> = ({
   const [evaluacionesUsuarioGuardadas, setEvaluacionesUsuarioGuardadas] = useState<Record<number, EvaluacionUsuario>>({});
   const [supervisorSeleccionado, setSupervisorSeleccionado] = useState<number | null>(null);
   const [evaluacionModoLectura, setEvaluacionModoLectura] = useState(false);
+  /** Entrenador: solo capturar firmas (no editar puntos), p. ej. antes de que el empleado firme en bloque. */
+  const [modoSoloFirmasEntrenador, setModoSoloFirmasEntrenador] = useState(false);
   const [evaluacionGuardadaInfo, setEvaluacionGuardadaInfo] = useState<EvaluacionUsuario | null>(null);
   const [nivelesDisponibles, setNivelesDisponibles] = useState<number[]>([]);
   const [nivelSeleccionado, setNivelSeleccionado] = useState<number | null>(null);
@@ -153,6 +241,8 @@ const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
   const firmaHuboTrazoRef = useRef(false);
   const abriendoParaEditarAdminRef = useRef(false);
   const editandoEvaluacionComoAdminRef = useRef(false);
+  /** Evita que initRegular del usuario regular pise el flujo abierto desde notificaciones. */
+  const inicializacionRegularListaRef = useRef(false);
   const printContentRef = useRef<HTMLDivElement>(null);
 const [isDrawing, setIsDrawing] = useState(false);
 const [hasSignature, setHasSignature] = useState<Record<string, boolean>>({});
@@ -211,54 +301,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     [visibleAreas]
   );
 
-  const supervisoresDelArea = useMemo(() => {
-    if (!selectedArea?.grupos?.length) return supervisores;
-    const ids = new Set<number>();
-    selectedArea.grupos.forEach((g: { supervisores?: { id: number }[] }) => {
-      (g.supervisores ?? []).forEach((s) => ids.add(s.id));
-    });
-    if (ids.size === 0) return supervisores;
-    return supervisores.filter((s) => ids.has(s.id));
-  }, [supervisores, selectedArea]);
-
-  const opcionesSupervisor = useMemo(() => {
-    const list = [...supervisoresDelArea];
-    if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
-      const actual = supervisores.find((s) => s.id === supervisorSeleccionado);
-      if (actual) list.push(actual);
-    }
-    return list;
-  }, [supervisoresDelArea, supervisorSeleccionado, supervisores]);
-
-  // Formulario de evaluación y modal de firma: mismos roles que loadData (ADMIN, ENTRENADOR, SUPERVISOR).
-  // Si el área de la evaluación tiene supervisores asignados por grupo, solo esos usuarios (pueden ser ADMIN).
-  // Antes se filtraba solo SUPERVISOR/ENTRENADOR y los admin asignados al grupo quedaban fuera del listado.
-  const supervisoresDelAreaDeEvaluacion = useMemo(() => {
-    if (!evaluacionActual?.area_name || !areas?.length) {
-      return [...supervisores];
-    }
-    const areaEvaluacion = areas.find((a) => a.name === evaluacionActual.area_name);
-    if (!areaEvaluacion?.grupos?.length) {
-      return [...supervisores];
-    }
-    const ids = new Set<number>();
-    areaEvaluacion.grupos.forEach((g: { supervisores?: { id: number }[] }) => {
-      (g.supervisores ?? []).forEach((s) => ids.add(s.id));
-    });
-    if (ids.size === 0) {
-      return [...supervisores];
-    }
-    return supervisores.filter((s) => ids.has(s.id));
-  }, [evaluacionActual?.area_name, areas, supervisores]);
-
+  // Combo Supervisor: siempre todos los ADMIN/ENTRENADOR/SUPERVISOR activos. Los supervisores del grupo
+  // en BD solo se usan como valor por defecto al iniciar la evaluación (ver iniciarEvaluacion).
   const opcionesSupervisorParaFormulario = useMemo(() => {
-    const list = [...supervisoresDelAreaDeEvaluacion];
+    const list = [...supervisores];
     if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
       const actual = supervisores.find((s) => s.id === supervisorSeleccionado);
       if (actual) list.push(actual);
     }
     return list;
-  }, [supervisoresDelAreaDeEvaluacion, supervisorSeleccionado, supervisores]);
+  }, [supervisores, supervisorSeleccionado]);
 
   useEffect(() => {
     if (!isRegularUser) {
@@ -273,6 +325,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     const abrirDesdeNotificacion = async () => {
       try {
         setLoading(true);
+        let areasParaContexto = areas;
+        if (!isRegularUser) {
+          areasParaContexto = await loadData();
+        }
         const detalle = await apiService.getEvaluacionUsuario(evaluacionUsuarioIdParaAbrir);
         const [user, evaluacion, supervisoresData] = await Promise.all([
           apiService.getUser(detalle.usuario),
@@ -302,8 +358,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           }) ?? [];
 
         const areaId = Array.isArray(user.areas) && user.areas.length > 0 ? user.areas[0] : null;
-        if (areaId != null && areas.length > 0) {
-          const area = areas.find((a) => a.id === areaId);
+        if (areaId != null && areasParaContexto.length > 0) {
+          const area = areasParaContexto.find((a) => a.id === areaId);
           if (area) setSelectedArea(area);
         }
 
@@ -313,6 +369,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setSupervisorSeleccionado(detalle.supervisor ?? null);
         setResultadosEvaluacion(resultadosConsolidados);
         setEvaluacionModoLectura(isRegularUser || isVisor);
+        await loadEvaluacionesUsuario(user as User);
+        if (isRegularUser) {
+          inicializacionRegularListaRef.current = true;
+        }
         setCurrentView('usuario-evaluacion');
         onAbiertoEvaluacionParaFirmar();
       } catch (err: any) {
@@ -337,14 +397,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       return;
     }
     const estadoGuardado = (evaluacionGuardadaInfo?.estado || '').toLowerCase();
-    const estadoFirmasGuardado = (evaluacionGuardadaInfo?.estado_firmas_usuario || '').toLowerCase();
-    const estadoFirmasActual = (evaluacionActual?.estado_firmas || '').toLowerCase();
 
-    if (
-      estadoGuardado === 'completada' ||
-      estadoFirmasGuardado === 'firmas_completas' ||
-      estadoFirmasActual === 'firmas_completas'
-    ) {
+    // Solo lectura cuando el registro ya está cerrado en BD (guardado de evaluación), no por firmas solas.
+    if (estadoGuardado === 'completada') {
       setEvaluacionModoLectura(true);
     }
   }, [evaluacionGuardadaInfo, evaluacionActual]);
@@ -446,6 +501,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
     if (firma.tipo_firma === 'empleado') {
       setFirmaModalFirmante(selectedUser?.id ?? null);
+    } else if (modoSoloFirmasEntrenador && effectiveUserRole === 'ENTRENADOR' && currentUserId) {
+      setFirmaModalFirmante(currentUserId);
     } else if (firmaPendiente?.usuario !== undefined && firmaPendiente?.usuario !== null) {
       setFirmaModalFirmante(firmaPendiente.usuario);
     } else if (firmaUsuario?.usuario) {
@@ -563,10 +620,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           user.posiciones?.some((p) => p.posicion_id === selectedPosicion?.id) || user.posicion === selectedPosicion?.id
         );
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
-        const tieneGrupo = user.grupo === selectedGrupo?.id;
-        // Incluir usuarios regulares y entrenadores
+        // No exigir user.grupo === selectedGrupo: un usuario con varias posiciones en distintas áreas
+        // solo tiene un FK grupo; el API ya filtra por área y posición.
         const esUsuarioValido = user.role === 'USUARIO' || user.role === 'ENTRENADOR';
-        return tienePosicion && tieneArea && tieneGrupo && esUsuarioValido;
+        return tienePosicion && tieneArea && esUsuarioValido;
       });
       
       const filtered = usuariosBase.filter(user => 
@@ -582,10 +639,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           user.posiciones?.some((p) => p.posicion_id === selectedPosicion?.id) || user.posicion === selectedPosicion?.id
         );
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
-        const tieneGrupo = user.grupo === selectedGrupo?.id;
-        // Incluir usuarios regulares y entrenadores
         const esUsuarioValido = user.role === 'USUARIO' || user.role === 'ENTRENADOR';
-        return tienePosicion && tieneArea && tieneGrupo && esUsuarioValido;
+        return tienePosicion && tieneArea && esUsuarioValido;
       });
       setFilteredUsuarios(usuariosFiltrados);
     }
@@ -771,7 +826,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
-  const loadData = async () => {
+  const loadData = async (): Promise<Area[]> => {
     try {
       setLoading(true);
       const [areasData, gruposData, posicionesData, supervisoresData, listasData] = await Promise.all([
@@ -804,8 +859,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           manageLoading: false,
         });
       }
+      return areasData;
     } catch (err: any) {
       setError(err.message);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -942,6 +999,12 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     if (!isRegularUser) {
       return;
     }
+    if (evaluacionUsuarioIdParaAbrir != null) {
+      return;
+    }
+    if (inicializacionRegularListaRef.current) {
+      return;
+    }
 
     const initRegular = async () => {
       try {
@@ -950,6 +1013,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         await loadEvaluacionesUsuario(usuarioDetalle as any);
         setEvaluacionModoLectura(true);
         setCurrentView('usuario-detalle');
+        inicializacionRegularListaRef.current = true;
       } catch (initError) {
         console.error('Error al cargar evaluaciones del usuario', initError);
         showError('No se pudieron cargar tus evaluaciones');
@@ -958,11 +1022,12 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
     initRegular();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRegularUser]);
+  }, [isRegularUser, evaluacionUsuarioIdParaAbrir]);
 
   const iniciarEvaluacion = async (evaluacion: any) => {
     try {
       setLoading(true);
+      setModoSoloFirmasEntrenador(false);
       setEvaluacionActual(evaluacion);
       setEvaluacionModoLectura(isRegularUser || isVisor);
       setEvaluacionGuardadaInfo(null);
@@ -982,14 +1047,21 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       });
       setSupervisores(supervisoresData.results);
       
-      // Seleccionar supervisor por defecto: evaluación, grupo seleccionado o primer grupo del área
+      // Supervisor por defecto: plantilla/evaluación; si no, primer supervisor del grupo de navegación o del primer grupo del área que tenga
       let supervisorPorDefecto: number | null = null;
       if (evaluacion.supervisor) {
         supervisorPorDefecto = evaluacion.supervisor;
       } else if (!isRegularUser && selectedArea?.grupos?.length) {
-        const grupoConSupervisor = selectedArea.grupos.find((g) => g.supervisores?.length);
-        if (grupoConSupervisor?.supervisores?.[0]?.id) {
-          supervisorPorDefecto = grupoConSupervisor.supervisores[0].id;
+        const grupoNav =
+          selectedGrupo &&
+          selectedArea.grupos.find((g: { id: number }) => g.id === selectedGrupo.id);
+        const supsGrupoNav = grupoNav?.supervisores?.length ? grupoNav.supervisores : null;
+        const supsFallback = selectedArea.grupos.find(
+          (g: { supervisores?: { id: number }[] }) => g.supervisores?.length
+        )?.supervisores;
+        const sups = supsGrupoNav ?? supsFallback;
+        if (sups?.[0]?.id) {
+          supervisorPorDefecto = sups[0].id;
         }
       }
       if (
@@ -1026,6 +1098,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const abrirEvaluacionParaFirmar = async (evaluacion: any, detalle: EvaluacionUsuario) => {
     try {
       setLoading(true);
+      setModoSoloFirmasEntrenador(false);
       abriendoParaEditarAdminRef.current = false;
       setEvaluacionActual(evaluacion);
       setEvaluacionModoLectura(isRegularUser || isVisor);
@@ -1069,13 +1142,132 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
-  const isAdmin = effectiveUserRole === 'ADMIN';
+  /**
+   * Entrenador: abre la evaluación en solo lectura para puntajes y permite firmar solo slots no empleado
+   * (tablet/PC), sin pasar por "Editar" completo.
+   */
+  const abrirSoloFirmasEntrenador = async (evaluacion: any, detalle: EvaluacionUsuario) => {
+    try {
+      setLoading(true);
+      setModoSoloFirmasEntrenador(true);
+      abriendoParaEditarAdminRef.current = false;
+      setEvaluacionActual(evaluacion);
+      setEvaluacionModoLectura(true);
+      setEvaluacionGuardadaInfo(detalle);
+      setSupervisorSeleccionado(detalle.supervisor ?? null);
 
-  const verEvaluacionGuardada = (evaluacion: any, detalle: EvaluacionUsuario) => {
+      const nivelEvaluacion =
+        evaluacion.nivel ?? evaluacion.nivel_posicion_data?.nivel ?? null;
+      if (typeof nivelEvaluacion === 'number') {
+        setNivelSeleccionado(nivelEvaluacion);
+      }
+
+      const resultadosConsolidados =
+        evaluacion.puntos_evaluacion?.map((punto: any) => {
+          const resultado = (detalle.resultados_puntos ?? []).find(
+            (registro: { punto_evaluacion: number }) => registro.punto_evaluacion === punto.id
+          );
+          return {
+            punto_evaluacion: punto.id,
+            puntuacion: resultado?.puntuacion ?? null,
+            observaciones: resultado?.observaciones ?? '',
+          };
+        }) ?? [];
+      setResultadosEvaluacion(resultadosConsolidados);
+
+      const supervisoresData = await apiService.getUsers({
+        role: 'ADMIN,ENTRENADOR,SUPERVISOR',
+        is_active: true,
+      });
+      setSupervisores(supervisoresData.results ?? []);
+
+      setCurrentView('usuario-evaluacion');
+    } catch (error: unknown) {
+      console.error('Error al abrir solo firmas:', error);
+      showError('No se pudo abrir la firma de la evaluación');
+      setModoSoloFirmasEntrenador(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isAdmin = effectiveUserRole === 'ADMIN';
+  const isEntrenador = effectiveUserRole === 'ENTRENADOR';
+  const puedeRegistrarNuevoIntento =
+    (isAdmin || isSupervisorOrEntrenador) && !isVisor && !isRegularUser;
+
+  const iniciarNuevoIntentoEvaluacion = async (evaluacion: any, detalle: EvaluacionUsuario) => {
+    if (!selectedUser || !evaluacion) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const actualizado = await apiService.nuevoIntentoEvaluacionUsuario(detalle.id);
+      setEvaluacionesUsuarioGuardadas((prev) => ({
+        ...prev,
+        [evaluacion.id]: actualizado,
+      }));
+      setEvaluacionActual(evaluacion);
+      setEvaluacionGuardadaInfo(actualizado);
+      setEvaluacionModoLectura(false);
+      setModoSoloFirmasEntrenador(false);
+      setSupervisorSeleccionado(actualizado.supervisor ?? null);
+      const nivelEvaluacion =
+        evaluacion.nivel ?? evaluacion.nivel_posicion_data?.nivel ?? null;
+      if (typeof nivelEvaluacion === 'number') {
+        setNivelSeleccionado(nivelEvaluacion);
+      }
+      const resultadosIniciales =
+        evaluacion.puntos_evaluacion?.map((punto: any) => ({
+          punto_evaluacion: punto.id,
+          puntuacion: null,
+          observaciones: '',
+        })) ?? [];
+      setResultadosEvaluacion(resultadosIniciales);
+      setCurrentView('usuario-evaluacion');
+      showSuccess(
+        'Nuevo intento: se invalidaron las firmas del intento anterior. Completa la evaluación de nuevo.'
+      );
+    } catch (err: any) {
+      console.error(err);
+      showError(err?.message || 'No se pudo iniciar un nuevo intento.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const borrarAvanceEvaluacion = async (evaluacion: { nombre?: string }, detalle: EvaluacionUsuario) => {
+    const nombre = evaluacion?.nombre || 'esta evaluación';
+    if (
+      !window.confirm(
+        `¿Eliminar el avance de "${nombre}"?\n\nSe borrarán las puntuaciones y las firmas capturadas. Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await apiService.reiniciarAvanceEvaluacionUsuario(detalle.id);
+      if (selectedUser) {
+        await loadEvaluacionesUsuario(selectedUser);
+      }
+      if (selectedPosicion?.id) {
+        await loadProgresosNivel(selectedPosicion.id);
+      }
+      showSuccess('Avance de la evaluación reiniciado.');
+    } catch (err: any) {
+      console.error(err);
+      showError(err?.message || 'No se pudo reiniciar el avance de la evaluación');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verEvaluacionGuardada = async (evaluacion: any, detalle: EvaluacionUsuario) => {
+    setModoSoloFirmasEntrenador(false);
     abriendoParaEditarAdminRef.current = false;
     setEvaluacionActual(evaluacion);
     setEvaluacionModoLectura(true);
-    setEvaluacionGuardadaInfo(detalle);
     setSupervisorSeleccionado(detalle.supervisor || null);
 
     const nivelEvaluacion =
@@ -1086,15 +1278,46 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       setNivelSeleccionado(nivelEvaluacion);
     }
 
+    let detalleActualizado: EvaluacionUsuario = detalle;
+    try {
+      setLoading(true);
+      detalleActualizado = await apiService.getEvaluacionUsuario(detalle.id);
+      setEvaluacionesUsuarioGuardadas((prev) => ({
+        ...prev,
+        [evaluacion.id]: detalleActualizado,
+      }));
+    } catch (e) {
+      console.error('Error al cargar el detalle de la evaluación', e);
+      setEvaluacionGuardadaInfo(detalle);
+      const resultadosFallback =
+        evaluacion.puntos_evaluacion?.map((punto: any) => {
+          const resultado = (detalle.resultados_puntos ?? []).find(
+            (registro) => registro.punto_evaluacion === punto.id
+          );
+          return {
+            punto_evaluacion: punto.id,
+            puntuacion: resultado?.puntuacion ?? null,
+            observaciones: resultado?.observaciones ?? '',
+          };
+        }) ?? [];
+      setResultadosEvaluacion(resultadosFallback);
+      setCurrentView('usuario-evaluacion');
+      return;
+    } finally {
+      setLoading(false);
+    }
+
+    setEvaluacionGuardadaInfo(detalleActualizado);
+
     const resultadosConsolidados =
       evaluacion.puntos_evaluacion?.map((punto: any) => {
-        const resultado = detalle.resultados_puntos.find(
+        const resultado = (detalleActualizado.resultados_puntos ?? []).find(
           (registro) => registro.punto_evaluacion === punto.id
         );
         return {
           punto_evaluacion: punto.id,
           puntuacion: resultado?.puntuacion ?? null,
-          observaciones: resultado?.observaciones ?? ''
+          observaciones: resultado?.observaciones ?? '',
         };
       }) ?? [];
 
@@ -1104,6 +1327,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   const editarEvaluacionGuardada = (evaluacion: any, detalle: EvaluacionUsuario | undefined) => {
     if (!detalle || !evaluacion) return;
+    setModoSoloFirmasEntrenador(false);
     abriendoParaEditarAdminRef.current = true;
     editandoEvaluacionComoAdminRef.current = true;
     setEvaluacionActual(evaluacion);
@@ -1603,8 +1827,20 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       return;
     }
 
+    const minimoEv = evaluacionActual.minimo_aprobatorio ?? 70;
+    const estadoEu = (evaluacionGuardadaInfo?.estado || '').toLowerCase();
+    const aprobadaGuardada = evaluacionCumpleMinimo(minimoEv, evaluacionGuardadaInfo?.resultado_final);
+    const permiteActualizarSinSerAdmin =
+      Boolean(evaluacionGuardadaInfo) &&
+      !aprobadaGuardada &&
+      (estadoEu === 'en_progreso' || estadoEu === 'pendiente');
+
     const esEdicionAdmin = isAdmin && evaluacionGuardadaInfo != null;
-    if (evaluacionesUsuarioGuardadas[evaluacionActual.id] && !esEdicionAdmin) {
+    if (
+      evaluacionesUsuarioGuardadas[evaluacionActual.id] &&
+      !esEdicionAdmin &&
+      !permiteActualizarSinSerAdmin
+    ) {
       showError('Esta evaluación ya tiene un resultado guardado. Utiliza el botón "Ver" para consultarlo.');
       return;
     }
@@ -1616,7 +1852,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         const multiplicador = evaluacionActual.formula_multiplicador ?? 100;
         const puntosObtenidos = resultadosEvaluacion.reduce((sum, r) => sum + (r.puntuacion || 0), 0);
         const resultadoFinal = divisor > 0 ? Math.round((puntosObtenidos / divisor) * multiplicador * 100) / 100 : null;
-        await apiService.updateEvaluacionUsuario(evaluacionGuardadaInfo.id, {
+        await apiService.updateEvaluacionUsuario(evaluacionGuardadaInfo!.id, {
           supervisor: supervisorSeleccionado,
           resultado_final: resultadoFinal ?? undefined,
           resultados_puntos: resultadosEvaluacion.map((r) => ({
@@ -1626,6 +1862,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           }))
         });
         showSuccess('Evaluación actualizada correctamente');
+      } else if (permiteActualizarSinSerAdmin && evaluacionGuardadaInfo) {
+        const divisor = evaluacionActual.formula_divisor ?? (evaluacionActual.puntos_evaluacion?.length || 1);
+        const multiplicador = evaluacionActual.formula_multiplicador ?? 100;
+        const puntosObtenidos = resultadosEvaluacion.reduce((sum, r) => sum + (r.puntuacion || 0), 0);
+        const resultadoFinal = divisor > 0 ? Math.round((puntosObtenidos / divisor) * multiplicador * 100) / 100 : null;
+        await apiService.updateEvaluacionUsuario(evaluacionGuardadaInfo.id, {
+          supervisor: supervisorSeleccionado,
+          estado: 'completada',
+          fecha_completada: new Date().toISOString(),
+          resultado_final: resultadoFinal ?? undefined,
+          resultados_puntos: resultadosEvaluacion.map((r) => ({
+            punto_evaluacion: r.punto_evaluacion,
+            puntuacion: r.puntuacion,
+            observaciones: r.observaciones || ''
+          }))
+        });
+        await registrarFirmasPendientes(evaluacionGuardadaInfo.id);
+        showSuccess('Evaluación guardada exitosamente');
       } else {
         const evaluacionUsuarioCreada = await apiService.createEvaluacionUsuario({
           evaluacion: evaluacionActual.id,
@@ -1713,6 +1967,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const goBack = () => {
     if (isRegularUser) {
       if (currentView === 'usuario-evaluacion') {
+        if (firmaDesdeNotificaciones && onVolverNotificaciones) {
+          onVolverNotificaciones();
+          return;
+        }
         setCurrentView('usuario-detalle');
         setEvaluacionActual(null);
         setResultadosEvaluacion([]);
@@ -1749,6 +2007,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setCurrentView('usuarios');
         break;
       case 'usuario-evaluacion':
+        if (firmaDesdeNotificaciones && onVolverNotificaciones) {
+          onVolverNotificaciones();
+          return;
+        }
         editandoEvaluacionComoAdminRef.current = false;
         setCurrentView('usuario-detalle');
         setEvaluacionActual(null);
@@ -1917,6 +2179,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             items.push({
               label: selectedUser.full_name || 'Usuario',
               onClick: () => {
+                if (currentView === 'usuario-evaluacion' && firmaDesdeNotificaciones && onVolverNotificaciones) {
+                  onVolverNotificaciones();
+                  return;
+                }
                 setCurrentView('usuario-detalle');
                 setEvaluacionActual(null);
                 setResultadosEvaluacion([]);
@@ -2332,16 +2598,27 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       setNivelSeleccionado(nivelesDisponibles[nuevoIndice]);
     };
 
-    const evaluacionesDelNivel = evaluacionesUsuario.filter((evaluacion) => {
-      if (nivelActual === null) {
-        return true;
-      }
-      const nivelEvaluacion =
-        evaluacion.nivel_posicion_data?.nivel ??
-        evaluacion.nivel ??
-        null;
-      return nivelEvaluacion === nivelActual;
-    });
+    const evaluacionesDelNivel = evaluacionesUsuario
+      .filter((evaluacion) => {
+        if (nivelActual === null) {
+          return true;
+        }
+        const nivelEvaluacion =
+          evaluacion.nivel_posicion_data?.nivel ??
+          evaluacion.nivel ??
+          null;
+        return nivelEvaluacion === nivelActual;
+      })
+      .sort((a, b) => {
+        const aNo = esEvaluacionNoAprobadaEnLista(a, evaluacionesUsuarioGuardadas);
+        const bNo = esEvaluacionNoAprobadaEnLista(b, evaluacionesUsuarioGuardadas);
+        if (aNo !== bNo) {
+          return aNo ? -1 : 1;
+        }
+        const nombreA = typeof a.nombre === 'string' ? a.nombre : '';
+        const nombreB = typeof b.nombre === 'string' ? b.nombre : '';
+        return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base' });
+      });
 
     const posicionVistaDetalle =
       selectedPosicion?.id ?? selectedUser.posicion ?? null;
@@ -2403,13 +2680,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             return false;
           }
 
-          const estado = (registro.estado || '').toLowerCase();
           const estadoFirmasUsuario = (registro.estado_firmas_usuario || '').toLowerCase();
           const firmasCompletasUsuario = estadoFirmasUsuario === 'firmas_completas';
-          return (
-            firmasCompletasUsuario &&
-            (estado === 'completada' || registro.resultado_final !== null)
-          );
+          const minimo = evaluacion.minimo_aprobatorio ?? 70;
+          const aprobada = evaluacionCumpleMinimo(minimo, registro.resultado_final);
+          return firmasCompletasUsuario && aprobada;
         });
       }
 
@@ -2523,24 +2798,47 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     evaluacionGuardada?.estado_firmas_usuario_display || 'Pendiente de firmas';
                   const todasFirmasCompletas = estadoFirmasUsuario === 'firmas_completas';
                   const estadoNormalizado = (evaluacionGuardada?.estado || '').toLowerCase();
+                  // Completada en lista: solo si ya se guardó la evaluación (estado o resultado),
+                  // no solo por tener todas las firmas (las firmas no cierran solas el intento).
                   const completadaPorRegistro =
                     evaluacionRegistrada &&
                     (estadoNormalizado === 'completada' ||
-                      todasFirmasCompletas ||
                       evaluacionGuardada?.resultado_final != null);
                   // No usar "nivel completo" para marcar cada fila: el resumen por nivel
                   // puede corresponder a otra posición o estar desfasado; cada evaluación
                   // debe basarse solo en su registro (EvaluacionUsuario) en esta posición.
                   const estaCompletada = completadaPorRegistro;
+                  // Pendiente de firmas: falta alguna firma y el flujo ya está en marcha o cerrado en BD.
                   const estaPendienteFirmas =
                     evaluacionRegistrada &&
                     !todasFirmasCompletas &&
-                    !completadaPorRegistro;
+                    (estadoNormalizado === 'en_progreso' ||
+                      estadoFirmasUsuario === 'en_proceso' ||
+                      estadoNormalizado === 'completada');
+                  const filaEnProcesoReal =
+                    evaluacionRegistrada &&
+                    !estaCompletada &&
+                    (estadoNormalizado === 'en_progreso' || estadoFirmasUsuario === 'en_proceso');
+
+                  const minimoEvaluacion = evaluacion.minimo_aprobatorio ?? 70;
+                  const resultadoEvaluacion = evaluacionGuardada?.resultado_final;
+                  const tieneResultadoGuardado =
+                    resultadoEvaluacion !== null && resultadoEvaluacion !== undefined;
+                  const aprobadaSegunMinimo = evaluacionCumpleMinimo(minimoEvaluacion, resultadoEvaluacion);
+                  const muestraNoAprobada =
+                    estaCompletada && tieneResultadoGuardado && !aprobadaSegunMinimo;
+
                   return (
                     <div
                       key={evaluacion.id}
                       className={`evaluacion-item-simple ${
-                        estaCompletada ? 'completada' : evaluacionRegistrada ? 'en-proceso' : 'pendiente'
+                        muestraNoAprobada
+                          ? 'no-aprobada'
+                          : estaCompletada
+                            ? 'completada'
+                            : filaEnProcesoReal
+                              ? 'en-proceso'
+                              : 'pendiente'
                       }`}
                     >
                       <div className="evaluacion-content">
@@ -2550,16 +2848,20 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             className={`evaluacion-status ${
                               estaPendienteFirmas
                                 ? 'status-pendiente-firmas'
-                                : estaCompletada
-                                ? 'status-completada'
-                                : 'status-pendiente'
+                                : muestraNoAprobada
+                                  ? 'status-no-aprobada'
+                                  : estaCompletada
+                                    ? 'status-completada'
+                                    : 'status-pendiente'
                             }`}
                           >
                             {estaPendienteFirmas
                               ? textoEstadoFirmasUsuario
-                              : estaCompletada
-                              ? 'Completada'
-                              : 'Pendiente'}
+                              : muestraNoAprobada
+                                ? 'No aprobada'
+                                : estaCompletada
+                                  ? 'Completada'
+                                  : 'Pendiente'}
                           </span>
                         </div>
                         <div className="evaluacion-actions">
@@ -2572,6 +2874,25 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                                 >
                                   Ver
                                 </button>
+                                {muestraNoAprobada && puedeRegistrarNuevoIntento && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-nuevo-intento btn-sm"
+                                    onClick={() => iniciarNuevoIntentoEvaluacion(evaluacion, evaluacionGuardada)}
+                                  >
+                                    <FaRedo aria-hidden /> Nuevo intento
+                                  </button>
+                                )}
+                                {isEntrenador && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-firma-entrenador btn-sm"
+                                    onClick={() => abrirSoloFirmasEntrenador(evaluacion, evaluacionGuardada)}
+                                    title="Registrar solo tu firma (supervisor/instructor); el empleado puede firmar después."
+                                  >
+                                    <FaPen aria-hidden /> Añadir firma
+                                  </button>
+                                )}
                                 {isAdmin && (
                                   <button
                                     className="btn btn-primary btn-sm"
@@ -2580,20 +2901,44 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                                     Editar
                                   </button>
                                 )}
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => borrarAvanceEvaluacion(evaluacion, evaluacionGuardada)}
+                                  >
+                                    <FaTrashAlt aria-hidden /> Borrar avance
+                                  </button>
+                                )}
                               </>
                             ) : (
                               <span className="evaluacion-status status-completada">Completada</span>
                             )
                           ) : !isVisor ? (
-                            <button 
-                              className={`btn btn-${isRegularUser ? 'secondary' : 'primary'} btn-sm`}
-                              onClick={() => evaluacionGuardada
-                                ? abrirEvaluacionParaFirmar(evaluacion, evaluacionGuardada)
-                                : iniciarEvaluacion(evaluacion)
-                              }
-                            >
-                              {isRegularUser ? 'Firmar' : 'Evaluar'}
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className={`btn btn-${isRegularUser ? 'secondary' : 'primary'} btn-sm`}
+                                onClick={() =>
+                                  evaluacionGuardada
+                                    ? abrirEvaluacionParaFirmar(evaluacion, evaluacionGuardada)
+                                    : iniciarEvaluacion(evaluacion)
+                                }
+                              >
+                                {isRegularUser ? 'Firmar' : 'Evaluar'}
+                              </button>
+                              {isAdmin &&
+                                evaluacionGuardada &&
+                                evaluacionUsuarioTieneAvanceBorrable(evaluacionGuardada) && (
+                                <button
+                                  type="button"
+                                  className="btn btn-danger btn-sm"
+                                  onClick={() => borrarAvanceEvaluacion(evaluacion, evaluacionGuardada)}
+                                >
+                                  <FaTrashAlt aria-hidden /> Borrar avance
+                                </button>
+                              )}
+                            </>
                           ) : null}
                         </div>
                       </div>
@@ -2623,11 +2968,20 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     const fechaCompletadaGuardada = evaluacionGuardadaInfo?.fecha_completada
       ? new Date(evaluacionGuardadaInfo.fecha_completada).toLocaleString('es-ES')
       : null;
+    const historialIntentosRaw = evaluacionGuardadaInfo?.historial_intentos;
+    const historialIntentos = Array.isArray(historialIntentosRaw)
+      ? [...historialIntentosRaw].sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0))
+      : [];
 
     return (
       <div className="evaluaciones-section" ref={printContentRef}>
 
         <div className="evaluation-content">
+          {modoSoloFirmasEntrenador && (
+            <div className="solo-firmas-entrenador-banner" role="status">
+              Modo solo firmas: registra tu firma donde corresponda; el resto de la evaluación es solo lectura. El empleado podrá firmar todas las evaluaciones cuando corresponda.
+            </div>
+          )}
           <div className={`evaluation-form ${evaluacionModoLectura ? 'read-only' : ''}`}>
             <div className="form-section">
               <h4>{evaluacionActual.nombre}</h4>
@@ -2679,14 +3033,45 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
             {evaluacionGuardadaInfo && (
               <div className="evaluation-result-summary">
-                <span className="summary-badge">
-                  Resultado final:{' '}
-                  {resultadoFinalGuardado !== null ? `${resultadoFinalGuardado}%` : 'Sin resultado'}
-                </span>
-                {fechaCompletadaGuardada && (
-                  <span className="summary-badge">
-                    Registrado: {fechaCompletadaGuardada}
-                  </span>
+                {historialIntentos.length > 0 ? (
+                  <div className="evaluation-result-summary--historial">
+                    <p className="evaluation-result-summary-title">Historial de intentos</p>
+                    <ul className="evaluation-result-summary-list" aria-label="Historial de intentos de evaluación">
+                      {historialIntentos.map((intento, idx) => (
+                        <li
+                          key={`${intento.numero}-${intento.fecha_registro ?? idx}`}
+                          className={`summary-intento ${intento.aprobada ? 'summary-intento-aprobada' : 'summary-intento-no-aprobada'}`}
+                        >
+                          <span className="summary-intento-label">Intento {intento.numero}</span>
+                          <span className="summary-intento-resultado">{intento.resultado_final}%</span>
+                          <span
+                            className={`summary-intento-tag ${
+                              intento.aprobada ? 'summary-intento-tag--ok' : 'summary-intento-tag--fail'
+                            }`}
+                          >
+                            {intento.aprobada ? 'Aprobado' : 'No aprobado'}
+                          </span>
+                          {intento.fecha_registro ? (
+                            <span className="summary-intento-fecha">
+                              {new Date(intento.fecha_registro).toLocaleString('es-ES')}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <>
+                    <span className="summary-badge">
+                      Resultado final:{' '}
+                      {resultadoFinalGuardado !== null ? `${resultadoFinalGuardado}%` : 'Sin resultado'}
+                    </span>
+                    {fechaCompletadaGuardada && (
+                      <span className="summary-badge">
+                        Registrado: {fechaCompletadaGuardada}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -2806,6 +3191,19 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                   const divisor = evaluacionActual.formula_divisor ?? (evaluacionActual.puntos_evaluacion?.length || 1);
                   const multiplicador = evaluacionActual.formula_multiplicador ?? 100;
                   const resultado = divisor > 0 ? (puntosObtenidos / divisor) * multiplicador : 0;
+                  const minimoRequerido = evaluacionActual.minimo_aprobatorio ?? 70;
+                  const aprobadaSegunResultado = resultado >= minimoRequerido;
+                  const fechaEvaluacionTexto = evaluacionGuardadaInfo?.fecha_completada
+                    ? new Date(evaluacionGuardadaInfo.fecha_completada).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
+                    : new Date().toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      });
                   return (
                     <div className="resultado-content">
                       <div className="resultado-formula">
@@ -2818,19 +3216,23 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                           ( {puntosObtenidos} / {divisor} ) * {multiplicador} = {resultado.toFixed(2)}%
                         </span>
                     </div>
-                      <div className="resultado-final">
+                      <div
+                        className={`resultado-final ${
+                          aprobadaSegunResultado ? 'resultado-final--aprobado' : 'resultado-final--no-aprobado'
+                        }`}
+                      >
                         <strong>Resultado: {resultado.toFixed(2)}%</strong>
                       </div>
+                      {!aprobadaSegunResultado && (
+                        <div className="resultado-alerta-no-aprobada" role="alert">
+                          No aprobada: el resultado no alcanza el mínimo exigido para este nivel (
+                          {minimoRequerido}%).
+                        </div>
+                      )}
                       <div className="minimo-aprobatorio">
-                        Mínimo aprobatorio para este nivel: {evaluacionActual.minimo_aprobatorio || 80}%
+                        Mínimo aprobatorio para este nivel: {minimoRequerido}%
                       </div>
-                      <div className="fecha-evaluacion">
-                        Fecha de evaluación: {new Date().toLocaleDateString('es-ES', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </div>
+                      <div className="fecha-evaluacion">Fecha de evaluación: {fechaEvaluacionTexto}</div>
                 </div>
                   );
                 })()}
@@ -2849,11 +3251,18 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     const firmaImagen = signatures[slug] ?? firmaUsuario?.imagen ?? firmaPendiente?.imagen ?? null;
                     const tieneFirma = Boolean(firmaImagen);
                     const estaFirmada = firmaUsuario?.esta_firmado ?? Boolean(firmaPendiente?.imagen);
+                    // Firma empleado: el firmante es siempre el evaluado (selectedUser), no firma.usuario_nombre de la plantilla.
                     const firmanteNombre =
-                      firmaUsuario?.usuario_nombre ??
-                      firmaPendiente?.usuarioNombre ??
-                      firma.usuario_nombre ??
-                      null;
+                      slug === 'empleado'
+                        ? firmaUsuario?.usuario_nombre ??
+                          firmaPendiente?.usuarioNombre ??
+                          selectedUser?.full_name ??
+                          selectedUser?.username ??
+                          null
+                        : firmaUsuario?.usuario_nombre ??
+                          firmaPendiente?.usuarioNombre ??
+                          firma.usuario_nombre ??
+                          null;
                     const estadoDisplay =
                       firmaUsuario?.estado_display ||
                       (firmaPendiente
@@ -2882,7 +3291,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
                     const puedeFirmarPendiente = esFirmanteActual && !estaFirmada;
                     const puedeEditarPorRol = !evaluacionModoLectura && (!estadoEvaluacionCompletada || isAdmin);
-                    const puedeEditarFirma = !isVisor && (puedeFirmarPendiente || puedeEditarPorRol);
+                    const puedeFirmarEntrenadorSoloFirmas =
+                      modoSoloFirmasEntrenador &&
+                      isEntrenador &&
+                      slug !== 'empleado' &&
+                      !estaFirmada;
+                    const puedeEditarFirma =
+                      !isVisor &&
+                      (puedeFirmarPendiente ||
+                        puedeEditarPorRol ||
+                        puedeFirmarEntrenadorSoloFirmas);
 
                     return (
                       <div key={slug} className="firma-item">
@@ -2956,6 +3374,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                       <div className="firma-firmante-info">
                         Firmante: <strong>{selectedUser?.full_name || 'Empleado'}</strong>
                       </div>
+                    ) : modoSoloFirmasEntrenador && isEntrenador ? (
+                      <div className="firma-firmante-info">
+                        Firmante (entrenador):{' '}
+                        <strong>
+                          {typeof (currentUser as User)?.full_name === 'string'
+                            ? (currentUser as User).full_name
+                            : [currentUser?.first_name, currentUser?.last_name].filter(Boolean).join(' ') ||
+                              'Usuario actual'}
+                        </strong>
+                      </div>
                     ) : (
                       <div className="firma-firmante-select">
                         <label>Selecciona firmante</label>
@@ -3028,8 +3456,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 className="btn btn-secondary"
                 onClick={() => {
                   editandoEvaluacionComoAdminRef.current = false;
+                  setModoSoloFirmasEntrenador(false);
                   setEvaluacionModoLectura(false);
                   setEvaluacionGuardadaInfo(null);
+                  if (firmaDesdeNotificaciones && onVolverNotificaciones) {
+                    onVolverNotificaciones();
+                    return;
+                  }
                   setCurrentView('usuario-detalle');
                 }}
               >

@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FaBell, FaBellSlash, FaCheckCircle, FaSyncAlt, FaTrash, FaPenFancy } from 'react-icons/fa';
-import { apiService, Notificacion } from '../services/api';
+import {
+  FaBell,
+  FaBellSlash,
+  FaCheckCircle,
+  FaCheckDouble,
+  FaSyncAlt,
+  FaTrash,
+  FaPenFancy,
+} from 'react-icons/fa';
+import { apiService, Notificacion, NotificacionMetadata } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Notificaciones.css';
@@ -61,6 +69,51 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
     }
   };
 
+  const marcarTodasComoLeidas = async () => {
+    try {
+      setCargando(true);
+      const resultado = await apiService.marcarTodasNotificacionesLeidas();
+      await cargarNotificaciones();
+      onNotificacionesActualizadas?.();
+      showSuccess(
+        resultado.actualizadas > 0
+          ? `Se marcaron ${resultado.actualizadas} notificación(es) como leídas.`
+          : 'No había notificaciones sin leer.'
+      );
+    } catch (error: any) {
+      console.error('Error al marcar todas como leídas', error);
+      showError(error.message || 'No se pudieron marcar las notificaciones.');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const eliminarTodasLasLeidas = async () => {
+    if (
+      !window.confirm(
+        '¿Eliminar todas las notificaciones ya leídas? Esta acción no se puede deshacer.'
+      )
+    ) {
+      return;
+    }
+    try {
+      setCargando(true);
+      const resultado = await apiService.eliminarNotificacionesLeidas();
+      await cargarNotificaciones();
+      onNotificacionesActualizadas?.();
+      showSuccess(
+        resultado.eliminadas > 0
+          ? `Se eliminaron ${resultado.eliminadas} notificación(es) leídas.`
+          : 'No había notificaciones leídas para eliminar.'
+      );
+    } catch (error: any) {
+      console.error('Error al eliminar notificaciones leídas', error);
+      showError(error.message || 'No se pudieron eliminar las notificaciones.');
+    } finally {
+      setCargando(false);
+    }
+  };
+
   const renderEstadoIcono = (notificacion: Notificacion) => {
     if (notificacion.es_leida) {
       return <FaCheckCircle className="estado-icono leida" title="Notificación leída" />;
@@ -82,6 +135,24 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
             />
             Mostrar solo no leídas
           </label>
+          <button
+            type="button"
+            className="btn-marcar-todas-leidas"
+            onClick={marcarTodasComoLeidas}
+            disabled={cargando}
+            title="Marcar todas las notificaciones como leídas"
+          >
+            <FaCheckDouble aria-hidden /> Marcar todas como leídas
+          </button>
+          <button
+            type="button"
+            className="btn-eliminar-leidas"
+            onClick={eliminarTodasLasLeidas}
+            disabled={cargando}
+            title="Eliminar todas las notificaciones que ya están leídas"
+          >
+            <FaTrash aria-hidden /> Eliminar leídas
+          </button>
           <button
             type="button"
             className="btn-recargar"
@@ -110,7 +181,8 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
 
         {notificaciones.map((notificacion) => {
           const esFirmaPendiente = (notificacion.tipo || '').toLowerCase() === 'firma_pendiente';
-          const evaluacionUsuarioId = notificacion.metadata?.evaluacion_usuario_id;
+          const meta: NotificacionMetadata = notificacion.metadata ?? {};
+          const evaluacionUsuarioId = meta.evaluacion_usuario_id;
           const puedeIrAFirmar = esFirmaPendiente && typeof evaluacionUsuarioId === 'number' && onIrAFirmarEvaluacion;
 
           return (
@@ -125,7 +197,27 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
                 <div className="notificacion-detalles">
                   {notificacion.evaluacion_nombre ? (
                     <span className="detalle">
-                      Evaluación: <strong>{notificacion.evaluacion_nombre}</strong>
+                      Operación / evaluación: <strong>{notificacion.evaluacion_nombre}</strong>
+                    </span>
+                  ) : null}
+                  {meta.operador_nombre ? (
+                    <span className="detalle">
+                      Operador: <strong>{String(meta.operador_nombre)}</strong>
+                    </span>
+                  ) : null}
+                  {meta.area_nombre ? (
+                    <span className="detalle">
+                      Área: <strong>{String(meta.area_nombre)}</strong>
+                    </span>
+                  ) : null}
+                  {meta.grupo_nombre ? (
+                    <span className="detalle">
+                      Grupo: <strong>{String(meta.grupo_nombre)}</strong>
+                    </span>
+                  ) : null}
+                  {meta.posicion_nombre ? (
+                    <span className="detalle">
+                      Posición: <strong>{String(meta.posicion_nombre)}</strong>
                     </span>
                   ) : null}
                   {notificacion.firma_tipo_display ? (
@@ -134,7 +226,7 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
                     </span>
                   ) : null}
                   <span className="detalle">
-                    Fecha: {new Date(notificacion.created_at).toLocaleString('es-MX')}
+                    Registrado: {new Date(notificacion.created_at).toLocaleString('es-MX')}
                   </span>
                 </div>
               </div>

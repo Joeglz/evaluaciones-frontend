@@ -582,6 +582,183 @@
   font-size: 0.95rem;
 }
 
+.matrix-unified-wrap {
+  width: 100%;
+}
+
+.matrix-unified-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--reporte-gray-light);
+  border-radius: 8px;
+  background: var(--reporte-white);
+}
+
+.matrix-unified-table {
+  min-width: max(100%, 640px);
+  border-collapse: collapse;
+}
+
+/* Gana a .reporte-table th { color: negro } */
+.matrix-unified-table.reporte-table thead tr:first-child th.matrix-section-head {
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+}
+
+.matrix-section-prod {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.matrix-section-sop {
+  background: #9a3412;
+  color: #ffffff;
+}
+
+.matrix-area-group-head {
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.35rem;
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+/* Tonos por área: misma clase en fila de área y fila de grupos (prod / sop) */
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-0 {
+  background: #7f1d1d;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-1 {
+  background: #991b1b;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-2 {
+  background: #b45309;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-3 {
+  background: #9f1239;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-4 {
+  background: #be123c;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-5 {
+  background: #a16207;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-6 {
+  background: #c2410c;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-prod-7 {
+  background: #9d174d;
+  color: #ffffff;
+}
+
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-0 {
+  background: #451a03;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-1 {
+  background: #5c2b0e;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-2 {
+  background: #7c2d12;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-3 {
+  background: #9a3412;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-4 {
+  background: #b45309;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-5 {
+  background: #78350f;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-6 {
+  background: #92400e;
+  color: #ffffff;
+}
+.matrix-unified-table.reporte-table thead th.matrix-tone-sop-7 {
+  background: #57534e;
+  color: #ffffff;
+}
+
+.matrix-prom-head {
+  vertical-align: middle;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  background: var(--reporte-gray-light);
+  color: var(--reporte-black);
+}
+
+.matrix-proc-head {
+  vertical-align: bottom;
+  max-width: 8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.5rem 0.35rem;
+}
+
+.matrix-proc-grupo-only {
+  text-align: center;
+  font-weight: 700;
+}
+
+.matrix-th-area {
+  display: block;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 500;
+  font-size: 0.7rem;
+  margin-bottom: 0.2rem;
+  white-space: normal;
+}
+
+.matrix-th-grupo {
+  display: block;
+  color: #fff;
+  font-weight: 700;
+}
+
+.matrix-unified-table.reporte-table thead {
+  background: transparent;
+}
+
+.matrix-unified-table.reporte-table thead th.matrix-area-group-head {
+  color: #ffffff;
+}
+
+.matrix-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06);
+}
+
+.matrix-unified-table thead .matrix-sticky-col {
+  background: var(--reporte-red);
+  color: #fff;
+  z-index: 3;
+  vertical-align: middle;
+}
+
+.matrix-sticky-sep {
+  min-width: 3.5rem;
+}
+
 .reportes-empty-inline {
   color: var(--reporte-gray);
   margin: 0.25rem 0 1rem;
