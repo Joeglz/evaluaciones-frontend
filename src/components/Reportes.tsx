@@ -67,6 +67,9 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   /** Borradores de % para ene–mar: clave `areaId-mes` (mes 1, 2 o 3) */
   const [monthlyManualEdits, setMonthlyManualEdits] = useState<Record<string, string>>({});
   const [savingMonthlyManual, setSavingMonthlyManual] = useState(false);
+  /** null = todas (admin); lista = ids de área permitidos para reportes (visor/entrenador/supervisor). */
+  const [reportAllowedAreaIds, setReportAllowedAreaIds] = useState<number[] | null>(null);
+  const [reportAreaScopeLoaded, setReportAreaScopeLoaded] = useState(false);
 
   // Helper para obtener el número de semana ISO
   const getWeekNumber = (date: Date): number => {
@@ -98,6 +101,62 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     };
     loadAreas();
   }, []);
+
+  useEffect(() => {
+    if (!userRole) {
+      setReportAllowedAreaIds([]);
+      setReportAreaScopeLoaded(true);
+      return;
+    }
+    if (userRole === 'ADMIN') {
+      setReportAllowedAreaIds(null);
+      setReportAreaScopeLoaded(true);
+      return;
+    }
+    if (!['ENTRENADOR', 'SUPERVISOR', 'VISOR'].includes(userRole)) {
+      setReportAllowedAreaIds([]);
+      setReportAreaScopeLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    apiService
+      .getCurrentUser()
+      .then((u) => {
+        if (cancelled) return;
+        setReportAllowedAreaIds(Array.isArray(u.areas) ? u.areas : []);
+        setReportAreaScopeLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReportAllowedAreaIds([]);
+        setReportAreaScopeLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userRole]);
+
+  const areasForReporte = useMemo(() => {
+    if (!reportAreaScopeLoaded) return [];
+    if (userRole === 'ADMIN' || reportAllowedAreaIds === null) return areas;
+    if (!reportAllowedAreaIds.length) return [];
+    return areas.filter((a) => reportAllowedAreaIds.includes(a.id));
+  }, [areas, userRole, reportAllowedAreaIds, reportAreaScopeLoaded]);
+
+  useEffect(() => {
+    if (!reportAreaScopeLoaded || userRole === 'ADMIN') return;
+    if (areasForReporte.length === 0) {
+      setSelectedArea(null);
+      return;
+    }
+    if (areasForReporte.length === 1) {
+      setSelectedArea(areasForReporte[0].id);
+      return;
+    }
+    if (selectedArea != null && !areasForReporte.some((a) => a.id === selectedArea)) {
+      setSelectedArea(null);
+    }
+  }, [reportAreaScopeLoaded, userRole, areasForReporte, selectedArea]);
 
   // Cargar datos del reporte
   useEffect(() => {
@@ -407,8 +466,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             value={selectedArea || ''}
             onChange={(e) => setSelectedArea(e.target.value ? parseInt(e.target.value) : null)}
           >
-            <option value="">Todas las áreas</option>
-            {areas.map((area) => (
+            {(userRole === 'ADMIN' || areasForReporte.length !== 1) && (
+              <option value="">Todas las áreas</option>
+            )}
+            {areasForReporte.map((area) => (
               <option key={area.id} value={area.id}>
                 {area.name}
               </option>

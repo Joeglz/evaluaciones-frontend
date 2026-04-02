@@ -3687,7 +3687,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         : 'Sin posición'
                       })
                     </span>
-                    {(effectiveUserRole === 'ADMIN' || effectiveUserRole === 'ENTRENADOR') && (
+                    {(effectiveUserRole === 'ADMIN' ||
+                      effectiveUserRole === 'ENTRENADOR' ||
+                      effectiveUserRole === 'SUPERVISOR') && (
                       <div className="usuario-fecha-input">
                         <label>Fecha:</label>
                         <input
@@ -3698,7 +3700,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                         />
                       </div>
                     )}
-                    {effectiveUserRole !== 'ADMIN' && effectiveUserRole !== 'ENTRENADOR' && (
+                    {effectiveUserRole !== 'ADMIN' &&
+                      effectiveUserRole !== 'ENTRENADOR' &&
+                      effectiveUserRole !== 'SUPERVISOR' && (
                       <div className="usuario-fecha-display">
                         <span>Fecha: {fechasUsuarios[usuario.id] ? new Date(fechasUsuarios[usuario.id]).toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES')}</span>
                       </div>
