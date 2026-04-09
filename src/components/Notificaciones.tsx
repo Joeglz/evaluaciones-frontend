@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FaBell,
   FaBellSlash,
@@ -121,11 +121,42 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
     return <FaBell className="estado-icono pendiente" title="Notificación pendiente" />;
   };
 
+  const totalMostradas = notificaciones.length;
+  const sinLeerEnLista = useMemo(
+    () => notificaciones.filter((n) => !n.es_leida).length,
+    [notificaciones]
+  );
+
   return (
     <div className="notificaciones-container">
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
       <div className="notificaciones-header">
-        <h2>Notificaciones</h2>
+        <div className="notificaciones-titulo-fila">
+          <h2 id="notificaciones-titulo">Notificaciones</h2>
+          <div
+            className="notificaciones-contador"
+            role="status"
+            aria-live="polite"
+            aria-label={
+              soloNoLeidas
+                ? `${totalMostradas} notificaciones sin leer mostradas`
+                : `${totalMostradas} notificaciones mostradas, ${sinLeerEnLista} sin leer`
+            }
+          >
+            <span className="notificaciones-contador-pill notificaciones-contador-pill--total">
+              <span className="notificaciones-contador-numero">{totalMostradas}</span>
+              <span className="notificaciones-contador-label">
+                {soloNoLeidas ? 'sin leer' : 'en lista'}
+              </span>
+            </span>
+            {!soloNoLeidas && sinLeerEnLista > 0 ? (
+              <span className="notificaciones-contador-pill notificaciones-contador-pill--pendientes">
+                <span className="notificaciones-contador-numero">{sinLeerEnLista}</span>
+                <span className="notificaciones-contador-label">sin leer</span>
+              </span>
+            ) : null}
+          </div>
+        </div>
         <div className="notificaciones-actions">
           <label className="filtro-checkbox">
             <input

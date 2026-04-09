@@ -200,6 +200,8 @@ export interface UserUpdate {
   role: string;
   areas: number[];
   posiciones: number[];
+  /** Completar evaluaciones hasta ese nivel por posición (misma lógica que creación y carga masiva). */
+  posiciones_nivel?: Array<{ posicion: number; nivel: number }>;
   grupo: number | null;
   numero_empleado: string | null;
   fecha_ingreso: string | null;

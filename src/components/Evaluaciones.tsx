@@ -180,6 +180,75 @@ const calcularEstadoFirmasUsuario = (firmas: FirmaEvaluacionUsuario[] | undefine
   };
 };
 
+const ROL_SUPERVISOR = 'SUPERVISOR';
+const ROL_ENTRENADOR = 'ENTRENADOR';
+
+/** Slug de tipo de firma: producción solo supervisores; evaluador solo entrenadores. */
+const TIPO_FIRMA_EMPLEADO = 'empleado';
+const TIPO_FIRMA_PRODUCCION = 'produccion';
+const TIPO_FIRMA_EVALUADOR = 'evaluador';
+
+const esUsuarioSupervisor = (u: Pick<User, 'role'> | undefined | null) =>
+  u?.role === ROL_SUPERVISOR;
+
+const esUsuarioEntrenador = (u: Pick<User, 'role'> | undefined | null) =>
+  u?.role === ROL_ENTRENADOR;
+
+const esRolSupervisionAmplia = (role?: string | null) =>
+  role === 'ADMIN' || role === ROL_ENTRENADOR || role === ROL_SUPERVISOR;
+
+function ordenarUsuariosPorNombre(list: User[]): User[] {
+  return [...list].sort((a, b) =>
+    (a.full_name || a.username || '').localeCompare(
+      b.full_name || b.username || '',
+      'es',
+      { sensitivity: 'base' }
+    )
+  );
+}
+
+/** Partición de la respuesta de getUsers(ADMIN,ENTRENADOR,SUPERVISOR) para combos y firmas. */
+function particionarUsuariosSupervision(results: User[]): {
+  supervisores: User[];
+  instructores: User[];
+  rolesMixtosFirmas: User[];
+} {
+  const mixtos = results.filter((u) => esRolSupervisionAmplia(u.role));
+  return {
+    supervisores: ordenarUsuariosPorNombre(results.filter(esUsuarioSupervisor)),
+    instructores: ordenarUsuariosPorNombre(results.filter(esUsuarioEntrenador)),
+    rolesMixtosFirmas: ordenarUsuariosPorNombre(mixtos),
+  };
+}
+
+function opcionesFirmantePorTipoFirma(
+  tipoFirma: string,
+  listaSupervisores: User[],
+  listaEntrenadores: User[],
+  listaMixta: User[]
+): User[] {
+  if (tipoFirma === TIPO_FIRMA_PRODUCCION) {
+    return listaSupervisores;
+  }
+  if (tipoFirma === TIPO_FIRMA_EVALUADOR) {
+    return listaEntrenadores;
+  }
+  return listaMixta;
+}
+
+function firmantePermitidoParaTipoFirma(tipoFirma: string, user: User | undefined): boolean {
+  if (!user) {
+    return false;
+  }
+  if (tipoFirma === TIPO_FIRMA_PRODUCCION) {
+    return esUsuarioSupervisor(user);
+  }
+  if (tipoFirma === TIPO_FIRMA_EVALUADOR) {
+    return esUsuarioEntrenador(user);
+  }
+  return esRolSupervisionAmplia(user.role);
+}
+
 interface EvaluacionesProps {
   userRole?: string;
   currentUser?: Partial<User> | null;
@@ -216,6 +285,8 @@ const Evaluaciones: React.FC<EvaluacionesProps> = ({
   const [usuariosRegulares, setUsuariosRegulares] = useState<User[]>([]);
   const [supervisores, setSupervisores] = useState<User[]>([]);
   const [instructores, setInstructores] = useState<User[]>([]);
+  /** ADMIN, ENTRENADOR y SUPERVISOR: firmas cuyo tipo no es empleado/producción/evaluador. */
+  const [usuariosFirmasRolesMixtos, setUsuariosFirmasRolesMixtos] = useState<User[]>([]);
   const [listasAsistencia, setListasAsistencia] = useState<ListaAsistencia[]>([]);
   const [filteredUsuarios, setFilteredUsuarios] = useState<User[]>([]);
   const [evaluacionesUsuario, setEvaluacionesUsuario] = useState<any[]>([]);
@@ -301,16 +372,38 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     [visibleAreas]
   );
 
-  // Combo Supervisor: siempre todos los ADMIN/ENTRENADOR/SUPERVISOR activos. Los supervisores del grupo
-  // en BD solo se usan como valor por defecto al iniciar la evaluación (ver iniciarEvaluacion).
+  // Combo Supervisor al iniciar evaluación: solo usuarios con rol SUPERVISOR.
   const opcionesSupervisorParaFormulario = useMemo(() => {
-    const list = [...supervisores];
-    if (supervisorSeleccionado != null && !list.some((s) => s.id === supervisorSeleccionado)) {
-      const actual = supervisores.find((s) => s.id === supervisorSeleccionado);
-      if (actual) list.push(actual);
+    return [...supervisores];
+  }, [supervisores]);
+
+  // Modal de firma: opciones según tipo_firma de la plantilla (producción / evaluador / otros).
+  const opcionesFirmanteParaModalFirma = useMemo(() => {
+    if (!firmaModalAbierta || firmaModalAbierta.tipo === TIPO_FIRMA_EMPLEADO) {
+      return [];
     }
-    return list;
-  }, [supervisores, supervisorSeleccionado]);
+    const tipo = firmaModalAbierta.tipo;
+    const base = opcionesFirmantePorTipoFirma(
+      tipo,
+      supervisores,
+      instructores,
+      usuariosFirmasRolesMixtos
+    );
+    const id = firmaModalFirmante;
+    if (id != null && !base.some((u) => u.id === id)) {
+      const found = usuariosFirmasRolesMixtos.find((u) => u.id === id);
+      if (found && firmantePermitidoParaTipoFirma(tipo, found)) {
+        return ordenarUsuariosPorNombre([...base, found]);
+      }
+    }
+    return base;
+  }, [
+    firmaModalAbierta,
+    firmaModalFirmante,
+    supervisores,
+    instructores,
+    usuariosFirmasRolesMixtos,
+  ]);
 
   useEffect(() => {
     if (!isRegularUser) {
@@ -335,7 +428,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           apiService.getEvaluacion(detalle.evaluacion),
           apiService.getUsers({ role: 'ADMIN,ENTRENADOR,SUPERVISOR', is_active: true })
         ]);
-        setSupervisores(supervisoresData.results || []);
+        const particion = particionarUsuariosSupervision(supervisoresData.results || []);
+        setSupervisores(particion.supervisores);
+        setInstructores(particion.instructores);
+        setUsuariosFirmasRolesMixtos(particion.rolesMixtosFirmas);
 
         const nivelEvaluacion =
           evaluacion.nivel ??
@@ -498,24 +594,58 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     setFirmaModalAbierta({ tipo: firma.tipo_firma, nombre: firma.nombre });
     const firmaUsuario = firmasUsuario[firma.tipo_firma] ?? null;
     const firmaPendiente = firmasPendientes[firma.tipo_firma] ?? null;
+    const tipo = firma.tipo_firma;
 
-    if (firma.tipo_firma === 'empleado') {
-      setFirmaModalFirmante(selectedUser?.id ?? null);
+    let firmanteId: number | null = null;
+    let saltarValidacionRolFirmante = false;
+
+    if (tipo === TIPO_FIRMA_EMPLEADO) {
+      firmanteId = selectedUser?.id ?? null;
     } else if (modoSoloFirmasEntrenador && effectiveUserRole === 'ENTRENADOR' && currentUserId) {
-      setFirmaModalFirmante(currentUserId);
+      firmanteId = currentUserId;
+      saltarValidacionRolFirmante = true;
     } else if (firmaPendiente?.usuario !== undefined && firmaPendiente?.usuario !== null) {
-      setFirmaModalFirmante(firmaPendiente.usuario);
+      firmanteId = firmaPendiente.usuario;
     } else if (firmaUsuario?.usuario) {
-      setFirmaModalFirmante(firmaUsuario.usuario);
+      firmanteId = firmaUsuario.usuario;
     } else if (firma.usuario) {
-      setFirmaModalFirmante(firma.usuario);
-    } else if (supervisorSeleccionado) {
-      setFirmaModalFirmante(supervisorSeleccionado);
-    } else if (supervisores.length > 0) {
-      setFirmaModalFirmante(supervisores[0].id);
-    } else {
-      setFirmaModalFirmante(null);
+      firmanteId = firma.usuario;
+    } else if (
+      tipo === TIPO_FIRMA_PRODUCCION &&
+      supervisorSeleccionado &&
+      supervisores.some((s) => s.id === supervisorSeleccionado)
+    ) {
+      firmanteId = supervisorSeleccionado;
     }
+
+    const opcionesFirma = opcionesFirmantePorTipoFirma(
+      tipo,
+      supervisores,
+      instructores,
+      usuariosFirmasRolesMixtos
+    );
+
+    if (
+      !saltarValidacionRolFirmante &&
+      tipo !== TIPO_FIRMA_EMPLEADO &&
+      firmanteId != null
+    ) {
+      const usuarioCandidato = usuariosFirmasRolesMixtos.find((u) => u.id === firmanteId);
+      if (!firmantePermitidoParaTipoFirma(tipo, usuarioCandidato)) {
+        firmanteId = null;
+      }
+    }
+
+    if (
+      !saltarValidacionRolFirmante &&
+      tipo !== TIPO_FIRMA_EMPLEADO &&
+      firmanteId == null &&
+      opcionesFirma.length > 0
+    ) {
+      firmanteId = opcionesFirma[0].id;
+    }
+
+    setFirmaModalFirmante(firmanteId);
     setTimeout(() => {
       const canvas = firmaCanvasRef.current;
       if (!canvas) return;
@@ -849,10 +979,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       setFilteredUsuarios([]);
 
       const supList = supervisoresData.results ?? [];
-      const esRolSupervision = (role?: string | null) =>
-        role === 'ADMIN' || role === 'ENTRENADOR' || role === 'SUPERVISOR';
-      setSupervisores(supList.filter((u) => esRolSupervision(u.role)));
-      setInstructores(supList.filter((u) => esRolSupervision(u.role)));
+      const particion = particionarUsuariosSupervision(supList);
+      setSupervisores(particion.supervisores);
+      setInstructores(particion.instructores);
+      setUsuariosFirmasRolesMixtos(particion.rolesMixtosFirmas);
       setListasAsistencia(listasData.results);
       if (selectedArea && selectedGrupo && selectedPosicion) {
         await loadUsuariosEvaluacionesContext(selectedPosicion, selectedArea, selectedGrupo, {
@@ -1045,7 +1175,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         role: rolesSupervision,
         is_active: true 
       });
-      setSupervisores(supervisoresData.results);
+      const resultadosCarga = supervisoresData.results ?? [];
+      const particion = particionarUsuariosSupervision(resultadosCarga);
+      setSupervisores(particion.supervisores);
+      setInstructores(particion.instructores);
+      setUsuariosFirmasRolesMixtos(particion.rolesMixtosFirmas);
       
       // Supervisor por defecto: plantilla/evaluación; si no, primer supervisor del grupo de navegación o del primer grupo del área que tenga
       let supervisorPorDefecto: number | null = null;
@@ -1064,10 +1198,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           supervisorPorDefecto = sups[0].id;
         }
       }
-      if (
-        supervisorPorDefecto &&
-        supervisoresData.results.some((supervisor: User) => supervisor.id === supervisorPorDefecto)
-      ) {
+      const idsSupervisorRol = new Set(
+        resultadosCarga.filter(esUsuarioSupervisor).map((u: User) => u.id)
+      );
+      if (supervisorPorDefecto != null && idsSupervisorRol.has(supervisorPorDefecto)) {
         setSupervisorSeleccionado(supervisorPorDefecto);
       } else {
         setSupervisorSeleccionado(null);
@@ -1131,7 +1265,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         role: rolesSupervision,
         is_active: true
       });
-      setSupervisores(supervisoresData.results);
+      const particion = particionarUsuariosSupervision(supervisoresData.results ?? []);
+      setSupervisores(particion.supervisores);
+      setInstructores(particion.instructores);
+      setUsuariosFirmasRolesMixtos(particion.rolesMixtosFirmas);
 
       setCurrentView('usuario-evaluacion');
     } catch (error: any) {
@@ -1179,7 +1316,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         role: 'ADMIN,ENTRENADOR,SUPERVISOR',
         is_active: true,
       });
-      setSupervisores(supervisoresData.results ?? []);
+      const particion = particionarUsuariosSupervision(supervisoresData.results ?? []);
+      setSupervisores(particion.supervisores);
+      setInstructores(particion.instructores);
+      setUsuariosFirmasRolesMixtos(particion.rolesMixtosFirmas);
 
       setCurrentView('usuario-evaluacion');
     } catch (error: unknown) {
@@ -1599,8 +1739,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         if (esFirmaEmpleado) {
           return selectedUser?.full_name || selectedUser?.username || null;
         }
-        const supervisor = supervisores.find((sup) => sup.id === usuarioFirmanteId);
-        return supervisor?.full_name || supervisor?.username || null;
+        const firmante = usuariosFirmasRolesMixtos.find((u) => u.id === usuarioFirmanteId);
+        return firmante?.full_name || firmante?.username || null;
       };
 
       const firmanteNombre = obtenerNombreFirmante();
@@ -3387,7 +3527,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     ) : (
                       <div className="firma-firmante-select">
                         <label>Selecciona firmante</label>
-                        {opcionesSupervisorParaFormulario.length > 0 ? (
+                        {opcionesFirmanteParaModalFirma.length > 0 ? (
                           <select
                             value={firmaModalFirmante ?? ''}
                             onChange={(e) =>
@@ -3395,15 +3535,19 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                             }
                           >
                             <option value="">Selecciona un firmante</option>
-                            {opcionesSupervisorParaFormulario.map((supervisor) => (
-                              <option key={supervisor.id} value={supervisor.id}>
-                                {supervisor.full_name}
+                            {opcionesFirmanteParaModalFirma.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.full_name}
                               </option>
                             ))}
                           </select>
                         ) : (
                           <div className="firma-firmante-info">
-                            No hay supervisores disponibles para firmar.
+                            {firmaModalAbierta.tipo === TIPO_FIRMA_PRODUCCION
+                              ? 'No hay supervisores disponibles para firmar.'
+                              : firmaModalAbierta.tipo === TIPO_FIRMA_EVALUADOR
+                                ? 'No hay entrenadores disponibles para firmar.'
+                                : 'No hay usuarios disponibles para firmar.'}
                           </div>
                         )}
                       </div>

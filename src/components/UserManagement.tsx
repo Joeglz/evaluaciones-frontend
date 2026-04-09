@@ -84,6 +84,8 @@ const UserManagement: React.FC = () => {
   const [step3Nivel, setStep3Nivel] = useState<number | ''>('');
   /** Solo creación: pares posición + nivel para enviar al backend. */
   const [createPosicionesNivel, setCreatePosicionesNivel] = useState<Array<{ posicion: number; nivel: number }>>([]);
+  /** Edición: mismos pares al agregar posición en paso 3. */
+  const [editPosicionesNivel, setEditPosicionesNivel] = useState<Array<{ posicion: number; nivel: number }>>([]);
   
   // Formularios
   const [createForm, setCreateForm] = useState<UserCreate>({
@@ -435,6 +437,8 @@ const UserManagement: React.FC = () => {
     setEditProfilePhotoFile(null);
     setEditProfilePhotoPreview(user.profile_photo ? getMediaUrl(user.profile_photo) : null);
     setRemoveProfilePhoto(false);
+    setEditPosicionesNivel([]);
+    setStep3Nivel('');
   };
 
   const nextStep = () => {
@@ -471,6 +475,7 @@ const UserManagement: React.FC = () => {
     setStep3PosicionId('');
     setStep3Nivel('');
     setCreatePosicionesNivel([]);
+    setEditPosicionesNivel([]);
     setCreateErrors({});
     setEditErrors({});
   };
@@ -1447,9 +1452,19 @@ const UserManagement: React.FC = () => {
           ...prev.filter((x) => x.posicion !== pid),
           { posicion: pid, nivel: nivelElegido },
         ]);
+      } else {
+        setCreatePosicionesNivel((prev) => prev.filter((x) => x.posicion !== pid));
       }
     } else {
       setEditForm({ ...editForm, posiciones: newPosiciones, areas: newAreas });
+      if (nivelElegido !== null) {
+        setEditPosicionesNivel((prev) => [
+          ...prev.filter((x) => x.posicion !== pid),
+          { posicion: pid, nivel: nivelElegido },
+        ]);
+      } else {
+        setEditPosicionesNivel((prev) => prev.filter((x) => x.posicion !== pid));
+      }
     }
     setStep3PosicionId('');
     setStep3Nivel('');
@@ -1461,12 +1476,14 @@ const UserManagement: React.FC = () => {
       setCreatePosicionesNivel((prev) => prev.filter((x) => x.posicion !== posicionId));
     } else {
       setEditForm({ ...editForm, posiciones: editForm.posiciones.filter((id) => id !== posicionId) });
+      setEditPosicionesNivel((prev) => prev.filter((x) => x.posicion !== posicionId));
     }
   };
 
   const renderStep3 = () => {
     const form = isCreating ? createForm : editForm;
     const errors = isCreating ? createErrors : editErrors;
+    const posicionesNivelPaso = isCreating ? createPosicionesNivel : editPosicionesNivel;
     const areaId = (step3AreaId !== '' ? step3AreaId : form.areas[0]) || null;
     const posicionesEnArea = areaId ? getPosicionesByArea(areaId) : [];
     const gruposEnArea = areaId ? getGruposByArea(areaId) : [];
@@ -1533,28 +1550,30 @@ const UserManagement: React.FC = () => {
                 </select>
               </div>
 
-              {isCreating && (
-                <div className="form-group">
-                  <label>Nivel (opcional)</label>
-                  <select
-                    value={step3Nivel === '' ? '' : step3Nivel}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setStep3Nivel(v === '' ? '' : parseInt(v, 10));
-                    }}
-                    title="Si eliges un nivel, al crear el usuario se completarán las evaluaciones de esa posición hasta ese nivel (igual que en carga masiva)."
-                  >
-                    <option value="">Sin completar evaluaciones</option>
-                    <option value={1}>Nivel 1</option>
-                    <option value={2}>Nivel 2</option>
-                    <option value={3}>Nivel 3</option>
-                    <option value={4}>Nivel 4</option>
-                  </select>
-                  <small className="form-hint" style={{ display: 'block', marginTop: '0.35rem', color: '#666' }}>
-                    Misma lógica que la columna &quot;Nivel&quot; en carga masiva: completa evaluaciones del 1 al nivel elegido.
-                  </small>
-                </div>
-              )}
+              <div className="form-group">
+                <label>Nivel (opcional)</label>
+                <select
+                  value={step3Nivel === '' ? '' : step3Nivel}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setStep3Nivel(v === '' ? '' : parseInt(v, 10));
+                  }}
+                  title={
+                    isCreating
+                      ? 'Si eliges un nivel, al crear el usuario se completarán las evaluaciones de esa posición hasta ese nivel (igual que en carga masiva).'
+                      : 'Si eliges un nivel, al guardar el usuario se completarán las evaluaciones de esa posición hasta ese nivel (igual que en carga masiva).'
+                  }
+                >
+                  <option value="">Sin completar evaluaciones</option>
+                  <option value={1}>Nivel 1</option>
+                  <option value={2}>Nivel 2</option>
+                  <option value={3}>Nivel 3</option>
+                  <option value={4}>Nivel 4</option>
+                </select>
+                <small className="form-hint" style={{ display: 'block', marginTop: '0.35rem', color: '#666' }}>
+                  Misma lógica que la columna &quot;Nivel&quot; en carga masiva: completa evaluaciones del 1 al nivel elegido.
+                </small>
+              </div>
 
               <div className="form-group form-group--button">
                 <label>&nbsp;</label>
@@ -1578,12 +1597,12 @@ const UserManagement: React.FC = () => {
               {form.posiciones.map((posId, index) => {
                 const pos = posiciones.find((p) => p.id === posId);
                 const areaName = pos ? areas.find((a) => a.id === pos.area)?.name : '';
-                const nivelAsignado = createPosicionesNivel.find((x) => x.posicion === posId)?.nivel;
+                const nivelAsignado = posicionesNivelPaso.find((x) => x.posicion === posId)?.nivel;
                 return (
                   <li key={posId} className="posiciones-list__item">
                     <span>
                       {pos ? `${pos.name}${areaName ? ` (${areaName})` : ''}` : `ID ${posId}`}
-                      {isCreating && nivelAsignado != null ? (
+                      {nivelAsignado != null ? (
                         <span className="posiciones-list__nivel"> — Nivel hasta {nivelAsignado}</span>
                       ) : null}
                     </span>
@@ -1600,6 +1619,9 @@ const UserManagement: React.FC = () => {
               })}
             </ul>
             {errors.posiciones && <div className="error-message">{errors.posiciones[0]}</div>}
+            {errors.posiciones_nivel && (
+              <div className="error-message">{errors.posiciones_nivel[0]}</div>
+            )}
           </div>
         )}
       </div>
@@ -1690,6 +1712,9 @@ const UserManagement: React.FC = () => {
           }
 
           editForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
+          if (editPosicionesNivel.length > 0) {
+            formData.append('posiciones_nivel', JSON.stringify(editPosicionesNivel));
+          }
           formData.append('remove_profile_photo', removeProfilePhoto ? 'true' : 'false');
 
           if (editProfilePhotoFile) {
@@ -1698,7 +1723,10 @@ const UserManagement: React.FC = () => {
 
           payload = formData;
         } else {
-          payload = { ...editForm, remove_profile_photo: removeProfilePhoto };
+          payload =
+            editPosicionesNivel.length > 0
+              ? { ...editForm, remove_profile_photo: removeProfilePhoto, posiciones_nivel: editPosicionesNivel }
+              : { ...editForm, remove_profile_photo: removeProfilePhoto };
         }
 
         await apiService.updateUser(selectedUser.id, payload);

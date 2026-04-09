@@ -1097,154 +1097,148 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       return groups;
     };
 
-    /** Índice de color por área (0..7) para cabeceras producción / soporte. */
-    const MATRIX_TONE_COUNT = 8;
-    const buildMatrixAreaToneMap = (cols: MatrixColDesc[]): Map<number, number> => {
-      const m = new Map<number, number>();
-      let i = 0;
-      groupMatrixColsByArea(cols).forEach((g) => {
-        m.set(g.areaId, i % MATRIX_TONE_COUNT);
-        i += 1;
-      });
-      return m;
-    };
-
     const promedioSeccion = (cols: MatrixColDesc[], field: (typeof levelDefs)[0]['field']) => {
       if (!cols.length) return 0;
       const vals = cols.map((cd) => valorGrupo(cd.grupo, field));
       return vals.reduce((a, b) => a + b, 0) / vals.length;
     };
 
-    const renderMatrixUnifiedTable = (weekLabel: number | string) => {
-      const prodCols = buildMatrixColumns(prodAreas);
-      const sopCols = buildMatrixColumns(sopAreas);
-      const prodToneByArea = buildMatrixAreaToneMap(prodCols);
-      const sopToneByArea = buildMatrixAreaToneMap(sopCols);
-      if (prodCols.length === 0 && sopCols.length === 0) {
-        return (
-          <p className="reportes-empty-inline">Sin procesos con datos para la semana seleccionada.</p>
-        );
+    const promedioBackendPorArea = (
+      areaList: any[],
+      areaId: number,
+      field: (typeof levelDefs)[0]['field'],
+      fallbackCols: MatrixColDesc[]
+    ): number => {
+      const ab = areaList.find((a) => a.area_id === areaId);
+      const pg = ab?.grupos?.find(
+        (g: { grupo_nombre?: string }) => String(g.grupo_nombre || '').toUpperCase() === 'PROMEDIO'
+      );
+      if (pg) {
+        return valorGrupo(pg, field);
       }
+      return promedioSeccion(fallbackCols, field);
+    };
+
+    const pastelIndexEnArea = (ag: { cols: MatrixColDesc[] }, cd: MatrixColDesc) =>
+      Math.max(0, ag.cols.findIndex((c) => c.key === cd.key));
+
+    const renderMatrixTipoTable = (
+      areaList: any[],
+      weekLabel: number | string,
+      sectionTitle: string
+    ) => {
+      const cols = buildMatrixColumns(areaList);
+      if (cols.length === 0) {
+        return null;
+      }
+      const areaGroups = groupMatrixColsByArea(cols);
       return (
-        <div className="matrix-unified-wrap">
+        <div className="matrix-unified-wrap matrix-tipo-table-wrap" key={sectionTitle}>
           <div className="reporte-table-header matrix-cer-header">
             <div className="reporte-week-label">
-              CW {weekLabel} | % Training Matrix (producción y soporte)
+              CW {weekLabel} | % Training Matrix — {sectionTitle}
             </div>
           </div>
           <div className="matrix-unified-scroll">
-            <table className="matrix-cer-table matrix-unified-table reporte-table">
+            <table className="matrix-cer-table matrix-unified-table matrix-xls-style reporte-table">
+              <caption className="matrix-table-caption visually-hidden">
+                Matriz de entrenamiento {sectionTitle}, semana {weekLabel}
+              </caption>
               <thead>
                 <tr>
-                  <th rowSpan={3} className="matrix-cer-first-col matrix-sticky-col">
+                  <th rowSpan={2} scope="col" className="matrix-cer-first-col matrix-sticky-col matrix-th-metrica">
                     Métrica
                   </th>
-                  {prodCols.length > 0 && (
-                    <th colSpan={prodCols.length + 1} className="matrix-section-head matrix-section-prod">
-                      Producción
-                    </th>
-                  )}
-                  {sopCols.length > 0 && (
-                    <th colSpan={sopCols.length + 1} className="matrix-section-head matrix-section-sop">
-                      Soporte
-                    </th>
-                  )}
-                </tr>
-                <tr>
-                  {groupMatrixColsByArea(prodCols).map((g) => (
+                  {areaGroups.map((g) => (
                     <th
-                      key={`pg-${g.areaId}`}
+                      key={`area-h-${g.areaId}`}
                       colSpan={g.cols.length}
-                      className={`matrix-area-group-head matrix-area-group-prod matrix-tone-prod-${prodToneByArea.get(g.areaId) ?? 0}`}
                       scope="colgroup"
+                      className="matrix-xls-area-head"
                     >
                       {g.areaNombre}
                     </th>
                   ))}
-                  {prodCols.length > 0 && (
-                    <th rowSpan={2} className="matrix-cer-promedio-col matrix-sticky-sep matrix-prom-head">
-                      Prom.
-                    </th>
-                  )}
-                  {groupMatrixColsByArea(sopCols).map((g) => (
-                    <th
-                      key={`sg-${g.areaId}`}
-                      colSpan={g.cols.length}
-                      className={`matrix-area-group-head matrix-area-group-sop matrix-tone-sop-${sopToneByArea.get(g.areaId) ?? 0}`}
-                      scope="colgroup"
-                    >
-                      {g.areaNombre}
-                    </th>
-                  ))}
-                  {sopCols.length > 0 && (
-                    <th rowSpan={2} className="matrix-cer-promedio-col matrix-sticky-sep matrix-prom-head">
-                      Prom.
-                    </th>
-                  )}
+                  <th rowSpan={2} scope="col" className="matrix-cer-promedio-col matrix-prom-head-xls matrix-sticky-sep">
+                    Promedio
+                  </th>
                 </tr>
                 <tr>
-                  {prodCols.map((cd) => (
-                    <th
-                      key={`p-${cd.key}`}
-                      className={`matrix-proc-head matrix-proc-grupo-only matrix-tone-prod-${prodToneByArea.get(cd.areaId) ?? 0}`}
-                      title={`${cd.areaNombre} — ${cd.grupo.grupo_nombre}`}
-                    >
-                      {cd.grupo.grupo_nombre}
-                    </th>
-                  ))}
-                  {sopCols.map((cd) => (
-                    <th
-                      key={`s-${cd.key}`}
-                      className={`matrix-proc-head matrix-proc-grupo-only matrix-tone-sop-${sopToneByArea.get(cd.areaId) ?? 0}`}
-                      title={`${cd.areaNombre} — ${cd.grupo.grupo_nombre}`}
-                    >
-                      {cd.grupo.grupo_nombre}
-                    </th>
-                  ))}
+                  {cols.map((cd) => {
+                    const ag = areaGroups.find((x) => x.areaId === cd.areaId)!;
+                    const pi = pastelIndexEnArea(ag, cd) % 4;
+                    return (
+                      <th
+                        key={`gh-${cd.key}`}
+                        scope="col"
+                        className={`matrix-grupo-th matrix-grupo-pastel-${pi}`}
+                        title={`${cd.areaNombre} — ${cd.grupo.grupo_nombre}`}
+                      >
+                        {cd.grupo.grupo_nombre}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {levelDefs.map((def) => {
                   const tgt = targets[def.targetKey] ?? 100;
+                  const promCol = formatPercentage(promedioSeccion(cols, def.field));
                   return (
                     <React.Fragment key={def.targetKey}>
-                      <tr className="matrix-target-row">
-                        <td className="matrix-cer-first-col matrix-sticky-col">{def.label} (objetivo)</td>
-                        {prodCols.map((cd) => (
-                          <td key={`tp-${cd.key}-${def.targetKey}`}>{formatPercentage(tgt)}</td>
+                      <tr className="matrix-target-row matrix-xls-target-row">
+                        <th scope="row" className="matrix-cer-first-col matrix-sticky-col">
+                          {def.label} (objetivo)
+                        </th>
+                        {areaGroups.map((g) => (
+                          <td
+                            key={`tm-${g.areaId}-${def.targetKey}`}
+                            colSpan={g.cols.length}
+                            className="matrix-cell-target-merged"
+                          >
+                            {formatPercentage(tgt)}
+                          </td>
                         ))}
-                        {prodCols.length > 0 && (
-                          <td className="matrix-cer-promedio-col">{formatPercentage(tgt)}</td>
-                        )}
-                        {sopCols.map((cd) => (
-                          <td key={`ts-${cd.key}-${def.targetKey}`}>{formatPercentage(tgt)}</td>
-                        ))}
-                        {sopCols.length > 0 && (
-                          <td className="matrix-cer-promedio-col">{formatPercentage(tgt)}</td>
-                        )}
+                        <td className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-data-cell">
+                          {formatPercentage(tgt)}
+                        </td>
                       </tr>
-                      <tr className="matrix-actual-row">
-                        <td className="matrix-cer-first-col matrix-sticky-col">{def.label}</td>
-                        {prodCols.map((cd) => (
-                          <td key={`ap-${cd.key}-${def.targetKey}`}>
-                            {formatPercentage(valorGrupo(cd.grupo, def.field))}
+                      <tr className="matrix-actual-row matrix-xls-data-row">
+                        <th scope="row" className="matrix-cer-first-col matrix-sticky-col">
+                          {def.label}
+                        </th>
+                        {cols.map((cd) => {
+                          const ag = areaGroups.find((x) => x.areaId === cd.areaId)!;
+                          const pi = pastelIndexEnArea(ag, cd) % 4;
+                          return (
+                            <td
+                              key={`dv-${cd.key}-${def.targetKey}`}
+                              className={`matrix-grupo-td matrix-grupo-pastel-${pi}`}
+                            >
+                              {formatPercentage(valorGrupo(cd.grupo, def.field))}
+                            </td>
+                          );
+                        })}
+                        <td className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-data-cell">
+                          {promCol}
+                        </td>
+                      </tr>
+                      <tr className="matrix-area-summary-row" aria-label={`Resumen por área, ${def.label}`}>
+                        <th scope="row" className="matrix-cer-first-col matrix-sticky-col matrix-summary-leyenda">
+                          <span className="matrix-summary-leyenda__text">Prom. área</span>
+                        </th>
+                        {areaGroups.map((g) => (
+                          <td
+                            key={`ar-${g.areaId}-${def.targetKey}`}
+                            colSpan={g.cols.length}
+                            className="matrix-area-summary-cell"
+                          >
+                            {formatPercentage(promedioBackendPorArea(areaList, g.areaId, def.field, g.cols))}
                           </td>
                         ))}
-                        {prodCols.length > 0 && (
-                          <td className="matrix-cer-promedio-col matrix-cer-promedio-cell">
-                            {formatPercentage(promedioSeccion(prodCols, def.field))}
-                          </td>
-                        )}
-                        {sopCols.map((cd) => (
-                          <td key={`as-${cd.key}-${def.targetKey}`}>
-                            {formatPercentage(valorGrupo(cd.grupo, def.field))}
-                          </td>
-                        ))}
-                        {sopCols.length > 0 && (
-                          <td className="matrix-cer-promedio-col matrix-cer-promedio-cell">
-                            {formatPercentage(promedioSeccion(sopCols, def.field))}
-                          </td>
-                        )}
+                        <td className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-data-cell">
+                          {promCol}
+                        </td>
                       </tr>
                     </React.Fragment>
                   );
@@ -1252,6 +1246,20 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               </tbody>
             </table>
           </div>
+        </div>
+      );
+    };
+
+    const renderMatrixTablesSplit = (weekLabel: number | string) => {
+      if (prodAreas.length === 0 && sopAreas.length === 0) {
+        return (
+          <p className="reportes-empty-inline">Sin procesos con datos para la semana seleccionada.</p>
+        );
+      }
+      return (
+        <div className="matrix-split-tables">
+          {renderMatrixTipoTable(prodAreas, weekLabel, 'Producción')}
+          {renderMatrixTipoTable(sopAreas, weekLabel, 'Soporte')}
         </div>
       );
     };
@@ -1356,39 +1364,57 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
 
     const exportMatrixExcel = () => {
       const wb = XLSX.utils.book_new();
-      const prodCols = buildMatrixColumns(prodAreas);
-      const sopCols = buildMatrixColumns(sopAreas);
       const wk = matrixReportData?.week ?? matrixSelectedWeek ?? '';
-      const rows: (string | number)[][] = [];
-      rows.push([`CW ${wk} | % Training Matrix (una tabla)`]);
-      rows.push([]);
-      const header = [
-        'Métrica',
-        ...prodCols.map((cd) => `Prod: ${cd.areaNombre} / ${cd.grupo.grupo_nombre}`),
-        ...(prodCols.length ? ['Prom. prod.'] : []),
-        ...sopCols.map((cd) => `Sop: ${cd.areaNombre} / ${cd.grupo.grupo_nombre}`),
-        ...(sopCols.length ? ['Prom. sop.'] : []),
-      ];
-      rows.push(header);
-      levelDefs.forEach((def) => {
-        const tgt = targets[def.targetKey] ?? 100;
+
+      const buildSheetRows = (areaList: any[], titulo: string): (string | number)[][] => {
+        const cols = buildMatrixColumns(areaList);
+        const areaGroups = groupMatrixColsByArea(cols);
+        const rows: (string | number)[][] = [];
+        rows.push([`CW ${wk} | % Training Matrix — ${titulo}`]);
+        rows.push([]);
         rows.push([
-          `${def.label} (obj.)`,
-          ...prodCols.map(() => `${tgt.toFixed(2)}%`),
-          ...(prodCols.length ? [`${tgt.toFixed(2)}%`] : []),
-          ...sopCols.map(() => `${tgt.toFixed(2)}%`),
-          ...(sopCols.length ? [`${tgt.toFixed(2)}%`] : []),
+          'Métrica',
+          ...cols.map((cd) => `${cd.areaNombre} / ${cd.grupo.grupo_nombre}`),
+          'Promedio',
         ]);
-        rows.push([
-          def.label,
-          ...prodCols.map((cd) => `${valorGrupo(cd.grupo, def.field).toFixed(2)}%`),
-          ...(prodCols.length ? [`${promedioSeccion(prodCols, def.field).toFixed(2)}%`] : []),
-          ...sopCols.map((cd) => `${valorGrupo(cd.grupo, def.field).toFixed(2)}%`),
-          ...(sopCols.length ? [`${promedioSeccion(sopCols, def.field).toFixed(2)}%`] : []),
-        ]);
-      });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      XLSX.utils.book_append_sheet(wb, ws, 'Matriz');
+        levelDefs.forEach((def) => {
+          const tgt = targets[def.targetKey] ?? 100;
+          const prom = promedioSeccion(cols, def.field);
+          rows.push([
+            `${def.label} (objetivo)`,
+            ...cols.map(() => `${tgt.toFixed(2)}%`),
+            `${tgt.toFixed(2)}%`,
+          ]);
+          rows.push([
+            def.label,
+            ...cols.map((cd) => `${valorGrupo(cd.grupo, def.field).toFixed(2)}%`),
+            `${prom.toFixed(2)}%`,
+          ]);
+          rows.push([
+            'Prom. área',
+            ...cols.map((cd) => {
+              const ag = areaGroups.find((x) => x.areaId === cd.areaId)!;
+              const v = promedioBackendPorArea(areaList, cd.areaId, def.field, ag.cols);
+              return `${v.toFixed(2)}%`;
+            }),
+            `${prom.toFixed(2)}%`,
+          ]);
+        });
+        return rows;
+      };
+
+      if (prodAreas.length > 0) {
+        const wsP = XLSX.utils.aoa_to_sheet(buildSheetRows(prodAreas, 'Producción'));
+        XLSX.utils.book_append_sheet(wb, wsP, 'Producción');
+      }
+      if (sopAreas.length > 0) {
+        const wsS = XLSX.utils.aoa_to_sheet(buildSheetRows(sopAreas, 'Soporte'));
+        XLSX.utils.book_append_sheet(wb, wsS, 'Soporte');
+      }
+      if (!wb.SheetNames.length) {
+        const ws = XLSX.utils.aoa_to_sheet([[`CW ${wk} | Sin datos`]]);
+        XLSX.utils.book_append_sheet(wb, ws, 'Matriz');
+      }
       XLSX.writeFile(wb, `Reporte_Matrix_CW${matrixSelectedWeek}_${selectedYear}.xlsx`);
     };
 
@@ -1489,7 +1515,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             {!matrixReportData ? (
               <div className="reportes-empty">No se pudieron cargar los datos de la matriz.</div>
             ) : (
-              renderMatrixUnifiedTable(matrixReportData.week ?? matrixSelectedWeek ?? '')
+              renderMatrixTablesSplit(matrixReportData.week ?? matrixSelectedWeek ?? '')
             )}
           </div>
         )}

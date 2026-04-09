@@ -15,10 +15,62 @@
   gap: 1rem;
 }
 
+.notificaciones-titulo-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  width: 100%;
+}
+
 .notificaciones-header h2 {
   margin: 0;
   font-size: 1.75rem;
   color: #1b1b1f;
+}
+
+.notificaciones-contador {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.notificaciones-contador-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background-color: rgba(0, 0, 0, 0.04);
+  color: #1b1b1f;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+}
+
+.notificaciones-contador-pill--pendientes {
+  border-color: rgba(225, 32, 38, 0.35);
+  background-color: rgba(225, 32, 38, 0.08);
+  color: #a0181d;
+}
+
+.notificaciones-contador-numero {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.notificaciones-contador-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  opacity: 0.9;
 }
 
 .notificaciones-actions {

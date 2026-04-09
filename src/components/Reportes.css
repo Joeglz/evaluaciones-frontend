@@ -763,3 +763,169 @@
   color: var(--reporte-gray);
   margin: 0.25rem 0 1rem;
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Training Matrix: tablas separadas (producción / soporte), estilo tipo hoja de cálculo */
+.matrix-split-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 2.25rem;
+}
+
+.matrix-tipo-table-wrap {
+  width: 100%;
+}
+
+.matrix-xls-style.reporte-table {
+  border: 1px solid #1a1a1a;
+}
+
+.matrix-xls-style.reporte-table th,
+.matrix-xls-style.reporte-table td {
+  border: 1px solid #1a1a1a;
+  padding: 0.45rem 0.5rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.matrix-xls-style .matrix-th-metrica {
+  background: #e12026;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.matrix-xls-area-head {
+  background: #d0d0d0;
+  color: #000;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Grupos A/B/C/D: pastels (referencia Excel) */
+.matrix-grupo-th.matrix-grupo-pastel-0 {
+  background: #e8dff5;
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
+.matrix-grupo-td.matrix-grupo-pastel-0 {
+  background: #e8dff5;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.matrix-grupo-th.matrix-grupo-pastel-1 {
+  background: #d9e8fc;
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
+.matrix-grupo-td.matrix-grupo-pastel-1 {
+  background: #d9e8fc;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.matrix-grupo-th.matrix-grupo-pastel-2 {
+  background: #d8f0e0;
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
+.matrix-grupo-td.matrix-grupo-pastel-2 {
+  background: #d8f0e0;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.matrix-grupo-th.matrix-grupo-pastel-3 {
+  background: #fff9d6;
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
+.matrix-grupo-td.matrix-grupo-pastel-3 {
+  background: #fff9d6;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.matrix-cell-target-merged {
+  background: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.matrix-xls-style .matrix-target-row td.matrix-cell-target-merged {
+  background: #fff;
+}
+
+.matrix-prom-head-xls {
+  background: #1d7a4a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.matrix-prom-data-cell {
+  background: #6b6b6b;
+  color: #fff;
+  font-weight: 700;
+}
+
+.matrix-area-summary-row .matrix-area-summary-cell {
+  background: #e12026;
+  color: #fff;
+  font-weight: 700;
+}
+
+.matrix-summary-leyenda {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #444;
+  text-align: left;
+  padding-left: 0.5rem;
+}
+
+.matrix-summary-leyenda__text {
+  display: block;
+  line-height: 1.2;
+}
+
+.matrix-xls-style tbody th.matrix-sticky-col {
+  background: #fff;
+  color: #1a1a1a;
+  font-weight: 600;
+  text-align: left;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06);
+}
+
+.matrix-xls-style thead th.matrix-sticky-col {
+  z-index: 4;
+}
+
+.matrix-xls-style .matrix-target-row th.matrix-sticky-col {
+  background: #fafafa;
+}
+
+.matrix-xls-style .matrix-actual-row th.matrix-sticky-col {
+  background: #fff;
+}
+
+.matrix-xls-style .matrix-area-summary-row th.matrix-sticky-col {
+  background: #fce8e9;
+}
