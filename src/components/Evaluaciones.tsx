@@ -1333,6 +1333,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   const isAdmin = effectiveUserRole === 'ADMIN';
   const isEntrenador = effectiveUserRole === 'ENTRENADOR';
+  const isSupervisorRol = effectiveUserRole === 'SUPERVISOR';
   const puedeRegistrarNuevoIntento =
     (isAdmin || isSupervisorOrEntrenador) && !isVisor && !isRegularUser;
 
@@ -3431,16 +3432,25 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
                     const puedeFirmarPendiente = esFirmanteActual && !estaFirmada;
                     const puedeEditarPorRol = !evaluacionModoLectura && (!estadoEvaluacionCompletada || isAdmin);
+                    /** Entrenador en modo solo firmas: todas las firmas pendientes, incluida la del empleado. */
                     const puedeFirmarEntrenadorSoloFirmas =
-                      modoSoloFirmasEntrenador &&
-                      isEntrenador &&
-                      slug !== 'empleado' &&
-                      !estaFirmada;
+                      modoSoloFirmasEntrenador && isEntrenador && !estaFirmada;
+                    /**
+                     * Instrucción (entrenador/supervisor/admin) puede capturar la firma del evaluado
+                     * (tablet / acompañamiento). Incluye cuando el formulario está en solo lectura por
+                     * puntajes ya guardados pero aún faltan firmas (clase read-only en la vista).
+                     */
+                    const puedeRegistrarFirmaEmpleadoComoStaff =
+                      slug === 'empleado' &&
+                      !estaFirmada &&
+                      !isVisor &&
+                      (isEntrenador || isSupervisorRol || isAdmin);
                     const puedeEditarFirma =
                       !isVisor &&
                       (puedeFirmarPendiente ||
                         puedeEditarPorRol ||
-                        puedeFirmarEntrenadorSoloFirmas);
+                        puedeFirmarEntrenadorSoloFirmas ||
+                        puedeRegistrarFirmaEmpleadoComoStaff);
 
                     return (
                       <div key={slug} className="firma-item">
