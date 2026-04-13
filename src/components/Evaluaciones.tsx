@@ -183,10 +183,70 @@ const calcularEstadoFirmasUsuario = (firmas: FirmaEvaluacionUsuario[] | undefine
 const ROL_SUPERVISOR = 'SUPERVISOR';
 const ROL_ENTRENADOR = 'ENTRENADOR';
 
-/** Slug de tipo de firma: producción solo supervisores; evaluador solo entrenadores. */
+/** Slug canónico y variantes slugificadas desde plantilla (p. ej. `firma-del-evaluador`). */
 const TIPO_FIRMA_EMPLEADO = 'empleado';
 const TIPO_FIRMA_PRODUCCION = 'produccion';
 const TIPO_FIRMA_EVALUADOR = 'evaluador';
+
+/**
+ * Firma "del evaluador" (solo ENTRENADOR/SUPERVISOR por área), no confundir con tipos genéricos
+ * que caen en lista mixta con ADMIN.
+ * Usa `tipo_firma` (slug) y, si hace falta, el nombre visible de la plantilla (p. ej. "Firma del Evaluador").
+ */
+function esFirmaModalEvaluador(
+  tipoFirma: string | undefined | null,
+  nombreDisplay?: string | null
+): boolean {
+  if (tipoFirma) {
+    const t = tipoFirma.toLowerCase();
+    if (t === TIPO_FIRMA_EVALUADOR) {
+      return true;
+    }
+    if (t.includes('evaluador') || t.includes('evaluator')) {
+      return true;
+    }
+    if (
+      t === 'firma-del-evaluador' ||
+      t === 'firma_del_evaluador' ||
+      t === 'firma-evaluador' ||
+      (t.includes('evaluador') && t.includes('firma'))
+    ) {
+      return true;
+    }
+  }
+  const n = (nombreDisplay || '').toLowerCase();
+  if (n.includes('evaluador') || n.includes('evaluator')) {
+    if (n.includes('empleado')) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function filtrarUsuariosPorArea(users: User[], areaId: number | null): User[] {
+  if (areaId == null) {
+    return users;
+  }
+  const aid = Number(areaId);
+  return users.filter(
+    (u) =>
+      Array.isArray(u.areas) && u.areas.map(Number).some((x) => x === aid)
+  );
+}
+
+function buscarUsuarioEnRolesSupervision(
+  id: number,
+  mixtos: User[],
+  supervisoresLista: User[],
+  instructoresLista: User[]
+): User | undefined {
+  return (
+    mixtos.find((u) => u.id === id) ??
+    supervisoresLista.find((u) => u.id === id) ??
+    instructoresLista.find((u) => u.id === id)
+  );
+}
 
 const esUsuarioSupervisor = (u: Pick<User, 'role'> | undefined | null) =>
   u?.role === ROL_SUPERVISOR;
@@ -225,26 +285,42 @@ function opcionesFirmantePorTipoFirma(
   tipoFirma: string,
   listaSupervisores: User[],
   listaEntrenadores: User[],
-  listaMixta: User[]
+  listaMixta: User[],
+  nombreFirma?: string | null
 ): User[] {
   if (tipoFirma === TIPO_FIRMA_PRODUCCION) {
     return listaSupervisores;
   }
-  if (tipoFirma === TIPO_FIRMA_EVALUADOR) {
-    return listaEntrenadores;
+  if (esFirmaModalEvaluador(tipoFirma, nombreFirma)) {
+    const map = new Map<number, User>();
+    for (const u of listaSupervisores) {
+      if (u.role === ROL_SUPERVISOR || u.role === ROL_ENTRENADOR) {
+        map.set(u.id, u);
+      }
+    }
+    for (const u of listaEntrenadores) {
+      if (u.role === ROL_SUPERVISOR || u.role === ROL_ENTRENADOR) {
+        map.set(u.id, u);
+      }
+    }
+    return ordenarUsuariosPorNombre(Array.from(map.values()));
   }
   return listaMixta;
 }
 
-function firmantePermitidoParaTipoFirma(tipoFirma: string, user: User | undefined): boolean {
+function firmantePermitidoParaTipoFirma(
+  tipoFirma: string,
+  user: User | undefined,
+  nombreFirma?: string | null
+): boolean {
   if (!user) {
     return false;
   }
   if (tipoFirma === TIPO_FIRMA_PRODUCCION) {
     return esUsuarioSupervisor(user);
   }
-  if (tipoFirma === TIPO_FIRMA_EVALUADOR) {
-    return esUsuarioEntrenador(user);
+  if (esFirmaModalEvaluador(tipoFirma, nombreFirma)) {
+    return esUsuarioEntrenador(user) || esUsuarioSupervisor(user);
   }
   return esRolSupervisionAmplia(user.role);
 }
@@ -372,6 +448,32 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     [visibleAreas]
   );
 
+  /** Área de la evaluación en curso: navegación o posición de la plantilla. */
+  const areaIdContextoEvaluacion = useMemo(() => {
+    if (selectedArea?.id != null) {
+      return selectedArea.id;
+    }
+    const posicionId =
+      evaluacionActual?.posicion ?? evaluacionActual?.nivel_posicion_data?.posicion ?? null;
+    if (typeof posicionId === 'number' && posiciones.length > 0) {
+      const pos = posiciones.find((p: Posicion) => p.id === posicionId);
+      if (pos?.area != null) {
+        return pos.area;
+      }
+    }
+    return null;
+  }, [selectedArea?.id, evaluacionActual, posiciones]);
+
+  const supervisoresParaFirmasPorArea = useMemo(
+    () => filtrarUsuariosPorArea(supervisores, areaIdContextoEvaluacion),
+    [supervisores, areaIdContextoEvaluacion]
+  );
+
+  const instructoresParaFirmasPorArea = useMemo(
+    () => filtrarUsuariosPorArea(instructores, areaIdContextoEvaluacion),
+    [instructores, areaIdContextoEvaluacion]
+  );
+
   // Combo Supervisor al iniciar evaluación: solo usuarios con rol SUPERVISOR.
   const opcionesSupervisorParaFormulario = useMemo(() => {
     return [...supervisores];
@@ -383,16 +485,23 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       return [];
     }
     const tipo = firmaModalAbierta.tipo;
+    const nombreFirma = firmaModalAbierta.nombre;
     const base = opcionesFirmantePorTipoFirma(
       tipo,
-      supervisores,
-      instructores,
-      usuariosFirmasRolesMixtos
+      supervisoresParaFirmasPorArea,
+      instructoresParaFirmasPorArea,
+      usuariosFirmasRolesMixtos,
+      nombreFirma
     );
     const id = firmaModalFirmante;
     if (id != null && !base.some((u) => u.id === id)) {
-      const found = usuariosFirmasRolesMixtos.find((u) => u.id === id);
-      if (found && firmantePermitidoParaTipoFirma(tipo, found)) {
+      const found = buscarUsuarioEnRolesSupervision(
+        id,
+        usuariosFirmasRolesMixtos,
+        supervisores,
+        instructores
+      );
+      if (found && firmantePermitidoParaTipoFirma(tipo, found, nombreFirma)) {
         return ordenarUsuariosPorNombre([...base, found]);
       }
     }
@@ -400,6 +509,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   }, [
     firmaModalAbierta,
     firmaModalFirmante,
+    supervisoresParaFirmasPorArea,
+    instructoresParaFirmasPorArea,
     supervisores,
     instructores,
     usuariosFirmasRolesMixtos,
@@ -608,21 +719,23 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       firmanteId = firmaPendiente.usuario;
     } else if (firmaUsuario?.usuario) {
       firmanteId = firmaUsuario.usuario;
-    } else if (firma.usuario) {
-      firmanteId = firma.usuario;
     } else if (
       tipo === TIPO_FIRMA_PRODUCCION &&
       supervisorSeleccionado &&
       supervisores.some((s) => s.id === supervisorSeleccionado)
     ) {
+      // Prioridad sobre firma.usuario de plantilla: el supervisor elegido en el formulario.
       firmanteId = supervisorSeleccionado;
+    } else if (firma.usuario) {
+      firmanteId = firma.usuario;
     }
 
     const opcionesFirma = opcionesFirmantePorTipoFirma(
       tipo,
-      supervisores,
-      instructores,
-      usuariosFirmasRolesMixtos
+      supervisoresParaFirmasPorArea,
+      instructoresParaFirmasPorArea,
+      usuariosFirmasRolesMixtos,
+      firma.nombre
     );
 
     if (
@@ -630,8 +743,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       tipo !== TIPO_FIRMA_EMPLEADO &&
       firmanteId != null
     ) {
-      const usuarioCandidato = usuariosFirmasRolesMixtos.find((u) => u.id === firmanteId);
-      if (!firmantePermitidoParaTipoFirma(tipo, usuarioCandidato)) {
+      const usuarioCandidato = buscarUsuarioEnRolesSupervision(
+        firmanteId,
+        usuariosFirmasRolesMixtos,
+        supervisores,
+        instructores
+      );
+      if (!firmantePermitidoParaTipoFirma(tipo, usuarioCandidato, firma.nombre)) {
         firmanteId = null;
       }
     }
@@ -750,10 +868,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           user.posiciones?.some((p) => p.posicion_id === selectedPosicion?.id) || user.posicion === selectedPosicion?.id
         );
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
-        // No exigir user.grupo === selectedGrupo: un usuario con varias posiciones en distintas áreas
-        // solo tiene un FK grupo; el API ya filtra por área y posición.
+        const tieneGrupo =
+          selectedGrupo?.id != null &&
+          (user.grupo === selectedGrupo.id || Number(user.grupo) === selectedGrupo.id);
         const esUsuarioValido = user.role === 'USUARIO' || user.role === 'ENTRENADOR';
-        return tienePosicion && tieneArea && esUsuarioValido;
+        return tienePosicion && tieneArea && tieneGrupo && esUsuarioValido;
       });
       
       const filtered = usuariosBase.filter(user => 
@@ -769,8 +888,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           user.posiciones?.some((p) => p.posicion_id === selectedPosicion?.id) || user.posicion === selectedPosicion?.id
         );
         const tieneArea = user.areas.includes(selectedArea?.id || 0);
+        const tieneGrupo =
+          selectedGrupo?.id != null &&
+          (user.grupo === selectedGrupo.id || Number(user.grupo) === selectedGrupo.id);
         const esUsuarioValido = user.role === 'USUARIO' || user.role === 'ENTRENADOR';
-        return tienePosicion && tieneArea && esUsuarioValido;
+        return tienePosicion && tieneArea && tieneGrupo && esUsuarioValido;
       });
       setFilteredUsuarios(usuariosFiltrados);
     }
@@ -1740,7 +1862,15 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         if (esFirmaEmpleado) {
           return selectedUser?.full_name || selectedUser?.username || null;
         }
-        const firmante = usuariosFirmasRolesMixtos.find((u) => u.id === usuarioFirmanteId);
+        if (usuarioFirmanteId == null) {
+          return null;
+        }
+        const firmante = buscarUsuarioEnRolesSupervision(
+          usuarioFirmanteId,
+          usuariosFirmasRolesMixtos,
+          supervisores,
+          instructores
+        );
         return firmante?.full_name || firmante?.username || null;
       };
 
@@ -3024,7 +3154,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                                     <FaRedo aria-hidden /> Nuevo intento
                                   </button>
                                 )}
-                                {isEntrenador && (
+                                {isEntrenador && !todasFirmasCompletas && (
                                   <button
                                     type="button"
                                     className="btn btn-firma-entrenador btn-sm"
@@ -3392,6 +3522,16 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     const firmaImagen = signatures[slug] ?? firmaUsuario?.imagen ?? firmaPendiente?.imagen ?? null;
                     const tieneFirma = Boolean(firmaImagen);
                     const estaFirmada = firmaUsuario?.esta_firmado ?? Boolean(firmaPendiente?.imagen);
+                    const supervisorProduccionDelFormulario =
+                      slug === TIPO_FIRMA_PRODUCCION &&
+                      supervisorSeleccionado &&
+                      supervisores.some((s) => s.id === supervisorSeleccionado)
+                        ? supervisores.find((s) => s.id === supervisorSeleccionado) ?? null
+                        : null;
+                    const nombreFirmanteSupervisorFormulario =
+                      supervisorProduccionDelFormulario?.full_name ??
+                      supervisorProduccionDelFormulario?.username ??
+                      null;
                     // Firma empleado: el firmante es siempre el evaluado (selectedUser), no firma.usuario_nombre de la plantilla.
                     const firmanteNombre =
                       slug === 'empleado'
@@ -3402,6 +3542,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                           null
                         : firmaUsuario?.usuario_nombre ??
                           firmaPendiente?.usuarioNombre ??
+                          nombreFirmanteSupervisorFormulario ??
                           firma.usuario_nombre ??
                           null;
                     const estadoDisplay =
@@ -3424,6 +3565,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     const usuarioAsignadoFirma =
                       firmaUsuario?.usuario ??
                       firmaPendiente?.usuario ??
+                      (supervisorProduccionDelFormulario
+                        ? supervisorProduccionDelFormulario.id
+                        : null) ??
                       firma.usuario ??
                       (firma.tipo_firma === 'empleado' ? selectedUser?.id ?? null : null);
 
@@ -3555,8 +3699,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                           <div className="firma-firmante-info">
                             {firmaModalAbierta.tipo === TIPO_FIRMA_PRODUCCION
                               ? 'No hay supervisores disponibles para firmar.'
-                              : firmaModalAbierta.tipo === TIPO_FIRMA_EVALUADOR
-                                ? 'No hay entrenadores disponibles para firmar.'
+                              : esFirmaModalEvaluador(
+                                  firmaModalAbierta.tipo,
+                                  firmaModalAbierta.nombre
+                                )
+                                ? 'No hay supervisores ni entrenadores del área disponibles para firmar.'
                                 : 'No hay usuarios disponibles para firmar.'}
                           </div>
                         )}

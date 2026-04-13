@@ -7,6 +7,8 @@
   --reporte-gray: #666666;
   --reporte-gray-light: #e0e0e0;
   --reporte-gray-bg: #f5f5f5;
+  /* Columna Promedio (Training Matrix): encabezado verde claro */
+  --reporte-prom-head-green: #d8f0e0;
 }
 
 .reportes-container {
@@ -532,10 +534,16 @@
   min-width: 480px;
 }
 
-.matrix-cer-table th.matrix-cer-promedio-col,
+/* Solo celdas de datos; el th usa .matrix-prom-head-xls (verde claro) */
 .matrix-cer-table td.matrix-cer-promedio-cell {
   background: var(--reporte-gray-light);
   font-weight: 600;
+}
+
+.matrix-cer-table td.matrix-cer-promedio-cell.matrix-prom-data-cell {
+  background: var(--reporte-gray-light);
+  color: var(--reporte-black);
+  font-weight: 700;
 }
 
 .matrix-cer-first-col {
@@ -875,16 +883,10 @@
 }
 
 .matrix-prom-head-xls {
-  background: #1d7a4a;
-  color: #fff;
+  background: var(--reporte-prom-head-green);
+  color: var(--reporte-black);
   font-weight: 700;
   font-size: 0.8rem;
-}
-
-.matrix-prom-data-cell {
-  background: #6b6b6b;
-  color: #fff;
-  font-weight: 700;
 }
 
 .matrix-area-summary-row .matrix-area-summary-cell {

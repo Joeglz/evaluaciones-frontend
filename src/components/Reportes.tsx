@@ -40,6 +40,21 @@ type TabType = 'avance-global' | 'advance-training-monthly' | 'advance-training-
 
 type MonthlyRow = { month: string; [areaName: string]: string | number | null };
 
+/** Agrupa filas de Avance Global por tipo de área (misma lógica que el backend). */
+function splitAvanceGlobalByTipo(
+  rows: AvanceGlobalResponse[],
+  areasList: Area[]
+): { produccion: AvanceGlobalResponse[]; soporte: AvanceGlobalResponse[] } {
+  const produccion: AvanceGlobalResponse[] = [];
+  const soporte: AvanceGlobalResponse[] = [];
+  rows.forEach((row) => {
+    const t = row.tipo_area ?? areasList.find((a) => a.id === row.area_id)?.tipo_area;
+    if (t === 'soporte') soporte.push(row);
+    else produccion.push(row);
+  });
+  return { produccion, soporte };
+}
+
 interface ReportesProps {
   userRole?: string;
 }
@@ -186,6 +201,11 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const formatPercentage = (value: number): string => {
     return `${value.toFixed(2)}%`;
   };
+
+  const avanceGlobalSplit = useMemo(
+    () => splitAvanceGlobalByTipo(reportData, areas),
+    [reportData, areas]
+  );
 
   const buildExcelWithCharts = useCallback(async (
     dataArr: AvanceGlobalResponse[] | any[],
@@ -520,7 +540,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             className="btn-export-excel"
             onClick={() => {
               if (reportData.length === 0) return;
-              setExportChartData(reportData);
+              setExportChartData([...avanceGlobalSplit.produccion, ...avanceGlobalSplit.soporte]);
               setExportChartType('avance-global');
               setExportFileName(`Reporte_Avance_Global_${new Date().toISOString().slice(0, 10)}.xlsx`);
             }}
@@ -535,70 +555,144 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         <div className="reportes-loading">Cargando datos...</div>
       ) : viewMode === 'chart' ? (
         <div className="reportes-chart-container">
-          {reportData.map((areaData) => (
-            <div key={areaData.area_id} className="reporte-chart-block">
-              <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                  <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
-                  <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
-                  <Legend />
-                  <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
-                  <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
-                  <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
-                  <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
-                  <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ))}
+          {avanceGlobalSplit.produccion.length > 0 && (
+            <>
+              <h2 className="matrix-section-title">Producción</h2>
+              {avanceGlobalSplit.produccion.map((areaData) => (
+                <div key={areaData.area_id} className="reporte-chart-block">
+                  <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                      <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
+                      <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                      <Legend />
+                      <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
+                      <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
+                      <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
+                      <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
+                      <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+            </>
+          )}
+          {avanceGlobalSplit.soporte.length > 0 && (
+            <>
+              <h2 className="matrix-section-title">Soporte</h2>
+              {avanceGlobalSplit.soporte.map((areaData) => (
+                <div key={areaData.area_id} className="reporte-chart-block">
+                  <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                      <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
+                      <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                      <Legend />
+                      <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
+                      <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
+                      <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
+                      <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
+                      <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+            </>
+          )}
           {reportData.length === 0 && (
             <div className="reportes-empty">No hay datos disponibles para los filtros seleccionados.</div>
           )}
         </div>
       ) : (
         <div className="reportes-content">
-          {reportData.map((areaData) => (
-            <div key={areaData.area_id} className="reporte-table-container">
-              <div className="reporte-table-header">
-                <div className="reporte-week-label">CW {areaData.week}</div>
-                <h2>{areaData.area_nombre}</h2>
-          </div>
-              <table className="reporte-table">
-                <thead>
-                  <tr>
-                    <th>Grupo</th>
-                    <th>Entrenamiento</th>
-                    <th>Nivel 1</th>
-                    <th>Nivel 2</th>
-                    <th>Nivel 3</th>
-                    <th>Nivel 4</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {areaData.grupos.map((grupo, index) => (
-                    <tr
-                      key={`${areaData.area_id}-${grupo.grupo_id ?? 'promedio'}-${index}`}
-                      className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
-                    >
-                      <td className="grupo-cell">{grupo.grupo_nombre}</td>
-                      <td>{formatPercentage((grupo as any).entrenamiento ?? grupo.nivel_1)}</td>
-                      <td>{formatPercentage(grupo.nivel_1)}</td>
-                      <td>{formatPercentage(grupo.nivel_2)}</td>
-                      <td>{formatPercentage(grupo.nivel_3)}</td>
-                      <td>{formatPercentage(grupo.nivel_4)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
+          {avanceGlobalSplit.produccion.length > 0 && (
+            <>
+              <h2 className="matrix-section-title">Producción</h2>
+              {avanceGlobalSplit.produccion.map((areaData) => (
+                <div key={areaData.area_id} className="reporte-table-container">
+                  <div className="reporte-table-header">
+                    <div className="reporte-week-label">CW {areaData.week}</div>
+                    <h2>{areaData.area_nombre}</h2>
+                  </div>
+                  <table className="reporte-table">
+                    <thead>
+                      <tr>
+                        <th>Grupo</th>
+                        <th>Entrenamiento</th>
+                        <th>Nivel 1</th>
+                        <th>Nivel 2</th>
+                        <th>Nivel 3</th>
+                        <th>Nivel 4</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {areaData.grupos.map((grupo, index) => (
+                        <tr
+                          key={`${areaData.area_id}-${grupo.grupo_id ?? 'promedio'}-${index}`}
+                          className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
+                        >
+                          <td className="grupo-cell">{grupo.grupo_nombre}</td>
+                          <td>{formatPercentage((grupo as any).entrenamiento ?? grupo.nivel_1)}</td>
+                          <td>{formatPercentage(grupo.nivel_1)}</td>
+                          <td>{formatPercentage(grupo.nivel_2)}</td>
+                          <td>{formatPercentage(grupo.nivel_3)}</td>
+                          <td>{formatPercentage(grupo.nivel_4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </>
+          )}
+          {avanceGlobalSplit.soporte.length > 0 && (
+            <>
+              <h2 className="matrix-section-title">Soporte</h2>
+              {avanceGlobalSplit.soporte.map((areaData) => (
+                <div key={areaData.area_id} className="reporte-table-container">
+                  <div className="reporte-table-header">
+                    <div className="reporte-week-label">CW {areaData.week}</div>
+                    <h2>{areaData.area_nombre}</h2>
+                  </div>
+                  <table className="reporte-table">
+                    <thead>
+                      <tr>
+                        <th>Grupo</th>
+                        <th>Entrenamiento</th>
+                        <th>Nivel 1</th>
+                        <th>Nivel 2</th>
+                        <th>Nivel 3</th>
+                        <th>Nivel 4</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {areaData.grupos.map((grupo, index) => (
+                        <tr
+                          key={`${areaData.area_id}-${grupo.grupo_id ?? 'promedio'}-${index}`}
+                          className={isAverageRow(grupo.grupo_nombre) ? 'average-row' : ''}
+                        >
+                          <td className="grupo-cell">{grupo.grupo_nombre}</td>
+                          <td>{formatPercentage((grupo as any).entrenamiento ?? grupo.nivel_1)}</td>
+                          <td>{formatPercentage(grupo.nivel_1)}</td>
+                          <td>{formatPercentage(grupo.nivel_2)}</td>
+                          <td>{formatPercentage(grupo.nivel_3)}</td>
+                          <td>{formatPercentage(grupo.nivel_4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </>
+          )}
           {reportData.length === 0 && !loading && (
             <div className="reportes-empty">
               No hay datos disponibles para los filtros seleccionados.
-        </div>
+            </div>
           )}
         </div>
       )}
@@ -1600,25 +1694,66 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               );
             })()
           ) : (
-            (exportChartData as AvanceGlobalResponse[]).map((areaData, idx) => (
-              <div key={idx} className="reporte-chart-block" style={{ width: 800, height: 400 }}>
-                <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
-                <ResponsiveContainer width={800} height={350}>
-                  <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                    <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
-                    <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                    <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
-                    <Legend />
-                    <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
-                    <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
-                    <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
-                    <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
-                    <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ))
+            (() => {
+              const raw = exportChartData as AvanceGlobalResponse[];
+              const { produccion, soporte } = splitAvanceGlobalByTipo(raw, areas);
+              return (
+                <>
+                  {produccion.length > 0 && (
+                    <>
+                      <h2 className="matrix-section-title" style={{ width: 800, marginTop: 0 }}>
+                        Producción
+                      </h2>
+                      {produccion.map((areaData, idx) => (
+                        <div key={`ag-p-${areaData.area_id}-${idx}`} className="reporte-chart-block" style={{ width: 800, height: 400 }}>
+                          <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
+                          <ResponsiveContainer width={800} height={350}>
+                            <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                              <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
+                              <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                              <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                              <Legend />
+                              <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
+                              <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
+                              <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
+                              <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
+                              <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {soporte.length > 0 && (
+                    <>
+                      <h2 className="matrix-section-title" style={{ width: 800, marginTop: produccion.length > 0 ? undefined : 0 }}>
+                        Soporte
+                      </h2>
+                      {soporte.map((areaData, idx) => (
+                        <div key={`ag-s-${areaData.area_id}-${idx}`} className="reporte-chart-block" style={{ width: 800, height: 400 }}>
+                          <h3 className="reporte-chart-title">CW {areaData.week} - {areaData.area_nombre}</h3>
+                          <ResponsiveContainer width={800} height={350}>
+                            <BarChart data={getChartData([areaData])} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                              <XAxis dataKey="name" stroke={COLORS.black} angle={-35} textAnchor="end" height={80} />
+                              <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                              <Tooltip formatter={(value: number | undefined) => (value != null ? [`${value.toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                              <Legend />
+                              <Bar dataKey="Entrenamiento" fill={CHART_COLORS[0]} name="Entrenamiento" />
+                              <Bar dataKey="Nivel1" fill={CHART_COLORS[1]} name="Nivel 1" />
+                              <Bar dataKey="Nivel2" fill={CHART_COLORS[2]} name="Nivel 2" />
+                              <Bar dataKey="Nivel3" fill={CHART_COLORS[3]} name="Nivel 3" />
+                              <Bar dataKey="Nivel4" fill={CHART_COLORS[4]} name="Nivel 4" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              );
+            })()
           )}
         </div>
       )}
