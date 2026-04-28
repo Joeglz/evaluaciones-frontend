@@ -546,6 +546,13 @@
   font-weight: 700;
 }
 
+/* Promedio: solo la fila Prom. área (roja) muestra valor; objetivo y datos llevan celda vacía */
+.matrix-cer-table .matrix-target-row td.matrix-cer-promedio-cell.matrix-prom-celda-vacia,
+.matrix-cer-table .matrix-actual-row td.matrix-cer-promedio-cell.matrix-prom-celda-vacia {
+  background: #fff;
+  padding: 0.45rem 0.5rem;
+}
+
 .matrix-cer-first-col {
   min-width: 11rem;
   text-align: left;

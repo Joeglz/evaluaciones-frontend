@@ -106,6 +106,9 @@ const esEvaluacionNoAprobadaEnLista = (
   return tieneResultadoGuardado && !aprobadaSegunMinimo;
 };
 
+/** Alineado con `users/nivel_completitud.py` (porcentaje mínimo para marcar nivel completo). */
+const PORCENTAJE_MINIMO_NIVEL_COMPLETO = 90;
+
 const calcularResumenNiveles = (
   evaluacionesLista: any[],
   guardadasMap: Record<number, EvaluacionUsuario>
@@ -143,7 +146,10 @@ const calcularResumenNiveles = (
   const completados: Record<number, boolean> = {};
   Object.entries(stats).forEach(([nivel, valores]) => {
     const nivelNumero = Number(nivel);
-    completados[nivelNumero] = valores.total > 0 && valores.total === valores.completadas;
+    const { total, completadas } = valores;
+    completados[nivelNumero] =
+      total > 0 &&
+      completadas * 100 >= total * PORCENTAJE_MINIMO_NIVEL_COMPLETO;
   });
 
   return { stats, completados };
@@ -323,6 +329,59 @@ function firmantePermitidoParaTipoFirma(
     return esUsuarioEntrenador(user) || esUsuarioSupervisor(user);
   }
   return esRolSupervisionAmplia(user.role);
+}
+
+/** Misma lógica que el API (`order_by('created_at')`): más antiguas primero. */
+function ordenEvaluacionesPorCreacionEnSistema(
+  a: { id?: number; created_at?: string | null },
+  b: { id?: number; created_at?: string | null }
+): number {
+  const ta =
+    a.created_at != null && String(a.created_at).trim() !== ''
+      ? new Date(a.created_at as string).getTime()
+      : NaN;
+  const tb =
+    b.created_at != null && String(b.created_at).trim() !== ''
+      ? new Date(b.created_at as string).getTime()
+      : NaN;
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) {
+    return ta - tb;
+  }
+  return (Number(a.id) || 0) - (Number(b.id) || 0);
+}
+
+/**
+ * Orden en lista de perfil: no aprobadas primero; luego pendientes/en curso;
+ * al final las ya evaluadas (registro completado o con resultado, y no no aprobada).
+ * Dentro de cada bloque se mantiene el orden de carga en el sistema.
+ */
+function compararEvaluacionesOrdenListaAsignadas(
+  a: { id: number; nombre?: string; minimo_aprobatorio?: number | null; created_at?: string | null },
+  b: { id: number; nombre?: string; minimo_aprobatorio?: number | null; created_at?: string | null },
+  guardadasMap: Record<number, EvaluacionUsuario>
+): number {
+  const tier = (e: typeof a): number => {
+    if (esEvaluacionNoAprobadaEnLista(e, guardadasMap)) {
+      return 0;
+    }
+    const eu = guardadasMap[e.id];
+    if (!eu) {
+      return 1;
+    }
+    const estadoNormalizado = (eu.estado || '').toLowerCase();
+    const completadaPorRegistro =
+      estadoNormalizado === 'completada' || eu.resultado_final != null;
+    if (completadaPorRegistro) {
+      return 2;
+    }
+    return 1;
+  };
+  const ta = tier(a);
+  const tb = tier(b);
+  if (ta !== tb) {
+    return ta - tb;
+  }
+  return ordenEvaluacionesPorCreacionEnSistema(a, b);
 }
 
 interface EvaluacionesProps {
@@ -1027,15 +1086,39 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         completadosAgrupados[progreso.usuario][progreso.nivel] = progreso.completado;
       });
 
-      setProgresosNivel((prev) => ({
-        ...prev,
-        ...progresosAgrupados
-      }));
+      setProgresosNivel((prev) => {
+        const next = { ...prev };
+        Object.entries(progresosAgrupados).forEach(([usuarioIdStr, nivelesPorNivel]) => {
+          const usuarioId = Number(usuarioIdStr);
+          next[usuarioId] = {
+            ...(prev[usuarioId] ?? {}),
+            ...(nivelesPorNivel as Record<number, ProgresoNivel>),
+          };
+        });
+        return next;
+      });
 
-      setNivelesCompletosPorUsuario((prev) => ({
-        ...prev,
-        ...completadosAgrupados
-      }));
+      setNivelesCompletosPorUsuario((prev) => {
+        const next = { ...prev };
+        Object.entries(completadosAgrupados).forEach(([usuarioIdStr, nivelesApi]) => {
+          const usuarioId = Number(usuarioIdStr);
+          const anterior = prev[usuarioId] ?? {};
+          const fusionado: Record<number, boolean> = { ...anterior };
+          Object.entries(nivelesApi).forEach(([nivelStr, apiCompletado]) => {
+            const nivel = Number(nivelStr);
+            const prevCompletado = anterior[nivel];
+            /* ProgresoNivel (backend) y calcularResumenNiveles (firmas en EvaluacionUsuario)
+             * pueden discrepar; no bajar un nivel ya marcado completo por el resumen de evaluaciones. */
+            if (prevCompletado === true && apiCompletado === false) {
+              fusionado[nivel] = true;
+            } else {
+              fusionado[nivel] = Boolean(apiCompletado);
+            }
+          });
+          next[usuarioId] = fusionado;
+        });
+        return next;
+      });
     } catch (error) {
       console.error('Error al cargar progresos de nivel:', error);
     }
@@ -1076,6 +1159,23 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setLoading(false);
       }
     }
+  };
+
+  /**
+   * Usuarios regulares del área para listas de asistencia (ONBOARDING).
+   * No depende de posición/grupo; el backend admite evaluaciones=1 solo con area_id.
+   */
+  const loadUsuariosRegularesPorArea = async (area: Area): Promise<User[]> => {
+    const usuariosAll = await apiService.getUsersAll({
+      is_active: true,
+      evaluaciones: true,
+      area_id: area.id,
+      role: 'USUARIO',
+    });
+    const ordenados = ordenarUsuariosPorEmpleado(usuariosAll);
+    const regulares = ordenados.filter((user) => user.role === 'USUARIO');
+    setUsuariosRegulares(regulares);
+    return regulares;
   };
 
   const loadData = async (): Promise<Area[]> => {
@@ -1193,12 +1293,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         guardadasMap[registro.evaluacion] = registro;
       });
 
-      const ordenadas = [...(evaluaciones || [])].sort((a: any, b: any) => {
-        const aCompleta = guardadasMap[a.id]?.estado === 'completada';
-        const bCompleta = guardadasMap[b.id]?.estado === 'completada';
-        if (aCompleta === bCompleta) return 0;
-        return aCompleta ? 1 : -1;
-      });
+      const ordenadas = [...(evaluaciones || [])].sort((a, b) =>
+        compararEvaluacionesOrdenListaAsignadas(a, b, guardadasMap)
+      );
       setEvaluacionesUsuario(ordenadas);
       setEvaluacionesUsuarioGuardadas(guardadasMap);
 
@@ -1625,10 +1722,12 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
   const generarPdfEvaluacionesNivel = async (): Promise<{ doc: jsPDF; lista: any[] } | null> => {
     if (!selectedUser) return null;
     const nivel = nivelSeleccionado ?? null;
-    const lista = evaluacionesUsuario.filter((evaluacion: any) => {
-      const n = evaluacion.nivel_posicion_data?.nivel ?? evaluacion.nivel ?? null;
-      return n === nivel;
-    });
+    const lista = evaluacionesUsuario
+      .filter((evaluacion: any) => {
+        const n = evaluacion.nivel_posicion_data?.nivel ?? evaluacion.nivel ?? null;
+        return n === nivel;
+      })
+      .sort((a, b) => compararEvaluacionesOrdenListaAsignadas(a, b, evaluacionesUsuarioGuardadas));
     if (lista.length === 0) return null;
 
     const viewAnterior = currentView;
@@ -2169,12 +2268,12 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         showSuccess('Evaluación guardada exitosamente');
       }
 
-      await loadEvaluacionesUsuario(selectedUser);
       if (selectedPosicion?.id) {
         await loadProgresosNivel(selectedPosicion.id);
       } else {
         await loadProgresosNivel();
       }
+      await loadEvaluacionesUsuario(selectedUser);
       setCurrentView('usuario-detalle');
     } catch (error: any) {
       console.error('Error guardando evaluación:', error);
@@ -2184,55 +2283,80 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     }
   };
 
-  const handleCrearListaAsistencia = () => {
+  const handleCrearListaAsistencia = async () => {
     if (isVisor) {
       showError('No tienes permisos para crear listas de asistencia.');
       return;
     }
-    setFormData(prev => ({ ...prev, area: selectedArea?.id || 0 }));
-    setIsEditing(false);
-    setEditingListaId(null);
-    setCurrentView('lista-asistencia-form');
+    if (!selectedArea) {
+      showError('No hay área seleccionada.');
+      return;
+    }
+    try {
+      setLoading(true);
+      await loadUsuariosRegularesPorArea(selectedArea);
+      setFormData((prev) => ({ ...prev, area: selectedArea.id }));
+      setIsEditing(false);
+      setEditingListaId(null);
+      setCurrentView('lista-asistencia-form');
+    } catch (err) {
+      console.error('Error al cargar usuarios para la lista de asistencia:', err);
+      showError('No se pudieron cargar los usuarios del área.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleEditarLista = (lista: ListaAsistencia) => {
+  const handleEditarLista = async (lista: ListaAsistencia) => {
     if (isVisor) {
       showError('No tienes permisos para editar listas de asistencia.');
       return;
     }
-    setFormData({
-      nombre: lista.nombre,
-      supervisor: lista.supervisor,
-      instructor: lista.instructor,
-      usuarios_regulares: lista.usuarios_regulares,
-      area: lista.area,
-      is_active: lista.is_active
-    });
-    setIsEditing(true);
-    setEditingListaId(lista.id);
-    setCurrentView('lista-asistencia-form');
-    
-    // Cargar usuarios asignados a esta lista
-    const usuariosAsignados = usuariosRegulares.filter(user => 
-      lista.usuarios_regulares.includes(user.id)
-    );
-    setUsuariosSeleccionados(usuariosAsignados);
-    
-    // Cargar fechas de usuarios desde la lista (si están disponibles)
-    const fechasIniciales: Record<number, string> = {};
-    if (lista.usuarios_fechas) {
-      Object.keys(lista.usuarios_fechas).forEach(usuarioIdStr => {
-        const usuarioId = parseInt(usuarioIdStr);
-        fechasIniciales[usuarioId] = lista.usuarios_fechas![usuarioIdStr];
-      });
+    const areaParaUsuarios =
+      selectedArea?.id === lista.area ? selectedArea : areas.find((a) => a.id === lista.area);
+    if (!areaParaUsuarios) {
+      showError('No se encontró el área de esta lista.');
+      return;
     }
-    // Si no hay fechas en la lista, usar fecha de hoy como default
-    usuariosAsignados.forEach(user => {
-      if (!fechasIniciales[user.id]) {
-        fechasIniciales[user.id] = new Date().toISOString().split('T')[0];
+    try {
+      setLoading(true);
+      const regulares = await loadUsuariosRegularesPorArea(areaParaUsuarios);
+      setFormData({
+        nombre: lista.nombre,
+        supervisor: lista.supervisor,
+        instructor: lista.instructor,
+        usuarios_regulares: lista.usuarios_regulares,
+        area: lista.area,
+        is_active: lista.is_active,
+      });
+      setIsEditing(true);
+      setEditingListaId(lista.id);
+      setCurrentView('lista-asistencia-form');
+
+      const usuariosAsignados = regulares.filter((user) =>
+        lista.usuarios_regulares.includes(user.id)
+      );
+      setUsuariosSeleccionados(usuariosAsignados);
+
+      const fechasIniciales: Record<number, string> = {};
+      if (lista.usuarios_fechas) {
+        Object.keys(lista.usuarios_fechas).forEach((usuarioIdStr) => {
+          const usuarioId = parseInt(usuarioIdStr, 10);
+          fechasIniciales[usuarioId] = lista.usuarios_fechas![usuarioIdStr];
+        });
       }
-    });
-    setFechasUsuarios(fechasIniciales);
+      usuariosAsignados.forEach((user) => {
+        if (!fechasIniciales[user.id]) {
+          fechasIniciales[user.id] = new Date().toISOString().split('T')[0];
+        }
+      });
+      setFechasUsuarios(fechasIniciales);
+    } catch (err) {
+      console.error('Error al cargar usuarios para editar lista:', err);
+      showError('No se pudieron cargar los usuarios del área.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const goBack = () => {
@@ -2823,7 +2947,11 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     ]
                       .filter(Boolean)
                       .join(' ');
-                    return <div key={nivel} className={clases}></div>;
+                    return (
+                      <div key={nivel} className={clases}>
+                        <span className="cuadro-nivel-numero">{nivel}</span>
+                      </div>
+                    );
                   })}
                 </div>
                 <div className="usuario-arrow">
@@ -2880,16 +3008,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           null;
         return nivelEvaluacion === nivelActual;
       })
-      .sort((a, b) => {
-        const aNo = esEvaluacionNoAprobadaEnLista(a, evaluacionesUsuarioGuardadas);
-        const bNo = esEvaluacionNoAprobadaEnLista(b, evaluacionesUsuarioGuardadas);
-        if (aNo !== bNo) {
-          return aNo ? -1 : 1;
-        }
-        const nombreA = typeof a.nombre === 'string' ? a.nombre : '';
-        const nombreB = typeof b.nombre === 'string' ? b.nombre : '';
-        return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base' });
-      });
+      .sort((a, b) => compararEvaluacionesOrdenListaAsignadas(a, b, evaluacionesUsuarioGuardadas));
 
     const posicionVistaDetalle =
       selectedPosicion?.id ?? selectedUser.posicion ?? null;
@@ -3898,12 +4017,36 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
 
   const renderListaAsistenciaForm = () => {
     // Obtener usuarios asignados y no asignados
-    const usuariosAsignados = usuariosRegulares.filter(user => 
+    const usuariosAsignados = usuariosRegulares.filter(user =>
       formData.usuarios_regulares.includes(user.id)
     );
-    const usuariosDisponibles = usuariosRegulares.filter(user => 
+    const usuariosDisponibles = usuariosRegulares.filter(user =>
       !formData.usuarios_regulares.includes(user.id)
     );
+
+    const nombrePosicionLista = (usuario: User) =>
+      usuario.posicion
+        ? posiciones.find((p) => p.id === usuario.posicion)?.name ?? 'Sin posición'
+        : 'Sin posición';
+
+    const termLista = searchTerm.trim().toLowerCase();
+    const matchUsuarioLista = (u: User) =>
+      !termLista ||
+      u.full_name.toLowerCase().includes(termLista) ||
+      (u.email ?? '').toLowerCase().includes(termLista);
+
+    const asignadosFiltradosLista = usuariosAsignados.filter(matchUsuarioLista);
+    const disponiblesFiltradosLista = usuariosDisponibles.filter(matchUsuarioLista);
+    const filasListaUsuarios = [...asignadosFiltradosLista, ...disponiblesFiltradosLista];
+
+    const puedeEditarFechaLista =
+      effectiveUserRole === 'ADMIN' ||
+      effectiveUserRole === 'ENTRENADOR' ||
+      effectiveUserRole === 'SUPERVISOR';
+
+    const sinUsuariosEnSistema = usuariosRegulares.length === 0;
+    const sinResultadosBusquedaLista =
+      !sinUsuariosEnSistema && filasListaUsuarios.length === 0;
 
     return (
       <div className="evaluaciones-section">
@@ -3966,7 +4109,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
           </div>
 
           {/* Usuarios */}
-          <div className="form-section">
+          <div className="form-section form-section--usuarios-lista">
             <h3>Usuarios</h3>
             <div className="search-bar">
               <FaSearch />
@@ -3977,80 +4120,99 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="usuarios-lista">
-              {/* Usuarios asignados primero */}
-              {usuariosAsignados.map((usuario) => (
-                <div key={usuario.id} className="usuario-card-item usuario-asignado">
-                  <div className="usuario-info-lista">
-                    <span className="usuario-nombre">
-                      {usuario.full_name} ({usuario.posicion ? 
-                        posiciones.find(p => p.id === usuario.posicion)?.name || 'Sin posición' 
-                        : 'Sin posición'
-                      })
-                    </span>
-                    {(effectiveUserRole === 'ADMIN' ||
-                      effectiveUserRole === 'ENTRENADOR' ||
-                      effectiveUserRole === 'SUPERVISOR') && (
-                      <div className="usuario-fecha-input">
-                        <label>Fecha:</label>
-                        <input
-                          type="date"
-                          value={fechasUsuarios[usuario.id] || new Date().toISOString().split('T')[0]}
-                          onChange={(e) => handleFechaUsuarioChange(usuario.id, e.target.value)}
-                          className="fecha-usuario-input"
-                        />
-                      </div>
-                    )}
-                    {effectiveUserRole !== 'ADMIN' &&
-                      effectiveUserRole !== 'ENTRENADOR' &&
-                      effectiveUserRole !== 'SUPERVISOR' && (
-                      <div className="usuario-fecha-display">
-                        <span>Fecha: {fechasUsuarios[usuario.id] ? new Date(fechasUsuarios[usuario.id]).toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES')}</span>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className="btn-quitar-usuario"
-                    onClick={() => handleUsuarioToggle(usuario)}
-                    title="Quitar de la lista"
-                  >
-                    <FaTimes />
-                  </button>
-                </div>
-              ))}
-              
-              {/* Usuarios disponibles */}
-              {usuariosDisponibles
-                .filter(usuario => 
-                  usuario.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  usuario.email.toLowerCase().includes(searchTerm.toLowerCase())
-                )
-                .map((usuario) => (
-                <div key={usuario.id} className="usuario-card-item">
-                  <div className="usuario-info-lista">
-                    <span className="usuario-nombre">
-                      {usuario.full_name} ({usuario.posicion ? 
-                        posiciones.find(p => p.id === usuario.posicion)?.name || 'Sin posición' 
-                        : 'Sin posición'
-                      })
-                    </span>
-                  </div>
-                  <button
-                    className="btn-agregar-usuario"
-                    onClick={() => handleUsuarioToggle(usuario)}
-                    title="Agregar a la lista"
-                  >
-                    <FaPlus />
-                  </button>
-                </div>
-              ))}
-              
-              {usuariosAsignados.length === 0 && usuariosDisponibles.length === 0 && (
-                <div className="no-usuarios">
-                  <p>No hay usuarios disponibles</p>
-                </div>
-              )}
-            </div>
+            {sinUsuariosEnSistema ? (
+              <div className="lista-usuarios-estado-vacio">
+                <p className="no-usuarios">No hay usuarios disponibles</p>
+              </div>
+            ) : sinResultadosBusquedaLista ? (
+              <div className="lista-usuarios-estado-vacio">
+                <p className="lista-usuarios-sin-resultados">No hay resultados para tu búsqueda</p>
+              </div>
+            ) : (
+              <div
+                className="lista-usuarios-scroll"
+                role="region"
+                aria-label="Listado de usuarios para la lista de asistencia"
+              >
+                <table className="lista-usuarios-tabla">
+                  <thead>
+                    <tr>
+                      <th scope="col">En lista</th>
+                      <th scope="col">Nombre</th>
+                      <th scope="col">Posición</th>
+                      <th scope="col">Fecha</th>
+                      <th scope="col">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasListaUsuarios.map((usuario) => {
+                      const asignado = formData.usuarios_regulares.includes(usuario.id);
+                      return (
+                        <tr
+                          key={usuario.id}
+                          className={
+                            asignado
+                              ? 'lista-usuario-fila lista-usuario-fila--asignado'
+                              : 'lista-usuario-fila'
+                          }
+                        >
+                          <td>{asignado ? 'Sí' : 'No'}</td>
+                          <td>{usuario.full_name}</td>
+                          <td>{nombrePosicionLista(usuario)}</td>
+                          <td className="lista-usuario-fecha-cell">
+                            {asignado && puedeEditarFechaLista ? (
+                              <input
+                                type="date"
+                                value={
+                                  fechasUsuarios[usuario.id] ||
+                                  new Date().toISOString().split('T')[0]
+                                }
+                                onChange={(e) =>
+                                  handleFechaUsuarioChange(usuario.id, e.target.value)
+                                }
+                                className="fecha-usuario-input fecha-usuario-input--tabla"
+                                aria-label={`Fecha para ${usuario.full_name}`}
+                              />
+                            ) : asignado && !puedeEditarFechaLista ? (
+                              <span className="lista-usuario-fecha-texto">
+                                {fechasUsuarios[usuario.id]
+                                  ? new Date(
+                                      fechasUsuarios[usuario.id]
+                                    ).toLocaleDateString('es-ES')
+                                  : new Date().toLocaleDateString('es-ES')}
+                              </span>
+                            ) : (
+                              <span className="lista-usuario-fecha-vacio">—</span>
+                            )}
+                          </td>
+                          <td className="lista-usuarios-accion">
+                            {asignado ? (
+                              <button
+                                type="button"
+                                className="btn-quitar-usuario"
+                                onClick={() => handleUsuarioToggle(usuario)}
+                                title="Quitar de la lista"
+                              >
+                                <FaTimes />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-agregar-usuario"
+                                onClick={() => handleUsuarioToggle(usuario)}
+                                title="Agregar a la lista"
+                              >
+                                <FaPlus />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Botones de acción */}

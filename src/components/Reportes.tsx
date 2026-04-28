@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FaFileExcel, FaChartBar, FaTable } from 'react-icons/fa';
-import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import html2canvas from 'html2canvas';
 import {
@@ -55,6 +54,137 @@ function splitAvanceGlobalByTipo(
   return { produccion, soporte };
 }
 
+const MATRIX_EXPORT_DEFAULT_TARGETS = {
+  training: 100,
+  nivel_1: 100,
+  nivel_2: 100,
+  nivel_3: 100,
+  nivel_4: 100,
+};
+
+const MATRIX_EXPORT_LEVEL_DEFS: {
+  targetKey: keyof typeof MATRIX_EXPORT_DEFAULT_TARGETS;
+  field: 'entrenamiento' | 'nivel_1' | 'nivel_2' | 'nivel_3' | 'nivel_4';
+  label: string;
+}[] = [
+  { targetKey: 'training', field: 'entrenamiento', label: 'Entrenamiento' },
+  { targetKey: 'nivel_1', field: 'nivel_1', label: 'Nivel 1' },
+  { targetKey: 'nivel_2', field: 'nivel_2', label: 'Nivel 2' },
+  { targetKey: 'nivel_3', field: 'nivel_3', label: 'Nivel 3' },
+  { targetKey: 'nivel_4', field: 'nivel_4', label: 'Nivel 4' },
+];
+
+function gruposSinPromedioMatrixExport(grupos: any[]) {
+  return (grupos || []).filter((g) => String(g.grupo_nombre).toUpperCase() !== 'PROMEDIO');
+}
+
+type MatrixColDescExport = {
+  key: string;
+  areaId: number;
+  areaNombre: string;
+  grupo: any;
+};
+
+function buildMatrixColumnsExport(areaList: any[]): MatrixColDescExport[] {
+  const out: MatrixColDescExport[] = [];
+  (areaList || []).forEach((ab) => {
+    gruposSinPromedioMatrixExport(ab.grupos).forEach((c: any) => {
+      out.push({
+        key: `${ab.area_id}-${c.grupo_id ?? c.grupo_nombre}`,
+        areaId: ab.area_id,
+        areaNombre: ab.area_nombre,
+        grupo: c,
+      });
+    });
+  });
+  return out;
+}
+
+function groupMatrixColsByAreaExport(cols: MatrixColDescExport[]) {
+  const groups: { areaId: number; areaNombre: string; cols: MatrixColDescExport[] }[] = [];
+  for (const cd of cols) {
+    const last = groups[groups.length - 1];
+    if (last && last.areaId === cd.areaId) {
+      last.cols.push(cd);
+    } else {
+      groups.push({ areaId: cd.areaId, areaNombre: cd.areaNombre, cols: [cd] });
+    }
+  }
+  return groups;
+}
+
+function valorGrupoMatrixExport(
+  g: any,
+  field: (typeof MATRIX_EXPORT_LEVEL_DEFS)[0]['field']
+) {
+  if (field === 'entrenamiento') {
+    const v = g.entrenamiento ?? g.nivel_1;
+    return typeof v === 'number' ? v : 0;
+  }
+  return typeof g[field] === 'number' ? g[field] : 0;
+}
+
+function promedioSeccionMatrixExport(cols: MatrixColDescExport[], field: (typeof MATRIX_EXPORT_LEVEL_DEFS)[0]['field']) {
+  if (!cols.length) return 0;
+  const vals = cols.map((cd) => valorGrupoMatrixExport(cd.grupo, field));
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function promedioBackendPorAreaMatrixExport(
+  areaList: any[],
+  areaId: number,
+  field: (typeof MATRIX_EXPORT_LEVEL_DEFS)[0]['field'],
+  fallbackCols: MatrixColDescExport[]
+): number {
+  const ab = areaList.find((a) => a.area_id === areaId);
+  const pg = ab?.grupos?.find(
+    (g: { grupo_nombre?: string }) => String(g.grupo_nombre || '').toUpperCase() === 'PROMEDIO'
+  );
+  if (pg) {
+    return valorGrupoMatrixExport(pg, field);
+  }
+  return promedioSeccionMatrixExport(fallbackCols, field);
+}
+
+function formatMatrixExcelPct(n: number): string {
+  return `${n.toFixed(2)}%`;
+}
+
+/** Convierte índice de columna 1-based (A=1) a letra de columna Excel. */
+function matrixExportColLetter(col1Based: number): string {
+  let n = col1Based;
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function matrixExportMergeRowRange(ws: ExcelJS.Worksheet, row1Based: number, c1: number, c2: number) {
+  if (c2 <= c1) return;
+  ws.mergeCells(`${matrixExportColLetter(c1)}${row1Based}:${matrixExportColLetter(c2)}${row1Based}`);
+}
+
+function mergeNivelesChartRowsForExport(chartsBlock: {
+  nivel_1?: { month: number; label: string; target: number; actual: number }[];
+  nivel_2?: { month: number; label: string; target: number; actual: number }[];
+  nivel_3?: { month: number; label: string; target: number; actual: number }[];
+  nivel_4?: { month: number; label: string; target: number; actual: number }[];
+}) {
+  if (!chartsBlock?.nivel_1?.length) return [];
+  return chartsBlock.nivel_1.map((row, i) => ({
+    month: row.month,
+    label: row.label,
+    target: row.target,
+    actual_n1: chartsBlock.nivel_1![i]?.actual ?? 0,
+    actual_n2: chartsBlock.nivel_2![i]?.actual ?? 0,
+    actual_n3: chartsBlock.nivel_3![i]?.actual ?? 0,
+    actual_n4: chartsBlock.nivel_4![i]?.actual ?? 0,
+  }));
+}
+
 interface ReportesProps {
   userRole?: string;
 }
@@ -76,9 +206,12 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const [matrixViewMode, setMatrixViewMode] = useState<'table' | 'chart'>('table');
   const [exportingWithCharts, setExportingWithCharts] = useState<boolean>(false);
   const [exportChartData, setExportChartData] = useState<AvanceGlobalResponse[] | any[]>([]);
-  const [exportChartType, setExportChartType] = useState<'avance-global' | 'advance-training-monthly' | null>(null);
+  const [exportChartType, setExportChartType] = useState<
+    'avance-global' | 'advance-training-monthly' | 'advance-training-matrix' | null
+  >(null);
   const [exportFileName, setExportFileName] = useState<string>('');
   const exportChartsContainerRef = useRef<HTMLDivElement>(null);
+  const exportMatrixChartsContainerRef = useRef<HTMLDivElement>(null);
   /** Borradores de % para ene–mar: clave `areaId-mes` (mes 1, 2 o 3) */
   const [monthlyManualEdits, setMonthlyManualEdits] = useState<Record<string, string>>({});
   const [savingMonthlyManual, setSavingMonthlyManual] = useState(false);
@@ -123,12 +256,12 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       setReportAreaScopeLoaded(true);
       return;
     }
-    if (userRole === 'ADMIN') {
+    if (userRole === 'ADMIN' || userRole === 'VISOR') {
       setReportAllowedAreaIds(null);
       setReportAreaScopeLoaded(true);
       return;
     }
-    if (!['ENTRENADOR', 'SUPERVISOR', 'VISOR'].includes(userRole)) {
+    if (!['ENTRENADOR', 'SUPERVISOR'].includes(userRole)) {
       setReportAllowedAreaIds([]);
       setReportAreaScopeLoaded(true);
       return;
@@ -159,7 +292,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   }, [areas, userRole, reportAllowedAreaIds, reportAreaScopeLoaded]);
 
   useEffect(() => {
-    if (!reportAreaScopeLoaded || userRole === 'ADMIN') return;
+    if (!reportAreaScopeLoaded || userRole === 'ADMIN' || userRole === 'VISOR') return;
     if (areasForReporte.length === 0) {
       setSelectedArea(null);
       return;
@@ -260,45 +393,65 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
 
   const buildExcelMonthlyWithChart = useCallback(async (
     dataPoints: { month: string; [k: string]: string | number | null }[],
-    chartImageBase64: string,
+    chartImagesBase64: { produccion?: string; soporte?: string },
     fileName: string
   ) => {
     const areaNames = dataPoints.length > 0 ? Object.keys(dataPoints[0]).filter((k) => k !== 'month') : [];
+    const areaNamesProduccion = areaNames.filter(
+      (name) => (areas.find((a) => a.name === name)?.tipo_area ?? 'produccion') === 'produccion'
+    );
+    const areaNamesSoporte = areaNames.filter(
+      (name) => areas.find((a) => a.name === name)?.tipo_area === 'soporte'
+    );
+
     const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet('Avance por mes', { views: [{ state: 'normal' }] });
-    ws.columns = [{ width: 22 }, ...dataPoints.map(() => ({ width: 12 })), { width: 14 }];
-    ws.addRow(['Área', ...dataPoints.map((row) => row.month), 'Promedio anual']);
-    areaNames.forEach((areaName) => {
-      const valores = dataPoints.map((row) => row[areaName]).filter((v): v is number => typeof v === 'number');
-      const promedioAnual = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-      ws.addRow([
-        areaName,
-        ...dataPoints.map((row) => (row[areaName] != null ? formatPercentage(Number(row[areaName])) : '')),
-        promedioAnual != null ? formatPercentage(promedioAnual) : '',
-      ]);
-    });
-    const promediosMensuales = dataPoints.map((row) => {
-      const valores = areaNames.map((n) => row[n]).filter((v): v is number => typeof v === 'number');
-      return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-    });
-    const promedioGeneral = promediosMensuales.filter((v): v is number => typeof v === 'number');
-    const promedioGeneralVal = promedioGeneral.length
-      ? promedioGeneral.reduce((a, b) => a + b, 0) / promedioGeneral.length
-      : null;
-    ws.addRow([
-      'Promedio',
-      ...promediosMensuales.map((v) => (v != null ? formatPercentage(v) : '')),
-      promedioGeneralVal != null ? formatPercentage(promedioGeneralVal) : '',
-    ]);
-    if (chartImageBase64) {
-      const imageId = workbook.addImage({ base64: chartImageBase64, extension: 'png' });
-      const startRow = areaNames.length + 3;
-      ws.addImage(imageId, {
-        tl: { col: 0, row: startRow },
-        ext: { width: 640, height: 350 },
-        editAs: 'oneCell',
+    const appendTipoSheet = (sheetName: string, areaNamesTipo: string[], chartImageBase64?: string) => {
+      if (!areaNamesTipo.length) return;
+      const ws = workbook.addWorksheet(sheetName, { views: [{ state: 'normal' }] });
+      ws.columns = [{ width: 22 }, ...dataPoints.map(() => ({ width: 12 })), { width: 14 }];
+      ws.addRow(['Área', ...dataPoints.map((row) => row.month), 'Promedio anual']);
+      areaNamesTipo.forEach((areaName) => {
+        const valores = dataPoints.map((row) => row[areaName]).filter((v): v is number => typeof v === 'number');
+        const promedioAnual = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+        ws.addRow([
+          areaName,
+          ...dataPoints.map((row) => (row[areaName] != null ? formatPercentage(Number(row[areaName])) : '')),
+          promedioAnual != null ? formatPercentage(promedioAnual) : '',
+        ]);
       });
+      const promediosMensuales = dataPoints.map((row) => {
+        const valores = areaNamesTipo.map((n) => row[n]).filter((v): v is number => typeof v === 'number');
+        return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+      });
+      const promedioGeneral = promediosMensuales.filter((v): v is number => typeof v === 'number');
+      const promedioGeneralVal = promedioGeneral.length
+        ? promedioGeneral.reduce((a, b) => a + b, 0) / promedioGeneral.length
+        : null;
+      ws.addRow([
+        'Promedio',
+        ...promediosMensuales.map((v) => (v != null ? formatPercentage(v) : '')),
+        promedioGeneralVal != null ? formatPercentage(promedioGeneralVal) : '',
+      ]);
+
+      if (chartImageBase64) {
+        const imageId = workbook.addImage({ base64: chartImageBase64, extension: 'png' });
+        const startRow = areaNamesTipo.length + 3;
+        ws.addImage(imageId, {
+          tl: { col: 0, row: startRow },
+          ext: { width: 640, height: 350 },
+          editAs: 'oneCell',
+        });
+      }
+    };
+
+    appendTipoSheet('Producción', areaNamesProduccion, chartImagesBase64.produccion);
+    appendTipoSheet('Soporte', areaNamesSoporte, chartImagesBase64.soporte);
+
+    if (workbook.worksheets.length === 0) {
+      const ws = workbook.addWorksheet('Avance por mes', { views: [{ state: 'normal' }] });
+      ws.addRow(['Sin datos disponibles para exportar.']);
     }
+
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
@@ -307,10 +460,234 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-  }, []);
+  }, [areas]);
+
+  type MatrixChartImageKey =
+    | 'produccion-training'
+    | 'produccion-niveles'
+    | 'soporte-training'
+    | 'soporte-niveles';
+
+  const buildMatrixExcelWithTablesAndCharts = useCallback(
+    async (
+      payload: {
+        week: number;
+        produccion: { areas: any[] };
+        soporte: { areas: any[] };
+        level_targets?: Partial<typeof MATRIX_EXPORT_DEFAULT_TARGETS> & Record<string, number>;
+      },
+      imageMap: Partial<Record<MatrixChartImageKey, string>>,
+      fileName: string
+    ) => {
+      const workbook = new ExcelJS.Workbook();
+      const targets = { ...MATRIX_EXPORT_DEFAULT_TARGETS, ...payload.level_targets };
+      const wk = payload.week;
+
+      const appendTipoSheet = (
+        areaList: any[],
+        sheetTitle: string,
+        chartKeys: [MatrixChartImageKey, MatrixChartImageKey]
+      ) => {
+        if (!areaList.length) return;
+        const cols = buildMatrixColumnsExport(areaList);
+        const ws = workbook.addWorksheet(sheetTitle, { views: [{ state: 'normal' }] });
+        if (!cols.length) {
+          ws.addRow([`CW ${wk} | Sin columnas`]);
+          return;
+        }
+        const areaGroups = groupMatrixColsByAreaExport(cols);
+        const promCol = 2 + cols.length;
+        ws.getColumn(1).width = 28;
+        for (let c = 2; c < promCol; c++) ws.getColumn(c).width = 14;
+        ws.getColumn(promCol).width = 12;
+
+        let r = 1;
+        ws.getCell(r, 1).value = `CW ${wk} | % Training Matrix — ${sheetTitle}`;
+        r += 2;
+        ws.getCell(r, 1).value = 'Métrica';
+        cols.forEach((cd, i) => {
+          ws.getCell(r, 2 + i).value = `${cd.areaNombre} / ${cd.grupo.grupo_nombre}`;
+        });
+        ws.getCell(r, promCol).value = 'Promedio';
+        r++;
+
+        for (const def of MATRIX_EXPORT_LEVEL_DEFS) {
+          const tgt = targets[def.targetKey] ?? 100;
+          const prom = promedioSeccionMatrixExport(cols, def.field);
+
+          ws.getCell(r, 1).value = `${def.label} (objetivo)`;
+          let off = 0;
+          for (const ag of areaGroups) {
+            const n = ag.cols.length;
+            const c1 = 2 + off;
+            const c2 = c1 + n - 1;
+            if (n > 1) {
+              matrixExportMergeRowRange(ws, r, c1, c2);
+            }
+            ws.getCell(r, c1).value = formatMatrixExcelPct(tgt);
+            off += n;
+          }
+          ws.getCell(r, promCol).value = '';
+          r++;
+
+          const filaValores = r;
+          ws.getCell(filaValores, 1).value = def.label;
+          cols.forEach((cd, i) => {
+            ws.getCell(filaValores, 2 + i).value = formatMatrixExcelPct(valorGrupoMatrixExport(cd.grupo, def.field));
+          });
+          ws.getCell(filaValores, promCol).value = '';
+          r++;
+
+          ws.getCell(r, 1).value = 'Prom. área';
+          off = 0;
+          for (const ag of areaGroups) {
+            const n = ag.cols.length;
+            const c1 = 2 + off;
+            const c2 = c1 + n - 1;
+            const v = promedioBackendPorAreaMatrixExport(areaList, ag.areaId, def.field, ag.cols);
+            if (n > 1) {
+              matrixExportMergeRowRange(ws, r, c1, c2);
+            }
+            ws.getCell(r, c1).value = formatMatrixExcelPct(v);
+            off += n;
+          }
+          ws.getCell(r, promCol).value = formatMatrixExcelPct(prom);
+          r++;
+        }
+
+        let imageRow0 = r;
+        const img1 = imageMap[chartKeys[0]];
+        const img2 = imageMap[chartKeys[1]];
+        if (img1) {
+          const id = workbook.addImage({ base64: img1, extension: 'png' });
+          ws.addImage(id, {
+            tl: { col: 0, row: imageRow0 },
+            ext: { width: 640, height: 300 },
+            editAs: 'oneCell',
+          });
+          imageRow0 += 20;
+        }
+        if (img2) {
+          const id2 = workbook.addImage({ base64: img2, extension: 'png' });
+          ws.addImage(id2, {
+            tl: { col: 0, row: imageRow0 },
+            ext: { width: 640, height: 340 },
+            editAs: 'oneCell',
+          });
+        }
+      };
+
+      if (payload.produccion.areas.length > 0) {
+        appendTipoSheet(
+          payload.produccion.areas,
+          'Producción',
+          ['produccion-training', 'produccion-niveles']
+        );
+      }
+      if (payload.soporte.areas.length > 0) {
+        appendTipoSheet(payload.soporte.areas, 'Soporte', ['soporte-training', 'soporte-niveles']);
+      }
+      if (!workbook.worksheets.length) {
+        const w = workbook.addWorksheet('Matriz', { views: [{ state: 'normal' }] });
+        w.addRow([`CW ${wk} | Sin datos`]);
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    []
+  );
 
   useEffect(() => {
-    if (exportChartData.length === 0 || !exportChartType || !exportFileName) return;
+    if (!exportChartType || !exportFileName) return;
+    if (exportChartType === 'advance-training-matrix') {
+      if (!matrixReportData) {
+        setExportChartType(null);
+        setExportFileName('');
+        return;
+      }
+      setExportingWithCharts(true);
+      let cancelled = false;
+      const snapshot = matrixReportData;
+      const nameSnapshot = exportFileName;
+      const runMatrix = async () => {
+        try {
+          await new Promise((r) => setTimeout(r, 1100));
+          if (cancelled) return;
+          const order: MatrixChartImageKey[] = [
+            'produccion-training',
+            'produccion-niveles',
+            'soporte-training',
+            'soporte-niveles',
+          ];
+          const imageMap: Partial<Record<MatrixChartImageKey, string>> = {};
+          const matrixContainer = exportMatrixChartsContainerRef.current;
+          for (const key of order) {
+            const el = matrixContainer?.querySelector(`[data-matrix-export="${key}"]`) as HTMLElement | null;
+            if (!el) continue;
+            const canvas = await html2canvas(el, {
+              useCORS: true,
+              scale: 2,
+              backgroundColor: COLORS.white,
+            });
+            const dataUrl = canvas.toDataURL('image/png');
+            imageMap[key] = dataUrl.replace(/^data:image\/png;base64,/, '');
+          }
+          if (cancelled) return;
+          await buildMatrixExcelWithTablesAndCharts(
+            {
+              week: snapshot.week ?? 0,
+              produccion: snapshot.produccion ?? { areas: [] },
+              soporte: snapshot.soporte ?? { areas: [] },
+              level_targets: snapshot.level_targets,
+            },
+            imageMap,
+            nameSnapshot
+          );
+        } catch (e) {
+          console.error('Exportación matriz a Excel:', e);
+          if (!cancelled) {
+            try {
+              await buildMatrixExcelWithTablesAndCharts(
+                {
+                  week: snapshot.week ?? 0,
+                  produccion: snapshot.produccion ?? { areas: [] },
+                  soporte: snapshot.soporte ?? { areas: [] },
+                  level_targets: snapshot.level_targets,
+                },
+                {},
+                nameSnapshot
+              );
+            } catch (e2) {
+              console.error('Exportación matriz (solo tablas):', e2);
+            }
+          }
+        } finally {
+          if (!cancelled) {
+            setExportChartType(null);
+            setExportFileName('');
+            setExportingWithCharts(false);
+          }
+        }
+      };
+      const frameId = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          void runMatrix();
+        });
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(frameId);
+      };
+    }
+    if (exportChartData.length === 0 || !exportChartType) return;
     const container = exportChartsContainerRef.current;
     if (!container) return;
     const runExport = async () => {
@@ -331,7 +708,11 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         }
         if (exportChartType === 'advance-training-monthly') {
           const dataPoints = exportChartData as { month: string; [k: string]: string | number }[];
-          await buildExcelMonthlyWithChart(dataPoints, images[0] ?? '', exportFileName);
+          await buildExcelMonthlyWithChart(
+            dataPoints,
+            { produccion: images[0], soporte: images[1] },
+            exportFileName
+          );
         } else {
           await buildExcelWithCharts(exportChartData as AvanceGlobalResponse[], images, exportFileName);
         }
@@ -343,9 +724,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       }
     };
     runExport();
-    // Solo ejecutar cuando se dispare una exportación con gráficas
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportChartData, exportChartType, exportFileName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- exportación matriz usa snapshot en el momento del clic
+  }, [exportChartData, exportChartType, exportFileName, buildMatrixExcelWithTablesAndCharts]);
 
   const getChartData = (data: AvanceGlobalResponse[]): { name: string; Entrenamiento: number; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] => {
     const result: { name: string; Entrenamiento: number; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] = [];
@@ -1293,9 +1673,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                             {formatPercentage(tgt)}
                           </td>
                         ))}
-                        <td className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-data-cell">
-                          {formatPercentage(tgt)}
-                        </td>
+                        <td
+                          className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-celda-vacia"
+                          aria-hidden="true"
+                        />
                       </tr>
                       <tr className="matrix-actual-row matrix-xls-data-row">
                         <th scope="row" className="matrix-cer-first-col matrix-sticky-col">
@@ -1313,9 +1694,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                             </td>
                           );
                         })}
-                        <td className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-data-cell">
-                          {promCol}
-                        </td>
+                        <td
+                          className="matrix-cer-promedio-col matrix-cer-promedio-cell matrix-prom-celda-vacia"
+                          aria-hidden="true"
+                        />
                       </tr>
                       <tr className="matrix-area-summary-row" aria-label={`Resumen por área, ${def.label}`}>
                         <th scope="row" className="matrix-cer-first-col matrix-sticky-col matrix-summary-leyenda">
@@ -1356,24 +1738,6 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
           {renderMatrixTipoTable(sopAreas, weekLabel, 'Soporte')}
         </div>
       );
-    };
-
-    const mergeNivelesChartRows = (chartsBlock: {
-      nivel_1?: { month: number; label: string; target: number; actual: number }[];
-      nivel_2?: { month: number; label: string; target: number; actual: number }[];
-      nivel_3?: { month: number; label: string; target: number; actual: number }[];
-      nivel_4?: { month: number; label: string; target: number; actual: number }[];
-    }) => {
-      if (!chartsBlock?.nivel_1?.length) return [];
-      return chartsBlock.nivel_1.map((row, i) => ({
-        month: row.month,
-        label: row.label,
-        target: row.target,
-        actual_n1: chartsBlock.nivel_1![i]?.actual ?? 0,
-        actual_n2: chartsBlock.nivel_2![i]?.actual ?? 0,
-        actual_n3: chartsBlock.nivel_3![i]?.actual ?? 0,
-        actual_n4: chartsBlock.nivel_4![i]?.actual ?? 0,
-      }));
     };
 
     const renderMatrixChart = (
@@ -1430,7 +1794,12 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
           {subtitle ? <span className="matrix-chart-subtitle">{subtitle}</span> : null}
         </h3>
         <ResponsiveContainer width="100%" height={360}>
-          <ComposedChart data={data} margin={{ top: 16, right: 24, left: 8, bottom: 8 }}>
+          <ComposedChart
+            data={data}
+            margin={{ top: 16, right: 24, left: 8, bottom: 8 }}
+            barCategoryGap="18%"
+            barGap={2}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
             <XAxis dataKey="label" stroke={COLORS.black} />
             <YAxis stroke={COLORS.black} domain={[0, 125]} tickFormatter={(v) => `${v}%`} />
@@ -1439,6 +1808,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               contentStyle={{ borderColor: COLORS.red }}
             />
             <Legend />
+            <Bar dataKey="actual_n1" name="Nivel 1" fill="#2563eb" barSize={14} />
+            <Bar dataKey="actual_n2" name="Nivel 2" fill="#ea580c" barSize={14} />
+            <Bar dataKey="actual_n3" name="Nivel 3" fill="#7c3aed" barSize={14} />
+            <Bar dataKey="actual_n4" name="Nivel 4" fill="#0891b2" barSize={14} />
             <Line
               type="monotone"
               dataKey="target"
@@ -1447,70 +1820,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               strokeWidth={2}
               dot={{ r: 3, fill: '#16a34a' }}
             />
-            <Line type="monotone" dataKey="actual_n1" name="Nivel 1" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
-            <Line type="monotone" dataKey="actual_n2" name="Nivel 2" stroke="#ea580c" strokeWidth={2} dot={{ r: 2 }} />
-            <Line type="monotone" dataKey="actual_n3" name="Nivel 3" stroke="#7c3aed" strokeWidth={2} dot={{ r: 2 }} />
-            <Line type="monotone" dataKey="actual_n4" name="Nivel 4" stroke="#0891b2" strokeWidth={2} dot={{ r: 2 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
     );
-
-    const exportMatrixExcel = () => {
-      const wb = XLSX.utils.book_new();
-      const wk = matrixReportData?.week ?? matrixSelectedWeek ?? '';
-
-      const buildSheetRows = (areaList: any[], titulo: string): (string | number)[][] => {
-        const cols = buildMatrixColumns(areaList);
-        const areaGroups = groupMatrixColsByArea(cols);
-        const rows: (string | number)[][] = [];
-        rows.push([`CW ${wk} | % Training Matrix — ${titulo}`]);
-        rows.push([]);
-        rows.push([
-          'Métrica',
-          ...cols.map((cd) => `${cd.areaNombre} / ${cd.grupo.grupo_nombre}`),
-          'Promedio',
-        ]);
-        levelDefs.forEach((def) => {
-          const tgt = targets[def.targetKey] ?? 100;
-          const prom = promedioSeccion(cols, def.field);
-          rows.push([
-            `${def.label} (objetivo)`,
-            ...cols.map(() => `${tgt.toFixed(2)}%`),
-            `${tgt.toFixed(2)}%`,
-          ]);
-          rows.push([
-            def.label,
-            ...cols.map((cd) => `${valorGrupo(cd.grupo, def.field).toFixed(2)}%`),
-            `${prom.toFixed(2)}%`,
-          ]);
-          rows.push([
-            'Prom. área',
-            ...cols.map((cd) => {
-              const ag = areaGroups.find((x) => x.areaId === cd.areaId)!;
-              const v = promedioBackendPorArea(areaList, cd.areaId, def.field, ag.cols);
-              return `${v.toFixed(2)}%`;
-            }),
-            `${prom.toFixed(2)}%`,
-          ]);
-        });
-        return rows;
-      };
-
-      if (prodAreas.length > 0) {
-        const wsP = XLSX.utils.aoa_to_sheet(buildSheetRows(prodAreas, 'Producción'));
-        XLSX.utils.book_append_sheet(wb, wsP, 'Producción');
-      }
-      if (sopAreas.length > 0) {
-        const wsS = XLSX.utils.aoa_to_sheet(buildSheetRows(sopAreas, 'Soporte'));
-        XLSX.utils.book_append_sheet(wb, wsS, 'Soporte');
-      }
-      if (!wb.SheetNames.length) {
-        const ws = XLSX.utils.aoa_to_sheet([[`CW ${wk} | Sin datos`]]);
-        XLSX.utils.book_append_sheet(wb, ws, 'Matriz');
-      }
-      XLSX.writeFile(wb, `Reporte_Matrix_CW${matrixSelectedWeek}_${selectedYear}.xlsx`);
-    };
 
     return (
       <>
@@ -1563,10 +1876,16 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             <button
               type="button"
               className="btn-export-excel"
-              onClick={exportMatrixExcel}
-              disabled={!hasMatrixData}
+              onClick={() => {
+                if (!hasMatrixData || !matrixReportData) return;
+                setExportFileName(
+                  `Reporte_Matrix_CW${matrixSelectedWeek}_${selectedYear}.xlsx`
+                );
+                setExportChartType('advance-training-matrix');
+              }}
+              disabled={!hasMatrixData || exportingWithCharts}
             >
-              <FaFileExcel /> Exportar a Excel
+              <FaFileExcel /> {exportingWithCharts ? 'Exportando...' : 'Exportar a Excel'}
             </button>
           </div>
         </div>
@@ -1586,7 +1905,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 {chartsProd?.nivel_1?.length
                   ? renderMatrixNivelesChart(
                       'Certificación N1–N4 por nivel',
-                      mergeNivelesChartRows(chartsProd),
+                      mergeNivelesChartRowsForExport(chartsProd),
                       'Producción'
                     )
                   : null}
@@ -1597,7 +1916,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 {chartsSop?.nivel_1?.length
                   ? renderMatrixNivelesChart(
                       'Certificación N1–N4 por nivel',
-                      mergeNivelesChartRows(chartsSop),
+                      mergeNivelesChartRowsForExport(chartsSop),
                       'Soporte'
                     )
                   : null}
@@ -1667,30 +1986,73 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             (() => {
               const dataPoints = exportChartData as { month: string; [k: string]: string | number }[];
               const areaNames = dataPoints[0] ? Object.keys(dataPoints[0]).filter((k) => k !== 'month') : [];
+              const areaNamesProduccion = areaNames.filter(
+                (name) => (areas.find((a) => a.name === name)?.tipo_area ?? 'produccion') === 'produccion'
+              );
+              const areaNamesSoporte = areaNames.filter(
+                (name) => areas.find((a) => a.name === name)?.tipo_area === 'soporte'
+              );
+              const chartDataProduccion = dataPoints.map((row) => {
+                const valores = areaNamesProduccion
+                  .map((name) => row[name])
+                  .filter((v): v is number => typeof v === 'number');
+                const prom = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+                return { month: row.month, Promedio: prom };
+              });
+              const chartDataSoporte = dataPoints.map((row) => {
+                const valores = areaNamesSoporte
+                  .map((name) => row[name])
+                  .filter((v): v is number => typeof v === 'number');
+                const prom = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+                return { month: row.month, Promedio: prom };
+              });
               return (
-                <div className="reporte-chart-block" style={{ width: 800, height: 400 }}>
-                  <h3 className="reporte-chart-title">Avance por mes - todas las áreas</h3>
-                  <ResponsiveContainer width={800} height={350}>
-                    <LineChart data={dataPoints} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                      <XAxis dataKey="month" stroke={COLORS.black} />
-                      <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <Tooltip formatter={(value: number | undefined) => (value != null ? [`${Number(value).toFixed(2)}%`, ''] : '')} contentStyle={{ borderColor: COLORS.red }} />
-                      <Legend />
-                      {areaNames.map((name, i) => (
-                        <Line
-                          key={name}
-                          type="monotone"
-                          dataKey={name}
-                          name={name}
-                          stroke={AREA_CHART_COLORS[i % AREA_CHART_COLORS.length]}
-                          strokeWidth={2}
-                          dot={{ r: 4 }}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <>
+                  {areaNamesProduccion.length > 0 && (
+                    <div className="reporte-chart-block" style={{ width: 800, height: 400 }}>
+                      <h3 className="reporte-chart-title">Avance por mes - Producción</h3>
+                      <ResponsiveContainer width={800} height={350}>
+                        <LineChart data={chartDataProduccion} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                          <XAxis dataKey="month" stroke={COLORS.black} />
+                          <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                          <Tooltip formatter={(value: number | undefined) => (value != null ? [`${Number(value).toFixed(2)}%`, 'Promedio'] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="Promedio"
+                            name="Promedio Producción"
+                            stroke={COLORS.red}
+                            strokeWidth={3}
+                            dot={{ r: 4 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  {areaNamesSoporte.length > 0 && (
+                    <div className="reporte-chart-block" style={{ width: 800, height: 400 }}>
+                      <h3 className="reporte-chart-title">Avance por mes - Soporte</h3>
+                      <ResponsiveContainer width={800} height={350}>
+                        <LineChart data={chartDataSoporte} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                          <XAxis dataKey="month" stroke={COLORS.black} />
+                          <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                          <Tooltip formatter={(value: number | undefined) => (value != null ? [`${Number(value).toFixed(2)}%`, 'Promedio'] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="Promedio"
+                            name="Promedio Soporte"
+                            stroke="#2563eb"
+                            strokeWidth={3}
+                            dot={{ r: 4 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </>
               );
             })()
           ) : (
@@ -1755,6 +2117,184 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               );
             })()
           )}
+        </div>
+      )}
+
+      {exportChartType === 'advance-training-matrix' && matrixReportData && (
+        <div
+          ref={exportMatrixChartsContainerRef}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: -9999,
+            top: 0,
+            width: 800,
+            zIndex: -1,
+            pointerEvents: 'none',
+          }}
+        >
+          {matrixReportData.charts?.produccion?.training?.length ? (
+            <div
+              className="matrix-chart-block"
+              data-matrix-export="produccion-training"
+              style={{ width: 800 }}
+            >
+              <h3 className="matrix-chart-title">
+                % Entrenamiento / Training
+                <span className="matrix-chart-subtitle">Producción</span>
+              </h3>
+              <ResponsiveContainer width={800} height={320}>
+                <ComposedChart
+                  data={matrixReportData.charts.produccion.training}
+                  margin={{ top: 16, right: 24, left: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                  <XAxis dataKey="label" stroke={COLORS.black} />
+                  <YAxis
+                    stroke={COLORS.black}
+                    domain={[0, 125]}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip
+                    formatter={(v: number | undefined) => (v != null ? `${Number(v).toFixed(2)}%` : '')}
+                    contentStyle={{ borderColor: COLORS.red }}
+                  />
+                  <Legend />
+                  <Bar dataKey="actual" name="Avance real" fill="#2563eb" barSize={28} />
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    name="Objetivo progresivo"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: '#16a34a' }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+          {matrixReportData.charts?.produccion?.nivel_1?.length ? (
+            <div
+              className="matrix-chart-block"
+              data-matrix-export="produccion-niveles"
+              style={{ width: 800 }}
+            >
+              <h3 className="matrix-chart-title">
+                Certificación N1–N4 por nivel
+                <span className="matrix-chart-subtitle">Producción</span>
+              </h3>
+              <ResponsiveContainer width={800} height={360}>
+                <ComposedChart
+                  data={mergeNivelesChartRowsForExport(matrixReportData.charts.produccion)}
+                  margin={{ top: 16, right: 24, left: 8, bottom: 8 }}
+                  barCategoryGap="18%"
+                  barGap={2}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                  <XAxis dataKey="label" stroke={COLORS.black} />
+                  <YAxis stroke={COLORS.black} domain={[0, 125]} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip
+                    formatter={(v: number | undefined) => (v != null ? `${Number(v).toFixed(2)}%` : '')}
+                    contentStyle={{ borderColor: COLORS.red }}
+                  />
+                  <Legend />
+                  <Bar dataKey="actual_n1" name="Nivel 1" fill="#2563eb" barSize={14} />
+                  <Bar dataKey="actual_n2" name="Nivel 2" fill="#ea580c" barSize={14} />
+                  <Bar dataKey="actual_n3" name="Nivel 3" fill="#7c3aed" barSize={14} />
+                  <Bar dataKey="actual_n4" name="Nivel 4" fill="#0891b2" barSize={14} />
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    name="Objetivo progresivo"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: '#16a34a' }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+          {matrixReportData.charts?.soporte?.training?.length ? (
+            <div
+              className="matrix-chart-block"
+              data-matrix-export="soporte-training"
+              style={{ width: 800 }}
+            >
+              <h3 className="matrix-chart-title">
+                % Entrenamiento / Training
+                <span className="matrix-chart-subtitle">Soporte</span>
+              </h3>
+              <ResponsiveContainer width={800} height={320}>
+                <ComposedChart
+                  data={matrixReportData.charts.soporte.training}
+                  margin={{ top: 16, right: 24, left: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                  <XAxis dataKey="label" stroke={COLORS.black} />
+                  <YAxis
+                    stroke={COLORS.black}
+                    domain={[0, 125]}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip
+                    formatter={(v: number | undefined) => (v != null ? `${Number(v).toFixed(2)}%` : '')}
+                    contentStyle={{ borderColor: COLORS.red }}
+                  />
+                  <Legend />
+                  <Bar dataKey="actual" name="Avance real" fill="#2563eb" barSize={28} />
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    name="Objetivo progresivo"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: '#16a34a' }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+          {matrixReportData.charts?.soporte?.nivel_1?.length ? (
+            <div
+              className="matrix-chart-block"
+              data-matrix-export="soporte-niveles"
+              style={{ width: 800 }}
+            >
+              <h3 className="matrix-chart-title">
+                Certificación N1–N4 por nivel
+                <span className="matrix-chart-subtitle">Soporte</span>
+              </h3>
+              <ResponsiveContainer width={800} height={360}>
+                <ComposedChart
+                  data={mergeNivelesChartRowsForExport(matrixReportData.charts.soporte)}
+                  margin={{ top: 16, right: 24, left: 8, bottom: 8 }}
+                  barCategoryGap="18%"
+                  barGap={2}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
+                  <XAxis dataKey="label" stroke={COLORS.black} />
+                  <YAxis stroke={COLORS.black} domain={[0, 125]} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip
+                    formatter={(v: number | undefined) => (v != null ? `${Number(v).toFixed(2)}%` : '')}
+                    contentStyle={{ borderColor: COLORS.red }}
+                  />
+                  <Legend />
+                  <Bar dataKey="actual_n1" name="Nivel 1" fill="#2563eb" barSize={14} />
+                  <Bar dataKey="actual_n2" name="Nivel 2" fill="#ea580c" barSize={14} />
+                  <Bar dataKey="actual_n3" name="Nivel 3" fill="#7c3aed" barSize={14} />
+                  <Bar dataKey="actual_n4" name="Nivel 4" fill="#0891b2" barSize={14} />
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    name="Objetivo progresivo"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: '#16a34a' }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

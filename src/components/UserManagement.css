@@ -42,7 +42,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  flex: 1;
+  min-height: 12rem;
   font-size: 1.2rem;
   color: #e12026;
 }
@@ -228,16 +229,13 @@
   overflow-x: auto;
   overflow-y: auto;
   flex: 1;
-  min-height: 200px;
-  max-height: calc(100vh - 320px);
+  min-height: 0;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .users-table {
   width: 100%;
   border-collapse: collapse;
-  height: 100%;
-  min-height: 100%;
 }
 
 .users-table thead {
@@ -736,7 +734,7 @@
     overflow-x: auto;
     overflow-y: auto;
     flex: 1;
-    max-height: calc(100vh - 350px);
+    min-height: 0;
   }
 
   .users-table {
