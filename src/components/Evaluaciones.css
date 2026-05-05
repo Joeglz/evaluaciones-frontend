@@ -1,10 +1,10 @@
 .evaluaciones-container {
   box-sizing: border-box;
   width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
+  /* Alto = contenido (no encoger con min-height:0 bajo flex: el scroll es .dashboard-main + su ::after) */
+  flex: 0 1 auto;
+  align-self: stretch;
   padding: 2rem;
-  /* Contenido dentro de main con flex; min-height:0 evita forzar altura mínima y scroll extra en el body */
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
 }
 

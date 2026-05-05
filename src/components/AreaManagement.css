@@ -3,7 +3,8 @@
 .area-management {
   padding: 2rem;
   background: white;
-  min-height: 100vh;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 .area-management-header .btn-back {

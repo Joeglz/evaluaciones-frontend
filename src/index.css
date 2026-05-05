@@ -1,9 +1,17 @@
+/* Sin scroll en document: el scroll va en regiones internas (main, login, etc.) */
+:root {
+  /* Hueco bajo nav fijo (Dashboard); usado por .dashboard-main::after y scroll-padding */
+  --dashboard-bottom-menu-clearance: calc(95px + 5rem + env(safe-area-inset-bottom, 0px));
+}
+
 html {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
   height: 100%;
+  overflow: hidden;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -19,4 +27,18 @@ code {
 
 #root {
   height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Safari iPad/iPhone: -webkit-fill-available puede hacer html más alto que lo visible y recortar el pie (nav).
+   100svh acota al viewport pequeño estable. */
+@supports (height: 100svh) {
+  html {
+    height: 100svh;
+    max-height: 100svh;
+  }
 }

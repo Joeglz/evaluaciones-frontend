@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   FaClipboardList, 
   FaChartBar, 
@@ -208,49 +209,52 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const bottomMenu = (
+    <nav className="bottom-menu" aria-label="Navegación principal">
+      {MENU_ITEMS.filter((item) => allowedMenuItems.includes(item.key)).map((item) => (
+        <div
+          key={item.key}
+          className={`menu-item ${activeView === item.key ? 'active' : ''}`}
+          onClick={() => handleMenuNavigate(item.key)}
+        >
+          <div className="menu-item-icon-wrap">
+            <item.icon className="menu-icon" />
+            {item.key === 'notificaciones' && notificacionesNoLeidasCount > 0 && (
+              <span className="menu-item-badge" aria-label={`${notificacionesNoLeidasCount} notificaciones no leídas`}>
+                {notificacionesNoLeidasCount > 99 ? '99+' : notificacionesNoLeidasCount}
+              </span>
+            )}
+          </div>
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </nav>
+  );
+
   return (
-    <div className="dashboard-container">
-      {/* Header con mensaje de bienvenida */}
-      {(activeView === 'home' ||
-        activeView === 'ajustes' ||
-        activeView === 'evaluaciones' ||
-        activeView === 'reportes') && (
-        <header className="dashboard-header">
-          <div className="welcome-message">
-            <h1>Hola {getDisplayName()}, ¿qué quieres hacer hoy?</h1>
-          </div>
-          <button onClick={handleLogout} className="logout-button">
-            Cerrar Sesión
-          </button>
-        </header>
-      )}
-
-      {/* Contenido principal */}
-      <main className="dashboard-main">
-        {renderContent()}
-      </main>
-
-      {/* Menú inferior */}
-      <nav className="bottom-menu">
-        {MENU_ITEMS.filter((item) => allowedMenuItems.includes(item.key)).map((item) => (
-          <div
-            key={item.key}
-            className={`menu-item ${activeView === item.key ? 'active' : ''}`}
-            onClick={() => handleMenuNavigate(item.key)}
-          >
-            <div className="menu-item-icon-wrap">
-              <item.icon className="menu-icon" />
-              {item.key === 'notificaciones' && notificacionesNoLeidasCount > 0 && (
-                <span className="menu-item-badge" aria-label={`${notificacionesNoLeidasCount} notificaciones no leídas`}>
-                  {notificacionesNoLeidasCount > 99 ? '99+' : notificacionesNoLeidasCount}
-                </span>
-              )}
+    <>
+      <div className="dashboard-container">
+        {/* Header con mensaje de bienvenida */}
+        {(activeView === 'home' ||
+          activeView === 'ajustes' ||
+          activeView === 'evaluaciones' ||
+          activeView === 'reportes') && (
+          <header className="dashboard-header">
+            <div className="welcome-message">
+              <h1>Hola {getDisplayName()}, ¿qué quieres hacer hoy?</h1>
             </div>
-            <span>{item.label}</span>
-          </div>
-        ))}
-      </nav>
-    </div>
+            <button onClick={handleLogout} className="logout-button">
+              Cerrar Sesión
+            </button>
+          </header>
+        )}
+
+        <main className="dashboard-main">
+          {renderContent()}
+        </main>
+      </div>
+      {createPortal(bottomMenu, document.body)}
+    </>
   );
 };
 

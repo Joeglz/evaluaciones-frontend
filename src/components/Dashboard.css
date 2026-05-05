@@ -1,4 +1,4 @@
-/* Variables de colores */
+/* Variables de colores (clearance del menú: :root en index.css) */
 :root {
   --primary-red: #e12026;
   --white: #ffffff;
@@ -9,8 +9,9 @@
 }
 
 .dashboard-container {
-  height: 100%;
-  max-height: 100%;
+  box-sizing: border-box;
+  /* flex: ocupa el alto disponible en .App; evita que main crezca sin límite y recorte el nav con overflow:hidden */
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
   background-color: var(--white);
@@ -56,14 +57,29 @@
   background-color: var(--dark-red);
 }
 
-/* Contenido principal */
+/* Contenido principal: scroll aquí. El hueco bajo el menú es un flex item (::after): en iOS el padding-bottom a veces no amplía bien el scroll. */
 .dashboard-main {
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
+  height: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-padding-bottom: var(--dashboard-bottom-menu-clearance);
   display: flex;
   flex-direction: column;
+}
+
+/* Reserva real de alto al final del scroll (más fiable que solo padding en Safari) */
+.dashboard-main::after {
+  content: '';
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  height: var(--dashboard-bottom-menu-clearance);
+  min-height: var(--dashboard-bottom-menu-clearance);
 }
 
 .dashboard-content {
@@ -79,16 +95,22 @@
   margin: 2rem 0;
 }
 
-/* Menú inferior */
+/* Portal en document.body + fixed: visible aunque el árbol supere el viewport; html acotado con 100svh en index.css */
 .bottom-menu {
-  flex-shrink: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 100vw;
+  box-sizing: border-box;
+  margin: 0;
   background-color: var(--primary-red);
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 1rem 0.5rem;
-  position: relative;
-  z-index: 100;
+  padding: 1rem max(0.5rem, env(safe-area-inset-right, 0px)) calc(1rem + env(safe-area-inset-bottom, 0px)) max(0.5rem, env(safe-area-inset-left, 0px));
+  z-index: 9998;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
 }
 
@@ -169,12 +191,11 @@
   }
 
   .dashboard-main {
-    padding: 1.5rem 1rem;
-    padding-bottom: 6rem; /* Espacio para el menú inferior */
+    padding: 1.5rem 1rem 0;
   }
 
   .bottom-menu {
-    padding: 0.75rem 0.25rem;
+    padding: 0.75rem 0.25rem calc(0.75rem + env(safe-area-inset-bottom, 0px)) 0.25rem;
   }
 
   .menu-item {
