@@ -30,6 +30,22 @@ import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './Evaluaciones.css';
 
+/**
+ * Formatea una fecha tipo `YYYY-MM-DD` (sin hora) en formato `d/m/yyyy` (es-ES)
+ * sin desplazamientos por zona horaria. `new Date('YYYY-MM-DD')` se interpreta
+ * como UTC y, en zonas oeste de UTC (p.ej. UTC-6), termina mostrándose el día
+ * anterior. Aquí parseamos los componentes y construimos un Date local.
+ */
+const formatFechaIngreso = (raw: string | null | undefined): string => {
+  if (!raw) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (match) {
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('es-ES');
+  }
+  return new Date(raw).toLocaleDateString('es-ES');
+};
+
 /** True si el resultado alcanza el mínimo de la evaluación (cada nivel puede tener distinto mínimo). */
 const evaluacionCumpleMinimo = (
   minimo: number | null | undefined,
@@ -2918,7 +2934,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 <div className="usuario-info">
                   <h3>{user.full_name}</h3>
                   {user.numero_empleado && <p className="numero-empleado">#{user.numero_empleado}</p>}
-                  {user.fecha_ingreso && <p className="fecha-ingreso">{new Date(user.fecha_ingreso).toLocaleDateString('es-ES')}</p>}
+                  {user.fecha_ingreso && <p className="fecha-ingreso">{formatFechaIngreso(user.fecha_ingreso)}</p>}
                 </div>
                 <div className="usuario-cuadro">
                   {[4, 1, 3, 2].map((nivel) => {
@@ -3384,7 +3400,7 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                     </tr>
                     <tr>
                       <td>Puesto: {evaluacionActual.posicion_name}</td>
-                      <td>Fecha de Ingreso: {selectedUser.fecha_ingreso ? new Date(selectedUser.fecha_ingreso).toLocaleDateString('es-ES') : 'No asignada'}</td>
+                      <td>Fecha de Ingreso: {selectedUser.fecha_ingreso ? formatFechaIngreso(selectedUser.fecha_ingreso) : 'No asignada'}</td>
                     </tr>
                     <tr>
                       <td>Área: {evaluacionActual.area_name}</td>

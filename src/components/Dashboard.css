@@ -17,36 +17,134 @@
   background-color: var(--white);
   display: flex;
   flex-direction: column;
+  overscroll-behavior: none;
 }
 
-/* Header con mensaje de bienvenida */
+/* Header con mensaje de bienvenida (compacto para ganar espacio al contenido) */
 .dashboard-header {
   flex-shrink: 0;
   background-color: var(--white);
-  padding: 2rem 1.5rem 1.5rem;
+  padding: 0.65rem 1.25rem;
   border-bottom: 1px solid var(--border-gray);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.65rem;
+  /* Safari iPad: evita que un arrastre vertical sobre la cabecera dispare scroll del documento */
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 .welcome-message h1 {
   color: var(--primary-red);
-  font-size: 1.8rem;
+  font-size: 1.25rem;
   font-weight: 600;
   margin: 0;
-  line-height: 1.3;
+  line-height: 1.25;
+}
+
+/* Encabezado contextual: cuando una vista interna toma control del header
+   (por ejemplo: editar usuario, editar área), mostramos un botón "volver"
+   junto al título y la sección que invoca decide qué texto va. */
+.dashboard-header__override {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dashboard-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+.dashboard-header__back:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: var(--primary-red);
+}
+
+.dashboard-header__back svg {
+  font-size: 0.85rem;
+}
+
+.dashboard-header__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.dashboard-header__kicker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  line-height: 1;
+}
+
+.dashboard-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.dashboard-header__title {
+  color: var(--primary-red);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@media (max-width: 600px) {
+  .dashboard-header__back-label {
+    display: none;
+  }
+
+  .dashboard-header__back {
+    padding: 0.45rem 0.6rem;
+  }
+
+  .dashboard-header__title {
+    font-size: 1.05rem;
+    white-space: normal;
+  }
+
+  .dashboard-header__kicker {
+    font-size: 0.62rem;
+  }
 }
 
 .logout-button {
   background-color: var(--primary-red);
   color: var(--white);
   border: none;
-  padding: 0.75rem 1.5rem;
+  padding: 0.45rem 1rem;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.3s ease;
@@ -57,7 +155,9 @@
   background-color: var(--dark-red);
 }
 
-/* Contenido principal: scroll aquí. El hueco bajo el menú es un flex item (::after): en iOS el padding-bottom a veces no amplía bien el scroll. */
+/* Contenido principal: scroll aquí. El bottom-menu ahora es un flex item
+   hermano (no position: fixed), así que NO se necesita reservar hueco al final
+   del scroll: el menu nunca tapa el contenido. */
 .dashboard-main {
   flex: 1 1 0%;
   min-height: 0;
@@ -66,20 +166,22 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   overscroll-behavior-y: contain;
-  scroll-padding-bottom: var(--dashboard-bottom-menu-clearance);
   display: flex;
   flex-direction: column;
+  /* Permite SOLO desplazamiento vertical en este contenedor, anulando el touch-action: none del padre */
+  touch-action: pan-y;
 }
 
-/* Reserva real de alto al final del scroll (más fiable que solo padding en Safari) */
-.dashboard-main::after {
-  content: '';
-  display: block;
-  flex: 0 0 auto;
-  width: 100%;
-  height: var(--dashboard-bottom-menu-clearance);
-  min-height: var(--dashboard-bottom-menu-clearance);
+/* En sub-secciones de Ajustes el scroll lo gestiona el componente interno
+   (UserManagement, AreaManagement, etc.). Forzamos overflow:hidden para que
+   el wizard interno (con su propio body scrollable y footer sticky) no
+   compita con un segundo scroll del dashboard. */
+.dashboard-main--inner-scroll {
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding-bottom: 0;
 }
 
 .dashboard-content {
@@ -95,32 +197,36 @@
   margin: 2rem 0;
 }
 
-/* Portal en document.body + fixed: visible aunque el árbol supere el viewport; html acotado con 100svh en index.css */
+/* Bottom-menu: ahora es un flex item HERMANO de .dashboard-main dentro de
+   .dashboard-container. NO usamos position: fixed para evitar el bug de iOS
+   Safari donde, tras cerrar el teclado, `100dvh` no se recalcula y el menu
+   "fixed" queda flotando sobre un hueco blanco. Como flex item, siempre se
+   pega al fondo del contenedor por construcción. */
 .bottom-menu {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex: 0 0 auto;
   width: 100%;
-  max-width: 100vw;
+  max-width: 100%;
   box-sizing: border-box;
   margin: 0;
   background-color: var(--primary-red);
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 1rem max(0.5rem, env(safe-area-inset-right, 0px)) calc(1rem + env(safe-area-inset-bottom, 0px)) max(0.5rem, env(safe-area-inset-left, 0px));
-  z-index: 9998;
+  padding: 0.45rem max(0.5rem, env(safe-area-inset-right, 0px)) calc(0.45rem + env(safe-area-inset-bottom, 0px)) max(0.5rem, env(safe-area-inset-left, 0px));
+  z-index: 100;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
 }
 
 .menu-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.15rem;
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.3rem 0.5rem;
   border-radius: 8px;
   transition: background-color 0.3s ease;
   min-width: 60px;
@@ -136,14 +242,16 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  gap: 0.4rem;
+  margin-bottom: 0;
+  line-height: 1;
 }
 
 .menu-icon {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   color: var(--white);
   display: block;
+  line-height: 1;
 }
 
 .menu-item-badge {
@@ -171,23 +279,29 @@
 
 .menu-item span {
   color: var(--white);
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+  line-height: 1.1;
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
   .dashboard-header {
-    padding: 1.5rem 1rem 1rem;
+    padding: 0.55rem 1rem;
     flex-direction: column;
     align-items: flex-start;
-    gap: 1rem;
+    gap: 0.5rem;
   }
 
   .welcome-message h1 {
-    font-size: 1.5rem;
+    font-size: 1.05rem;
+  }
+
+  .logout-button {
+    align-self: stretch;
+    text-align: center;
   }
 
   .dashboard-main {
@@ -195,20 +309,20 @@
   }
 
   .bottom-menu {
-    padding: 0.75rem 0.25rem calc(0.75rem + env(safe-area-inset-bottom, 0px)) 0.25rem;
+    padding: 0.4rem 0.25rem calc(0.4rem + env(safe-area-inset-bottom, 0px)) 0.25rem;
   }
 
   .menu-item {
     min-width: 50px;
-    padding: 0.25rem;
+    padding: 0.2rem 0.35rem;
   }
 
   .menu-icon {
-    font-size: 1.25rem;
+    font-size: 1.05rem;
   }
 
   .menu-item span {
-    font-size: 0.7rem;
+    font-size: 0.62rem;
   }
 }
 

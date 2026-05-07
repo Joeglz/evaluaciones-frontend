@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaBuilding, 
-  FaArrowLeft,
+import {
+  FaUsers,
+  FaBuilding,
   FaUser,
   FaChartBar
 } from 'react-icons/fa';
@@ -14,10 +13,34 @@ import './Settings.css';
 
 interface SettingsProps {
   userRole?: string;
+  /**
+   * Señal numérica que, al cambiar, regresa Settings a su menú principal.
+   * Se incrementa desde Dashboard cuando el usuario toca "Ajustes" en el
+   * menú inferior estando ya dentro de Ajustes.
+   */
+  resetSignal?: number;
+  /**
+   * Notifica al Dashboard el título de la sección actual de Ajustes para
+   * mostrarlo en la cabecera. `null` indica el menú principal de Ajustes.
+   */
+  onSectionChange?: (title: string | null) => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ userRole }) => {
+const SECTION_TITLES: Record<string, string> = {
+  profile: 'Mi Perfil',
+  users: 'Gestión de Usuarios',
+  areas: 'Gestión de Áreas',
+  plantillas: 'Gestión de Plantillas',
+};
+
+const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionChange }) => {
   const [activeSection, setActiveSection] = useState<string>('main');
+
+  useEffect(() => {
+    if (resetSignal !== undefined) {
+      setActiveSection('main');
+    }
+  }, [resetSignal]);
 
   const allowedSections = useMemo<string[]>(() => {
     switch (userRole) {
@@ -38,6 +61,17 @@ const Settings: React.FC<SettingsProps> = ({ userRole }) => {
       setActiveSection('main');
     }
   }, [activeSection, allowedSections]);
+
+  useEffect(() => {
+    if (!onSectionChange) return;
+    onSectionChange(SECTION_TITLES[activeSection] ?? null);
+  }, [activeSection, onSectionChange]);
+
+  useEffect(() => {
+    return () => {
+      if (onSectionChange) onSectionChange(null);
+    };
+  }, [onSectionChange]);
 
   const renderAccessDenied = () => (
     <div className="access-denied">
@@ -143,32 +177,8 @@ const Settings: React.FC<SettingsProps> = ({ userRole }) => {
     }
   };
 
-  const renderHeader = () => {
-    if (activeSection === 'main') {
-      return null;
-    }
-
-    return (
-      <div className="settings-nav">
-        <button 
-          className="back-button"
-          onClick={() => setActiveSection('main')}
-        >
-          <FaArrowLeft /> Volver a Ajustes
-        </button>
-        <div className="settings-nav-title">
-          {activeSection === 'profile' && 'Mi Perfil'}
-          {activeSection === 'users' && 'Gestión de Usuarios'}
-          {activeSection === 'areas' && 'Gestión de Áreas'}
-          {activeSection === 'plantillas' && 'Gestión de Plantillas'}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="settings-container">
-      {renderHeader()}
       {renderContent()}
     </div>
   );

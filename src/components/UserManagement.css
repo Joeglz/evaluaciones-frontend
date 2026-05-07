@@ -1,18 +1,80 @@
 /* UserManagement.css */
 
 .user-management {
-  padding: 2rem;
+  padding: 2rem 2rem 1rem;
   background: white;
   min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.user-management .scroll-to-top-btn {
+  position: fixed;
+  right: clamp(1rem, 2vw, 1.5rem);
+  bottom: calc(var(--dashboard-bottom-menu-height, 95px) + 1rem + env(safe-area-inset-bottom, 0px));
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary-red, #e12026);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  box-shadow: 0 8px 22px rgba(225, 32, 38, 0.32), 0 2px 6px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px) scale(0.9);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+  z-index: 9990;
+}
+
+.user-management .scroll-to-top-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s;
+}
+
+.user-management .scroll-to-top-btn:hover {
+  background: #c11920;
+  transform: translateY(-2px) scale(1);
+}
+
+.user-management .scroll-to-top-btn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+@media (max-width: 600px) {
+  .user-management .scroll-to-top-btn {
+    width: 44px;
+    height: 44px;
+    bottom: calc(var(--dashboard-bottom-menu-height, 95px) + 0.75rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* Cuando está dentro de Settings, ocupa el espacio disponible */
 .settings-container .user-management {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.user-management-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: var(--dashboard-bottom-menu-height, 95px);
+  /* Safari iPad: contiene el rubber-band para que no arrastre el viewport */
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 /* Estilos para errores de validación */
@@ -415,15 +477,12 @@
 /* Modales */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 10050;
   padding: 1rem;
 }
 
@@ -434,7 +493,11 @@
   max-width: 720px;
   width: 100%;
   max-height: 90vh;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
@@ -987,18 +1050,19 @@
 }
 
 .user-detail-avatar {
-  width: 128px;
-  height: 128px;
+  width: 104px;
+  height: 104px;
   border-radius: 50%;
   overflow: hidden;
-  margin: 0 auto 1.5rem;
+  margin: 0 auto 1rem;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   background: #f5f5f5;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #9e9e9e;
-  font-size: 2.5rem;
+  font-size: 2.25rem;
+  flex-shrink: 0;
 }
 
 .user-detail-avatar img {
@@ -1063,7 +1127,11 @@
 /* Ajustes para modal de detalles */
 .modal-content {
   max-height: 90vh;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   padding: 1.5rem;
@@ -1071,10 +1139,9 @@
 }
 
 .modal-content .form-grid {
-  flex: 1;
+  flex: 1 0 auto;
   overflow: visible;
   margin-bottom: 1rem;
-  max-height: calc(90vh - 200px);
 }
 
 .modal-content .modal-actions {
@@ -1089,11 +1156,12 @@
 }
 
 .modal-user-detail {
-  max-width: 520px;
-  min-width: 480px;
+  max-width: 760px;
+  min-width: min(480px, 92vw);
   width: 100%;
   align-items: center;
   text-align: center;
+  padding: 1.75rem 2rem 1.5rem;
 }
 
 .user-detail-info h2 {
@@ -1116,10 +1184,16 @@
 
 .user-detail-grid {
   width: 100%;
-  margin: 1.5rem 0;
+  margin: 1.25rem 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+@media (min-width: 720px) {
+  .user-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .user-detail-field {
@@ -1158,9 +1232,33 @@
 
 .user-detail-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
   width: 100%;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+}
+
+.user-detail-actions .btn-secondary,
+.user-detail-actions .btn-primary,
+.user-detail-actions .btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+
+@media (min-width: 720px) {
+  .user-detail-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 600px) {
@@ -1168,11 +1266,14 @@
     min-width: auto;
     width: 95%;
     max-width: none;
+    padding: 1.25rem 1rem 1rem;
   }
-}
 
-@media (max-width: 768px) {
   .user-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-detail-actions {
     grid-template-columns: 1fr;
   }
 }
@@ -2215,4 +2316,778 @@
   background: #ccc;
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* Pantalla edición: sin padding del listado; usa todo el ancho y alto flexibles */
+.settings-container .user-management:has(.user-edit-screen) {
+  padding: 0;
+  background: #ffffff;
+}
+
+/* ============================================================
+   PANTALLA "EDITAR / CREAR USUARIO" — Diseño A++ tablet-first
+   Sistema de diseño: blanco + rojo de marca (#e12026), grises neutros
+   y un acento gris ultra claro para zonas de input/foto.
+   Estructura:
+     dashboard-header (override)
+       └ user-edit-screen
+           ├─ user-edit-stepper      (sticky top, fondo blanco)
+           ├─ user-edit-screen__body (único scroll interno)
+           │   └─ user-edit-card     (form en una sola tarjeta)
+           └─ user-edit-screen__footer (sticky bottom)
+   ============================================================ */
+.user-edit-screen {
+  --ue-accent: #e12026;
+  --ue-accent-soft: rgba(225, 32, 38, 0.1);
+  --ue-accent-glow: rgba(225, 32, 38, 0.18);
+  --ue-bg: #f7f8fb;
+  --ue-card-bg: #ffffff;
+  --ue-border: #e5e7eb;
+  --ue-border-soft: #eef0f4;
+  --ue-text: #0f172a;
+  --ue-muted: #6b7280;
+  --ue-label: #374151;
+  --ue-input-bg: #ffffff;
+  --ue-radius-lg: 18px;
+  --ue-radius-md: 12px;
+  --ue-radius-sm: 10px;
+  --ue-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04),
+                    0 12px 32px -16px rgba(15, 23, 42, 0.16);
+
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ue-bg);
+  width: 100%;
+}
+
+/* Cabecera interna obsoleta (la maneja el dashboard-header con override) */
+.user-edit-screen__header,
+.user-edit-screen__back,
+.user-edit-screen__back-label,
+.user-edit-screen__heading,
+.user-edit-screen__kicker,
+.user-edit-screen__title-row,
+.user-edit-screen__title {
+  display: none;
+}
+
+/* ---------- STEPPER ---------- */
+.user-edit-stepper {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  padding-left: max(1.5rem, calc((100% - 56rem) / 2));
+  padding-right: max(1.5rem, calc((100% - 56rem) / 2));
+  background: #ffffff;
+  border-bottom: 1px solid var(--ue-border-soft);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  box-sizing: border-box;
+}
+
+.user-edit-stepper::-webkit-scrollbar {
+  display: none;
+}
+
+.user-edit-step {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--ue-muted);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease,
+              color 0.18s ease, box-shadow 0.18s ease;
+  min-height: 48px;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  font: inherit;
+  text-align: left;
+}
+
+.user-edit-step:hover {
+  background: #f3f4f6;
+  color: var(--ue-text);
+}
+
+.user-edit-step__bullet {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1.5px solid var(--ue-border);
+  color: var(--ue-muted);
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  transition: background 0.18s ease, border-color 0.18s ease,
+              color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.user-edit-step__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  min-width: 0;
+  gap: 1px;
+}
+
+.user-edit-step__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ue-text);
+  white-space: nowrap;
+}
+
+.user-edit-step__label svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+
+.user-edit-step__sub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--ue-muted);
+  font-weight: 500;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* Estado activo: relleno suave + bullet rojo con glow */
+.user-edit-step--active {
+  background: var(--ue-accent-soft);
+  border-color: var(--ue-accent-soft);
+  box-shadow: 0 4px 14px -6px var(--ue-accent-glow);
+}
+
+.user-edit-step--active .user-edit-step__bullet {
+  background: var(--ue-accent);
+  border-color: var(--ue-accent);
+  color: #ffffff;
+  box-shadow: 0 0 0 4px var(--ue-accent-soft);
+}
+
+.user-edit-step--active .user-edit-step__label,
+.user-edit-step--active .user-edit-step__label svg {
+  color: var(--ue-accent);
+  opacity: 1;
+}
+
+/* Estado completado: bullet rojo sólido (mantenemos paleta de marca) */
+.user-edit-step--done .user-edit-step__bullet {
+  background: var(--ue-accent);
+  border-color: var(--ue-accent);
+  color: #ffffff;
+}
+
+.user-edit-step--done .user-edit-step__label {
+  color: var(--ue-text);
+}
+
+.user-edit-step__connector {
+  flex: 1 1 16px;
+  align-self: center;
+  height: 2px;
+  background: var(--ue-border);
+  border-radius: 2px;
+  min-width: 12px;
+  max-width: 80px;
+  transition: background 0.25s ease;
+}
+
+.user-edit-step__connector.is-done {
+  background: var(--ue-accent);
+}
+
+/* Móvil: stepper ultra compacto, oculta sublabel */
+@media (max-width: 719px) {
+  .user-edit-stepper {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .user-edit-step {
+    padding: 0.4rem 0.6rem;
+    gap: 0.45rem;
+    min-height: 44px;
+  }
+
+  .user-edit-step__bullet {
+    width: 26px;
+    height: 26px;
+    font-size: 0.78rem;
+  }
+
+  .user-edit-step__sub {
+    display: none;
+  }
+
+  .user-edit-step__label {
+    font-size: 0.85rem;
+  }
+
+  .user-edit-step__connector {
+    max-width: 32px;
+  }
+}
+
+/* ---------- BODY (único scroll) ---------- */
+.user-edit-screen__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  padding-top: 1.75rem;
+  padding-bottom: 2rem;
+  padding-left: max(1.25rem, calc((100% - 56rem) / 2));
+  padding-right: max(1.25rem, calc((100% - 56rem) / 2));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- CARD PRINCIPAL ---------- */
+.user-edit-card {
+  background: var(--ue-card-bg);
+  border: 1px solid var(--ue-border-soft);
+  border-radius: var(--ue-radius-lg);
+  box-shadow: var(--ue-shadow-card);
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .user-edit-card {
+    border-radius: var(--ue-radius-md);
+  }
+}
+
+/* ---------- STEP CONTENT ---------- */
+.user-edit-card .step-content {
+  padding: 1.75rem 2rem 2rem;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .user-edit-card .step-content {
+    padding: 1.25rem 1.1rem 1.5rem;
+    gap: 1.25rem;
+  }
+}
+
+.user-edit-card .step-content h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--ue-text);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  position: relative;
+  padding-left: 0.85rem;
+}
+
+.user-edit-card .step-content h3::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--ue-accent);
+}
+
+/* ---------- FORM GRID ---------- */
+.user-edit-card .step-content .form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.1rem 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+@media (min-width: 640px) {
+  .user-edit-card .step-content .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .user-edit-card .step-content .form-grid {
+    gap: 1.25rem 2rem;
+  }
+}
+
+.user-edit-card .step-content .form-group {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.user-edit-card .step-content .form-group label {
+  font-weight: 600;
+  color: var(--ue-label);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.user-edit-card .step-content .form-group input,
+.user-edit-card .step-content .form-group select {
+  min-height: 48px;
+  font-size: 0.98rem;
+  padding: 0.65rem 0.95rem;
+  border: 1.5px solid var(--ue-border);
+  border-radius: var(--ue-radius-sm);
+  background: var(--ue-input-bg);
+  color: var(--ue-text);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+              background 0.18s ease;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.user-edit-card .step-content .form-group input::placeholder {
+  color: #9ca3af;
+}
+
+.user-edit-card .step-content .form-group input:hover,
+.user-edit-card .step-content .form-group select:hover {
+  border-color: #d1d5db;
+}
+
+.user-edit-card .step-content .form-group input:focus,
+.user-edit-card .step-content .form-group select:focus,
+.user-edit-card .step-content .form-group input:focus-visible,
+.user-edit-card .step-content .form-group select:focus-visible {
+  outline: none;
+  border-color: var(--ue-accent);
+  box-shadow: 0 0 0 4px var(--ue-accent-soft);
+  background: #ffffff;
+}
+
+.user-edit-card .step-content .form-group input.error,
+.user-edit-card .step-content .form-group select.error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+}
+
+.user-edit-card .step-content .form-group .error-message {
+  font-size: 0.78rem;
+  color: #ef4444;
+  margin-top: 0.1rem;
+  font-weight: 500;
+}
+
+/* ---------- TOGGLE SWITCH ("Usuario activo", etc.) ----------
+   Convierte un checkbox nativo en un switch iOS-style con la misma
+   estructura visual que un input (label arriba + control debajo) para
+   que quede perfectamente alineado en el grid de 2 columnas.
+*/
+.user-edit-card .step-content .form-group:has(> .checkbox-label) {
+  gap: 0.4rem;
+}
+
+/* Etiqueta superior auto-generada para que se alinee con los demás campos */
+.user-edit-card .step-content .form-group:has(> .checkbox-label)::before {
+  content: 'Estado';
+  font-weight: 600;
+  color: var(--ue-label);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.user-edit-card .step-content .form-group .checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.55rem 0.95rem;
+  background: #fafbfc;
+  border: 1.5px solid var(--ue-border);
+  border-radius: var(--ue-radius-sm);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ue-text);
+  text-transform: none;
+  letter-spacing: 0;
+  min-height: 48px;
+  user-select: none;
+  transition: border-color 0.18s ease, background 0.18s ease,
+              box-shadow 0.18s ease;
+  margin: 0;
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+
+.user-edit-card .step-content .form-group .checkbox-label:hover {
+  border-color: #d1d5db;
+  background: #ffffff;
+}
+
+/* Cuando está activo: marca todo el panel con tinte rojo suave */
+.user-edit-card .step-content .form-group .checkbox-label:has(input:checked) {
+  border-color: var(--ue-accent);
+  background: var(--ue-accent-soft);
+  color: var(--ue-accent);
+}
+
+/* Switch nativo: usamos appearance:none + background-image (gradient) para
+   pintar el "thumb" porque ::before en <input> no es confiable en Safari. */
+.user-edit-card .step-content .form-group .checkbox-label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  order: 2;
+  width: 50px;
+  height: 28px;
+  border-radius: 999px;
+  background-color: #d1d5db;
+  background-repeat: no-repeat;
+  background-image: radial-gradient(
+    circle 11px at 14px center,
+    #ffffff 0,
+    #ffffff 99%,
+    transparent 100%
+  );
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.18));
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  min-height: 0;
+  transition: background-color 0.22s ease, background-position 0.22s ease;
+  background-position: 0 0;
+}
+
+.user-edit-card .step-content .form-group .checkbox-label input[type="checkbox"]:checked {
+  background-color: var(--ue-accent);
+  background-position: 22px 0;
+}
+
+.user-edit-card .step-content .form-group .checkbox-label input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 4px var(--ue-accent-soft);
+}
+
+/* Pista de estado a la derecha del texto: ON / OFF */
+.user-edit-card .step-content .form-group .checkbox-label::after {
+  content: 'INACTIVO';
+  order: 1;
+  margin-left: auto;
+  margin-right: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ue-muted);
+  background: #ffffff;
+  border: 1px solid var(--ue-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.user-edit-card .step-content .form-group .checkbox-label:has(input:checked)::after {
+  content: 'ACTIVO';
+  color: var(--ue-accent);
+  background: #ffffff;
+  border-color: var(--ue-accent);
+}
+
+@media (max-width: 480px) {
+  .user-edit-card .step-content .form-group .checkbox-label {
+    padding: 0.75rem 0.9rem;
+    font-size: 0.9rem;
+    gap: 0.6rem;
+  }
+
+  .user-edit-card .step-content .form-group .checkbox-label::after {
+    display: none;
+  }
+}
+
+/* ---------- BLOQUE DE FOTO ---------- */
+.user-edit-card .step-photo-block {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem 1.25rem;
+  background: linear-gradient(180deg, #fafbfc 0%, #f5f6f8 100%);
+  border: 1px solid var(--ue-border-soft);
+  border-radius: var(--ue-radius-md);
+  margin: 0;
+}
+
+.user-edit-card .step-photo-preview {
+  flex-shrink: 0;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 6px 20px -8px rgba(15, 23, 42, 0.18),
+              0 0 0 1px var(--ue-border-soft);
+  overflow: hidden;
+  position: relative;
+}
+
+.user-edit-card .step-photo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.user-edit-card .step-photo-preview .photo-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 1.85rem;
+}
+
+.user-edit-card .step-photo-actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.user-edit-card .step-photo-actions::before {
+  content: 'Foto de perfil';
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ue-label);
+}
+
+.user-edit-card .step-photo-actions .btn-upload.full {
+  width: auto;
+  min-height: 42px;
+  padding: 0.55rem 1.05rem;
+  border-radius: var(--ue-radius-sm);
+  background: var(--ue-accent);
+  border: 1.5px solid var(--ue-accent);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: background 0.18s ease, transform 0.15s ease;
+}
+
+.user-edit-card .step-photo-actions .btn-upload.full:hover {
+  background: #c11920;
+  transform: translateY(-1px);
+}
+
+.user-edit-card .step-photo-actions .btn-link {
+  background: none;
+  border: none;
+  color: var(--ue-muted);
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 0.25rem 0.1rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+
+.user-edit-card .step-photo-actions .btn-link:hover {
+  color: var(--ue-accent);
+}
+
+.user-edit-card .step-photo-actions .photo-remove-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #ef4444;
+  font-weight: 500;
+}
+
+@media (max-width: 539px) {
+  .user-edit-card .step-photo-block {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.85rem;
+  }
+
+  .user-edit-card .step-photo-actions {
+    align-items: center;
+  }
+
+  .user-edit-card .step-photo-actions .btn-upload.full {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ---------- FOOTER STICKY ---------- */
+.user-edit-screen__footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.95rem;
+  padding-bottom: calc(0.95rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(1.25rem, calc((100% - 56rem) / 2));
+  padding-right: max(1.25rem, calc((100% - 56rem) / 2));
+  background: #ffffff;
+  border-top: 1px solid var(--ue-border-soft);
+  box-shadow: 0 -8px 24px -16px rgba(15, 23, 42, 0.18);
+  box-sizing: border-box;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.user-edit-screen__cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 46px;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--ue-radius-sm);
+  background: #ffffff;
+  border: 1.5px solid var(--ue-border);
+  color: var(--ue-label);
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.user-edit-screen__cancel:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  color: var(--ue-text);
+}
+
+.user-edit-screen__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.user-edit-screen__nav .btn-secondary,
+.user-edit-screen__nav .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  padding: 0.55rem 1.25rem;
+  border-radius: var(--ue-radius-sm);
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease,
+              transform 0.15s ease, box-shadow 0.18s ease;
+  border: 1.5px solid transparent;
+}
+
+.user-edit-screen__nav .btn-secondary {
+  background: #ffffff;
+  border-color: var(--ue-border);
+  color: var(--ue-label);
+}
+
+.user-edit-screen__nav .btn-secondary:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  color: var(--ue-text);
+}
+
+.user-edit-screen__nav .btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.user-edit-screen__nav .btn-primary {
+  background: var(--ue-accent);
+  border-color: var(--ue-accent);
+  color: #ffffff;
+  box-shadow: 0 6px 16px -8px var(--ue-accent-glow);
+}
+
+.user-edit-screen__nav .btn-primary:hover:not(:disabled) {
+  background: #c11920;
+  border-color: #c11920;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px -8px var(--ue-accent-glow);
+}
+
+@media (max-width: 719px) {
+  .user-edit-screen__footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .user-edit-screen__cancel,
+  .user-edit-screen__nav .btn-secondary,
+  .user-edit-screen__nav .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .user-edit-screen__nav {
+    width: 100%;
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
 }

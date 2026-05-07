@@ -7,10 +7,12 @@ import {
   FaCheckCircle, 
   FaSearch,
   FaFilter,
-  FaBriefcase
+  FaBriefcase,
+  FaArrowLeft
 } from 'react-icons/fa';
 import { apiService, Posicion, Area, NivelPosicion, Evaluacion } from '../services/api';
 import './PosicionManagement.css';
+import './Settings.css';
 
 const PosicionManagement: React.FC = () => {
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
@@ -26,9 +28,10 @@ const PosicionManagement: React.FC = () => {
   const [createErrors, setCreateErrors] = useState<Record<string, string[]>>({});
   const [editErrors, setEditErrors] = useState<Record<string, string[]>>({});
   
+  const [currentView, setCurrentView] = useState<'list' | 'edit'>('list');
+
   // Estados para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   
@@ -177,7 +180,7 @@ const PosicionManagement: React.FC = () => {
     
     try {
       await apiService.updatePosicion(selectedPosicion.id, editForm);
-      setShowEditModal(false);
+      setCurrentView('list');
       setSelectedPosicion(null);
       loadPosiciones();
       alert('Posición actualizada exitosamente');
@@ -220,6 +223,14 @@ const PosicionManagement: React.FC = () => {
     }
   };
 
+  const volverAListaEdicionPosicion = () => {
+    setCurrentView('list');
+    setSelectedPosicion(null);
+    setEditErrors({});
+    setNivelesPosicion([]);
+    setEvaluacionesPorNivel({});
+  };
+
   const openEditModal = async (posicion: Posicion) => {
     setSelectedPosicion(posicion);
     setEditErrors({});
@@ -228,8 +239,8 @@ const PosicionManagement: React.FC = () => {
       area: posicion.area.toString(),
       is_active: posicion.is_active
     });
-    setShowEditModal(true);
-    // Cargar niveles y evaluaciones cuando se abre el modal
+    setCurrentView('edit');
+    // Cargar niveles y evaluaciones al abrir la vista de edición
     await loadNivelesPosicion(posicion.id);
     await loadEvaluacionesPlantillas();
   };
@@ -444,11 +455,19 @@ const PosicionManagement: React.FC = () => {
     <div className="posicion-management">
       <div className="posicion-management-header">
         <h1><FaBriefcase /> Gestión de Posiciones</h1>
-        <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-          <FaPlus /> Nueva Posición
-        </button>
+        {currentView === 'list' ? (
+          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <FaPlus /> Nueva Posición
+          </button>
+        ) : (
+          <button type="button" className="btn-secondary posicion-management-btn-back" onClick={volverAListaEdicionPosicion}>
+            <FaArrowLeft /> Volver
+          </button>
+        )}
       </div>
 
+      {currentView === 'list' ? (
+        <>
       <div className="posicion-management-filters">
         <div className="search-box">
           {searching ? (
@@ -592,6 +611,214 @@ const PosicionManagement: React.FC = () => {
         </table>
       </div>
 
+      </>
+      ) : (
+        selectedPosicion && (
+          <div className="catalog-edit-screen posicion-management-edit-screen">
+            <form id="posicion-edit-form" className="catalog-edit-body" data-scroll="true" onSubmit={handleUpdatePosicion}>
+              <h2 className="posicion-management-edit-title">Editar posición</h2>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Nombre *</label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                    required
+                    className={editErrors.name ? 'field-error-input' : ''}
+                  />
+                  <FieldError errors={editErrors.name} />
+                </div>
+
+                <div className="form-group">
+                  <label>Área *</label>
+                  <select
+                    value={editForm.area}
+                    onChange={(e) => setEditForm({...editForm, area: e.target.value})}
+                    required
+                    className={editErrors.area ? 'field-error-input' : ''}
+                  >
+                    <option value="">Seleccionar área</option>
+                    {areas.map(area => (
+                      <option key={area.id} value={area.id.toString()}>
+                        {area.name}
+                      </option>
+                    ))}
+                  </select>
+                  <FieldError errors={editErrors.area} />
+                </div>
+
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_active}
+                      onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
+                    />
+                    Posición activa
+                  </label>
+                </div>
+              </div>
+
+              <FieldError errors={editErrors.general} />
+
+              <div className="niveles-section" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid #e9ecef' }}>
+                <h3 style={{ marginBottom: '1rem' }}>Niveles y Evaluaciones</h3>
+
+                {loadingNiveles ? (
+                  <div>Cargando niveles...</div>
+                ) : (
+                  <div className="niveles-container">
+                    {nivelesDisponibles.map((nivelNum) => {
+                      const nivelExistente = nivelesPosicion.find(n => n.nivel === nivelNum);
+                      return (
+                        <div key={nivelNum} className="nivel-item" style={{
+                          marginBottom: '1.5rem',
+                          padding: '1rem',
+                          border: '1px solid #dee2e6',
+                          borderRadius: '8px',
+                          backgroundColor: '#f8f9fa'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <h4 style={{ margin: 0 }}>Nivel {nivelNum}</h4>
+                            {nivelExistente ? (
+                              <button
+                                type="button"
+                                className="btn-icon btn-delete"
+                                onClick={() => handleEliminarNivel(nivelExistente.id)}
+                                title="Eliminar nivel"
+                              >
+                                <FaTrash />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                onClick={() => handleCrearNivel(selectedPosicion!.id, nivelNum)}
+                                title="Agregar nivel"
+                              >
+                                <FaPlus /> Agregar Nivel {nivelNum}
+                              </button>
+                            )}
+                          </div>
+
+                          {nivelExistente && (
+                            <div className="evaluaciones-nivel" style={{ marginTop: '1rem' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                <select
+                                  className="form-control"
+                                  value={plantillaSeleccionadaPorNivel[nivelExistente.id] || ''}
+                                  onChange={(e) => {
+                                    const plantillaId = e.target.value ? parseInt(e.target.value) : 0;
+                                    setPlantillaSeleccionadaPorNivel(prev => ({
+                                      ...prev,
+                                      [nivelExistente.id]: plantillaId
+                                    }));
+                                    if (plantillaId > 0) {
+                                      const plantilla = evaluacionesPlantillas.find(p => p.id === plantillaId);
+                                      if (plantilla) {
+                                        setNombreEvaluacionPorNivel(prev => ({
+                                          ...prev,
+                                          [nivelExistente.id]: plantilla.nombre
+                                        }));
+                                      }
+                                    } else {
+                                      setNombreEvaluacionPorNivel(prev => ({
+                                        ...prev,
+                                        [nivelExistente.id]: ''
+                                      }));
+                                    }
+                                  }}
+                                  style={{ width: '100%' }}
+                                >
+                                  <option value="">Seleccionar Plantilla...</option>
+                                  {evaluacionesPlantillas.map(plantilla => (
+                                    <option key={plantilla.id} value={plantilla.id}>
+                                      {plantilla.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                {plantillaSeleccionadaPorNivel[nivelExistente.id] && (
+                                  <>
+                                    <input
+                                      type="text"
+                                      className="form-control"
+                                      placeholder="Nombre de la evaluación *"
+                                      value={nombreEvaluacionPorNivel[nivelExistente.id] || ''}
+                                      onChange={(e) => {
+                                        setNombreEvaluacionPorNivel(prev => ({
+                                          ...prev,
+                                          [nivelExistente.id]: e.target.value
+                                        }));
+                                      }}
+                                      style={{ width: '100%' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="btn-primary"
+                                      onClick={() => {
+                                        const plantillaId = plantillaSeleccionadaPorNivel[nivelExistente.id];
+                                        const nombre = nombreEvaluacionPorNivel[nivelExistente.id];
+                                        if (plantillaId && nombre) {
+                                          handleAgregarEvaluacionANivel(nivelExistente.id, plantillaId, nombre);
+                                        }
+                                      }}
+                                      style={{ width: '100%', padding: '0.5rem' }}
+                                    >
+                                      Agregar Evaluación
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="evaluaciones-list" style={{ marginTop: '0.5rem' }}>
+                                {getEvaluacionesPorNivel(nivelExistente.id).length === 0 ? (
+                                  <div style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
+                                    No hay evaluaciones asignadas a este nivel
+                                  </div>
+                                ) : (
+                                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                                    {getEvaluacionesPorNivel(nivelExistente.id).map(evaluacion => (
+                                      <li key={evaluacion.id} style={{
+                                        padding: '0.5rem',
+                                        marginBottom: '0.25rem',
+                                        backgroundColor: 'white',
+                                        borderRadius: '4px',
+                                        border: '1px solid #dee2e6'
+                                      }}>
+                                        {evaluacion.nombre}
+                                        {evaluacion.plantilla_nombre && (
+                                          <span style={{ fontSize: '0.85rem', color: '#666', marginLeft: '0.5rem' }}>
+                                            (Plantilla: {evaluacion.plantilla_nombre})
+                                          </span>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </form>
+            <div className="catalog-edit-footer modal-actions">
+              <button type="button" className="btn-secondary" onClick={volverAListaEdicionPosicion}>
+                Cancelar
+              </button>
+              <button type="submit" form="posicion-edit-form" className="btn-primary">
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
       {/* Modal: Crear Posición */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
@@ -668,219 +895,6 @@ const PosicionManagement: React.FC = () => {
                 </button>
                 <button type="submit" className="btn-primary">
                   Crear Posición
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Editar Posición */}
-      {showEditModal && selectedPosicion && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Editar Posición</h2>
-            <form onSubmit={handleUpdatePosicion}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Nombre *</label>
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                    required
-                    className={editErrors.name ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={editErrors.name} />
-                </div>
-
-                <div className="form-group">
-                  <label>Área *</label>
-                  <select
-                    value={editForm.area}
-                    onChange={(e) => setEditForm({...editForm, area: e.target.value})}
-                    required
-                    className={editErrors.area ? 'field-error-input' : ''}
-                  >
-                    <option value="">Seleccionar área</option>
-                    {areas.map(area => (
-                      <option key={area.id} value={area.id.toString()}>
-                        {area.name}
-                      </option>
-                    ))}
-                  </select>
-                  <FieldError errors={editErrors.area} />
-                </div>
-                
-                
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
-                    />
-                    Posición activa
-                  </label>
-                </div>
-              </div>
-              
-              <FieldError errors={editErrors.general} />
-              
-              {/* Sección de Niveles y Evaluaciones */}
-              <div className="niveles-section" style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid #e9ecef' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Niveles y Evaluaciones</h3>
-                
-                {loadingNiveles ? (
-                  <div>Cargando niveles...</div>
-                ) : (
-                  <div className="niveles-container">
-                    {nivelesDisponibles.map((nivelNum) => {
-                      const nivelExistente = nivelesPosicion.find(n => n.nivel === nivelNum);
-                      return (
-                        <div key={nivelNum} className="nivel-item" style={{ 
-                          marginBottom: '1.5rem', 
-                          padding: '1rem', 
-                          border: '1px solid #dee2e6', 
-                          borderRadius: '8px',
-                          backgroundColor: '#f8f9fa'
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                            <h4 style={{ margin: 0 }}>Nivel {nivelNum}</h4>
-                            {nivelExistente ? (
-                              <button
-                                type="button"
-                                className="btn-icon btn-delete"
-                                onClick={() => handleEliminarNivel(nivelExistente.id)}
-                                title="Eliminar nivel"
-                              >
-                                <FaTrash />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-primary"
-                                onClick={() => handleCrearNivel(selectedPosicion!.id, nivelNum)}
-                                title="Agregar nivel"
-                              >
-                                <FaPlus /> Agregar Nivel {nivelNum}
-                              </button>
-                            )}
-                          </div>
-                          
-                          {nivelExistente && (
-                            <div className="evaluaciones-nivel" style={{ marginTop: '1rem' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                <select
-                                  className="form-control"
-                                  value={plantillaSeleccionadaPorNivel[nivelExistente.id] || ''}
-                                  onChange={(e) => {
-                                    const plantillaId = e.target.value ? parseInt(e.target.value) : 0;
-                                    setPlantillaSeleccionadaPorNivel(prev => ({
-                                      ...prev,
-                                      [nivelExistente.id]: plantillaId
-                                    }));
-                                    // Pre-llenar el nombre con el de la plantilla
-                                    if (plantillaId > 0) {
-                                      const plantilla = evaluacionesPlantillas.find(p => p.id === plantillaId);
-                                      if (plantilla) {
-                                        setNombreEvaluacionPorNivel(prev => ({
-                                          ...prev,
-                                          [nivelExistente.id]: plantilla.nombre
-                                        }));
-                                      }
-                                    } else {
-                                      setNombreEvaluacionPorNivel(prev => ({
-                                        ...prev,
-                                        [nivelExistente.id]: ''
-                                      }));
-                                    }
-                                  }}
-                                  style={{ width: '100%' }}
-                                >
-                                  <option value="">Seleccionar Plantilla...</option>
-                                  {evaluacionesPlantillas.map(plantilla => (
-                                    <option key={plantilla.id} value={plantilla.id}>
-                                      {plantilla.nombre}
-                                    </option>
-                                  ))}
-                                </select>
-                                
-                                {plantillaSeleccionadaPorNivel[nivelExistente.id] && (
-                                  <>
-                                    <input
-                                      type="text"
-                                      className="form-control"
-                                      placeholder="Nombre de la evaluación *"
-                                      value={nombreEvaluacionPorNivel[nivelExistente.id] || ''}
-                                      onChange={(e) => {
-                                        setNombreEvaluacionPorNivel(prev => ({
-                                          ...prev,
-                                          [nivelExistente.id]: e.target.value
-                                        }));
-                                      }}
-                                      style={{ width: '100%' }}
-                                    />
-                                    <button
-                                      type="button"
-                                      className="btn-primary"
-                                      onClick={() => {
-                                        const plantillaId = plantillaSeleccionadaPorNivel[nivelExistente.id];
-                                        const nombre = nombreEvaluacionPorNivel[nivelExistente.id];
-                                        if (plantillaId && nombre) {
-                                          handleAgregarEvaluacionANivel(nivelExistente.id, plantillaId, nombre);
-                                        }
-                                      }}
-                                      style={{ width: '100%', padding: '0.5rem' }}
-                                    >
-                                      Agregar Evaluación
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                              
-                              {/* Lista de evaluaciones del nivel */}
-                              <div className="evaluaciones-list" style={{ marginTop: '0.5rem' }}>
-                                {getEvaluacionesPorNivel(nivelExistente.id).length === 0 ? (
-                                  <div style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
-                                    No hay evaluaciones asignadas a este nivel
-                                  </div>
-                                ) : (
-                                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                    {getEvaluacionesPorNivel(nivelExistente.id).map(evaluacion => (
-                                      <li key={evaluacion.id} style={{ 
-                                        padding: '0.5rem', 
-                                        marginBottom: '0.25rem', 
-                                        backgroundColor: 'white',
-                                        borderRadius: '4px',
-                                        border: '1px solid #dee2e6'
-                                      }}>
-                                        {evaluacion.nombre}
-                                        {evaluacion.plantilla_nombre && (
-                                          <span style={{ fontSize: '0.85rem', color: '#666', marginLeft: '0.5rem' }}>
-                                            (Plantilla: {evaluacion.plantilla_nombre})
-                                          </span>
-                                        )}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              
-              <div className="modal-actions" style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #e9ecef' }}>
-                <button type="button" className="btn-secondary" onClick={() => setShowEditModal(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  Guardar Cambios
                 </button>
               </div>
             </form>

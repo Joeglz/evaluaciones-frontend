@@ -7,10 +7,12 @@ import {
   FaCheckCircle, 
   FaSearch,
   FaFilter,
-  FaUsers
+  FaUsers,
+  FaArrowLeft
 } from 'react-icons/fa';
 import { apiService, Grupo, Area } from '../services/api';
 import './GrupoManagement.css';
+import './Settings.css';
 
 const GrupoManagement: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -26,9 +28,10 @@ const GrupoManagement: React.FC = () => {
   const [createErrors, setCreateErrors] = useState<Record<string, string[]>>({});
   const [editErrors, setEditErrors] = useState<Record<string, string[]>>({});
   
+  const [currentView, setCurrentView] = useState<'list' | 'edit'>('list');
+
   // Estados para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   
@@ -151,7 +154,7 @@ const GrupoManagement: React.FC = () => {
     
     try {
       await apiService.updateGrupo(selectedGrupo.id, editForm);
-      setShowEditModal(false);
+      setCurrentView('list');
       setSelectedGrupo(null);
       loadGrupos();
       alert('Grupo actualizado exitosamente');
@@ -194,6 +197,12 @@ const GrupoManagement: React.FC = () => {
     }
   };
 
+  const volverAListaEdicion = () => {
+    setCurrentView('list');
+    setSelectedGrupo(null);
+    setEditErrors({});
+  };
+
   const openEditModal = (grupo: Grupo) => {
     setSelectedGrupo(grupo);
     setEditErrors({});
@@ -202,7 +211,7 @@ const GrupoManagement: React.FC = () => {
       area: grupo.area.toString(),
       is_active: grupo.is_active
     });
-    setShowEditModal(true);
+    setCurrentView('edit');
   };
 
   const openDeleteModal = (grupo: Grupo) => {
@@ -250,11 +259,19 @@ const GrupoManagement: React.FC = () => {
     <div className="grupo-management">
       <div className="grupo-management-header">
         <h1><FaUsers /> Gestión de Grupos</h1>
-        <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-          <FaPlus /> Nuevo Grupo
-        </button>
+        {currentView === 'list' ? (
+          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <FaPlus /> Nuevo Grupo
+          </button>
+        ) : (
+          <button type="button" className="btn-secondary grupo-management-btn-back" onClick={volverAListaEdicion}>
+            <FaArrowLeft /> Volver
+          </button>
+        )}
       </div>
 
+      {currentView === 'list' ? (
+        <>
       <div className="grupo-management-filters">
         <div className="search-box">
           {searching ? (
@@ -347,6 +364,51 @@ const GrupoManagement: React.FC = () => {
         </table>
       </div>
 
+      </>
+      ) : (
+        selectedGrupo && (
+          <div className="catalog-edit-screen grupo-management-edit-screen">
+            <form id="grupo-edit-form" className="catalog-edit-body" data-scroll="true" onSubmit={handleUpdateGrupo}>
+              <h2 className="grupo-management-edit-title">Editar grupo</h2>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Nombre *</label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                    required
+                    className={editErrors.name ? 'field-error-input' : ''}
+                  />
+                  <FieldError errors={editErrors.name} />
+                </div>
+
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_active}
+                      onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
+                    />
+                    Grupo activo
+                  </label>
+                </div>
+              </div>
+
+              <FieldError errors={editErrors.general} />
+            </form>
+            <div className="catalog-edit-footer modal-actions">
+              <button type="button" className="btn-secondary" onClick={volverAListaEdicion}>
+                Cancelar
+              </button>
+              <button type="submit" form="grupo-edit-form" className="btn-primary">
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
       {/* Modal: Crear Grupo */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
@@ -405,53 +467,6 @@ const GrupoManagement: React.FC = () => {
                 </button>
                 <button type="submit" className="btn-primary">
                   Crear Grupo
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Editar Grupo */}
-      {showEditModal && selectedGrupo && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Editar Grupo</h2>
-            <form onSubmit={handleUpdateGrupo}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Nombre *</label>
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                    required
-                    className={editErrors.name ? 'field-error-input' : ''}
-                  />
-                  <FieldError errors={editErrors.name} />
-                </div>
-                
-                
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
-                    />
-                    Grupo activo
-                  </label>
-                </div>
-              </div>
-              
-              <FieldError errors={editErrors.general} />
-              
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowEditModal(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  Guardar Cambios
                 </button>
               </div>
             </form>

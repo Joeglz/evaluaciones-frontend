@@ -2,48 +2,63 @@
 
 .settings-container {
   background: white;
-  /* Crece con el contenido para que solo .dashboard-main haga scroll (evita scroll anidado en iPad/Safari) */
-  flex: 0 1 auto;
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* Menú principal de tarjetas: el scroll lo lleva .dashboard-main */
+.settings-container:has(> .settings-main) {
+  flex: 0 1 auto;
   overflow: visible;
 }
 
-/* Navegación */
-.settings-nav {
+/* Secciones con navegación (perfil, usuarios, áreas…): alto disponible para vistas de pantalla completa */
+.settings-container:not(:has(> .settings-main)) {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+/* CRUD hijos (usuarios, áreas, plantillas): ocupan el alto disponible para vistas tipo pantalla completa */
+.settings-container > .user-management,
+.settings-container > .area-management,
+.settings-container > .evaluaciones-management,
+.settings-container > .grupo-management,
+.settings-container > .posicion-management {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  padding: 1rem 2rem;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e0e0e0;
-  gap: 1rem;
+  flex-direction: column;
+}
+
+/* Layout tablet: cuerpo con scroll interno y pie fijo (misma idea que AreaManagement) */
+.catalog-edit-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.catalog-edit-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.5rem;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+.catalog-edit-footer {
   flex-shrink: 0;
-}
-
-.back-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: #e12026;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.back-button:hover {
-  background: #c01e22;
-}
-
-.settings-nav-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #e12026;
+  padding-top: 1rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
 }
 
 /* Contenido principal (scroll delegado al main del dashboard) */
@@ -172,14 +187,6 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-  .settings-nav {
-    padding: 1rem;
-  }
-
-  .settings-nav-title {
-    font-size: 1.25rem;
-  }
-
   .settings-main {
     padding: 2rem 1rem;
   }
@@ -214,17 +221,6 @@
 }
 
 @media (max-width: 480px) {
-  .settings-nav {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-
-  .back-button {
-    padding: 0.6rem 1.2rem;
-    font-size: 0.9rem;
-  }
-
   .settings-header h1 {
     font-size: 1.75rem;
   }

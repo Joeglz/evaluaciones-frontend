@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   FaClipboardList, 
   FaChartBar, 
   FaBell, 
   FaComments, 
-  FaCog
+  FaCog,
+  FaArrowLeft
 } from 'react-icons/fa';
 import { apiService } from '../services/api';
 import Settings from './Settings';
 import Evaluaciones from './Evaluaciones';
 import Notificaciones from './Notificaciones';
 import Reportes from './Reportes';
+import { TopbarProvider, useTopbar } from '../contexts/TopbarContext';
 import './Dashboard.css';
 
 const ROLE_MENU: Record<string, string[]> = {
@@ -51,12 +52,19 @@ interface DashboardProps {
   onLogout?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
+const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
+  const { override: topbarOverride } = useTopbar();
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<string>('home');
   const [evaluacionUsuarioIdParaAbrir, setEvaluacionUsuarioIdParaAbrir] = useState<number | null>(null);
   const [firmaDesdeNotificaciones, setFirmaDesdeNotificaciones] = useState(false);
   const [notificacionesNoLeidasCount, setNotificacionesNoLeidasCount] = useState<number>(0);
+  const [settingsResetSignal, setSettingsResetSignal] = useState<number>(0);
+  const [settingsSectionTitle, setSettingsSectionTitle] = useState<string | null>(null);
+
+  const handleSettingsSectionChange = useCallback((title: string | null) => {
+    setSettingsSectionTitle(title);
+  }, []);
 
   const role = user?.role || 'USUARIO';
   const allowedMenuItems = useMemo(() => ROLE_MENU[role] || ROLE_MENU.USUARIO, [role]);
@@ -99,6 +107,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const handleMenuNavigate = (viewKey: string) => {
     if (viewKey !== 'evaluaciones') {
       setFirmaDesdeNotificaciones(false);
+    }
+    if (viewKey === 'ajustes') {
+      setSettingsResetSignal((prev) => prev + 1);
     }
     setActiveView(viewKey);
   };
@@ -177,7 +188,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         if (!allowedMenuItems.includes('ajustes')) {
           return renderAccessDenied();
         }
-        return <Settings userRole={role} />;
+        return (
+          <Settings
+            userRole={role}
+            resetSignal={settingsResetSignal}
+            onSectionChange={handleSettingsSectionChange}
+          />
+        );
       case 'reportes':
         if (!allowedMenuItems.includes('reportes')) {
           return renderAccessDenied();
@@ -209,8 +226,134 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const bottomMenuRef = React.useRef<HTMLElement | null>(null);
+
+  // Safari iPad/iPhone: tras enfocar y luego cerrar el teclado virtual, el
+  // documento puede quedar desplazado verticalmente o el viewport reportar
+  // una altura "encogida". Reseteamos el scroll del documento y forzamos un
+  // pequeño reflujo de #root para que iOS recalcule 100dvh correctamente.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById('root');
+
+    const resetScroll = () => {
+      window.scrollTo(0, 0);
+      html.scrollTop = 0;
+      body.scrollTop = 0;
+      if (root) {
+        root.scrollTop = 0;
+        // Trigger reflow para que Safari recalcule 100dvh tras el teclado.
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        root.offsetHeight;
+      }
+    };
+
+    const reapplyWithRetries = () => {
+      const checkpoints = [0, 60, 150, 300, 600, 1000];
+      checkpoints.forEach((ms) => window.setTimeout(resetScroll, ms));
+    };
+
+    resetScroll();
+
+    window.addEventListener('orientationchange', reapplyWithRetries);
+    window.addEventListener('focusout', reapplyWithRetries);
+    window.visualViewport?.addEventListener('resize', resetScroll);
+
+    return () => {
+      window.removeEventListener('orientationchange', reapplyWithRetries);
+      window.removeEventListener('focusout', reapplyWithRetries);
+      window.visualViewport?.removeEventListener('resize', resetScroll);
+    };
+  }, []);
+
+  // Safari iPad/iPhone: bloquea explícitamente el gesto de scroll cuando se
+  // arrastra sobre la barra inferior fija para que no encadene el rubber-band
+  // del viewport. `touch-action: none` no siempre basta en versiones antiguas.
+  useEffect(() => {
+    const node = bottomMenuRef.current;
+    if (!node) return;
+    const block = (event: TouchEvent) => {
+      event.preventDefault();
+    };
+    node.addEventListener('touchmove', block, { passive: false });
+    return () => node.removeEventListener('touchmove', block);
+  }, []);
+
+  // Safari iPad/iPhone: bloquea el rubber-band del viewport.
+  // Detección dinámica: subimos por el DOM desde el target del touch y sólo
+  // permitimos el gesto si encontramos un ancestro que realmente tiene scroll
+  // disponible en la dirección del arrastre. Cubre listas, modales, formularios
+  // y cualquier scroll nuevo sin necesidad de marcar manualmente.
+  useEffect(() => {
+    let lastTouchY = 0;
+
+    const isFormElement = (el: HTMLElement): boolean => {
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (el.isContentEditable) return true;
+      return false;
+    };
+
+    // Sube buscando el primer ancestro con scroll real en Y. Devuelve null si
+    // ninguno puede absorber el gesto.
+    const findScrollableAncestor = (
+      target: EventTarget | null,
+      deltaY: number
+    ): HTMLElement | null => {
+      let el: HTMLElement | null = target as HTMLElement | null;
+      while (el && el !== document.body) {
+        if (isFormElement(el)) return el;
+        const style = window.getComputedStyle(el);
+        const ovy = style.overflowY;
+        const canScroll =
+          (ovy === 'auto' || ovy === 'scroll') &&
+          el.scrollHeight > el.clientHeight;
+        if (canScroll) {
+          // ¿Tiene rango disponible en la dirección del arrastre?
+          const atTop = el.scrollTop <= 0;
+          const atBottom =
+            el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+          if (deltaY < 0 && !atBottom) return el; // arrastre hacia arriba => scroll hacia abajo
+          if (deltaY > 0 && !atTop) return el; // arrastre hacia abajo => scroll hacia arriba
+          // Si está en el borde, sigue subiendo a buscar otro ancestro
+        }
+        el = el.parentElement;
+      }
+      return null;
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length === 1) {
+        lastTouchY = event.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const currentY = event.touches[0].clientY;
+      const deltaY = currentY - lastTouchY;
+      lastTouchY = currentY;
+      const scrollable = findScrollableAncestor(event.target, deltaY);
+      if (!scrollable) {
+        event.preventDefault();
+      }
+    };
+
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, []);
+
   const bottomMenu = (
-    <nav className="bottom-menu" aria-label="Navegación principal">
+    <nav
+      className="bottom-menu"
+      aria-label="Navegación principal"
+      ref={bottomMenuRef}
+    >
       {MENU_ITEMS.filter((item) => allowedMenuItems.includes(item.key)).map((item) => (
         <div
           key={item.key}
@@ -231,31 +374,89 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     </nav>
   );
 
+  const showHeader =
+    activeView === 'home' ||
+    activeView === 'ajustes' ||
+    activeView === 'evaluaciones' ||
+    activeView === 'reportes';
+
   return (
     <>
       <div className="dashboard-container">
-        {/* Header con mensaje de bienvenida */}
-        {(activeView === 'home' ||
-          activeView === 'ajustes' ||
-          activeView === 'evaluaciones' ||
-          activeView === 'reportes') && (
-          <header className="dashboard-header">
-            <div className="welcome-message">
-              <h1>Hola {getDisplayName()}, ¿qué quieres hacer hoy?</h1>
-            </div>
+        {/* Cabecera: muestra el título de la sección actual o un override
+            contextual (p.ej. al editar un usuario en Ajustes). */}
+        {showHeader && (
+          <header
+            className={`dashboard-header${topbarOverride ? ' dashboard-header--override' : ''}`}
+          >
+            {topbarOverride ? (
+              <div className="dashboard-header__override">
+                {topbarOverride.onBack && (
+                  <button
+                    type="button"
+                    className="dashboard-header__back"
+                    onClick={topbarOverride.onBack}
+                    title={topbarOverride.backLabel || 'Volver'}
+                  >
+                    <FaArrowLeft aria-hidden />
+                    <span className="dashboard-header__back-label">
+                      {topbarOverride.backLabel || 'Volver'}
+                    </span>
+                  </button>
+                )}
+                <div className="dashboard-header__heading">
+                  {topbarOverride.kicker && (
+                    <span className="dashboard-header__kicker">
+                      {topbarOverride.kicker}
+                    </span>
+                  )}
+                  <div className="dashboard-header__title-row">
+                    <h1 className="dashboard-header__title">
+                      {topbarOverride.title}
+                    </h1>
+                    {topbarOverride.badge && (
+                      <span
+                        className={`role-badge ${topbarOverride.badge.className || ''}`}
+                      >
+                        {topbarOverride.badge.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="welcome-message">
+                <h1>
+                  {activeView === 'ajustes' && settingsSectionTitle
+                    ? settingsSectionTitle
+                    : `Hola ${getDisplayName()}, ¿qué quieres hacer hoy?`}
+                </h1>
+              </div>
+            )}
             <button onClick={handleLogout} className="logout-button">
               Cerrar Sesión
             </button>
           </header>
         )}
 
-        <main className="dashboard-main">
+        <main
+          data-scroll="true"
+          className={`dashboard-main${
+            activeView === 'ajustes' && settingsSectionTitle ? ' dashboard-main--inner-scroll' : ''
+          }`}
+        >
           {renderContent()}
         </main>
+        {bottomMenu}
       </div>
-      {createPortal(bottomMenu, document.body)}
     </>
   );
 };
+
+const Dashboard: React.FC<DashboardProps> = (props) => (
+  <TopbarProvider>
+    <DashboardInner {...props} />
+  </TopbarProvider>
+);
 
 export default Dashboard;

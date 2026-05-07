@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   FaPlus, 
   FaEdit, 
@@ -10,6 +10,7 @@ import {
   FaUsers,
   FaBriefcase,
   FaArrowLeft,
+  FaArrowUp,
   FaChevronDown,
   FaChevronRight,
   FaTimes
@@ -24,6 +25,18 @@ const slugifyText = (value: string): string =>
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-');
+
+function getScrollParent(element: HTMLElement | null): HTMLElement | null {
+  let parent = element?.parentElement ?? null;
+  while (parent) {
+    const { overflowY } = window.getComputedStyle(parent);
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
 
 const AreaManagement: React.FC = () => {
   const [areas, setAreas] = useState<Area[]>([]);
@@ -41,7 +54,7 @@ const AreaManagement: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
-  const [currentView, setCurrentView] = useState<'list' | 'edit'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'edit' | 'edit-evaluacion'>('list');
   
   // Área seleccionada
   const [selectedArea, setSelectedArea] = useState<Area | null>(null);
@@ -72,7 +85,9 @@ const AreaManagement: React.FC = () => {
   const [plantillaDropdownOpen, setPlantillaDropdownOpen] = useState(false);
   const [plantillaHighlightedIndex, setPlantillaHighlightedIndex] = useState(-1);
   const plantillaComboboxRef = useRef<HTMLDivElement>(null);
-  const [showEditarEvaluacionModal, setShowEditarEvaluacionModal] = useState(false);
+  const areaManagementRef = useRef<HTMLDivElement>(null);
+  const dashboardScrollParentRef = useRef<HTMLElement | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const [evaluacionEdicionContext, setEvaluacionEdicionContext] = useState<{ evaluacionId: number; nivelId: number; posicionId: number } | null>(null);
   const [editarEvaluacionNombre, setEditarEvaluacionNombre] = useState('');
   const [editarEvaluacionMinimo, setEditarEvaluacionMinimo] = useState<number | null>(null);
@@ -152,6 +167,32 @@ const AreaManagement: React.FC = () => {
       setSearching(true);
     }
   }, [searchTerm, statusFilter]);
+
+  useEffect(() => {
+    if (currentView !== 'list' || loading) {
+      setShowBackToTop(false);
+      return;
+    }
+    const root = areaManagementRef.current;
+    if (!root) {
+      return;
+    }
+    const scrollParent = getScrollParent(root);
+    dashboardScrollParentRef.current = scrollParent;
+    if (!scrollParent) {
+      return;
+    }
+    const onScroll = () => {
+      setShowBackToTop(scrollParent.scrollTop > 240);
+    };
+    scrollParent.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => scrollParent.removeEventListener('scroll', onScroll);
+  }, [currentView, loading, areas.length, searching]);
+
+  const handleBackToTop = useCallback(() => {
+    dashboardScrollParentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleValidationErrors = (error: any): Record<string, string[]> => {
     if (error.name === 'ValidationError' && typeof error.message === 'object') {
@@ -511,7 +552,7 @@ const AreaManagement: React.FC = () => {
   };
 
   const cerrarModalEditarEvaluacion = () => {
-    setShowEditarEvaluacionModal(false);
+    setCurrentView('edit');
     setEvaluacionEdicionContext(null);
     setEditarEvaluacionNombre('');
     setEditarEvaluacionFirmas([]);
@@ -808,7 +849,7 @@ const AreaManagement: React.FC = () => {
       setEditarEvaluacionPaso(1);
       await cargarEvaluacionParaEdicion(evaluacionId);
       setEvaluacionEdicionContext({ evaluacionId, nivelId, posicionId });
-      setShowEditarEvaluacionModal(true);
+      setCurrentView('edit-evaluacion');
     } catch (error) {
       console.error('Error al cargar la evaluación para edición:', error);
       setEditarEvaluacionError('No se pudieron cargar los datos de la evaluación.');
@@ -1336,58 +1377,170 @@ const AreaManagement: React.FC = () => {
   }
 
   return (
-    <div className="area-management">
-      <div className="area-management-header">
-        <h1>
-          {currentView === 'edit'
-            ? `Editar Área${selectedArea ? `: ${selectedArea.name}` : ''}`
-            : `Gestión de Áreas (${areas.length})`
-          }
-        </h1>
-        {currentView === 'edit' ? (
-          <button className="btn-secondary btn-back" onClick={volverALista}>
-            <FaArrowLeft /> Volver
-          </button>
-        ) : (
-          <button className="btn-primary" onClick={openCreateAreaModal}>
-          <FaPlus /> Nueva Área
-        </button>
-        )}
-      </div>
-
-      {currentView === 'list' ? (
-        <>
-      <div className="area-management-filters">
-        <div className="search-box">
-          {searching ? (
-            <div className="search-loading">
-              <div className="spinner"></div>
-            </div>
+    <div className="area-management" ref={areaManagementRef}>
+      {currentView !== 'list' && (
+        <div className="area-management-header">
+          <h1>
+            {currentView === 'edit-evaluacion'
+              ? 'Editar evaluación'
+              : `Editar Área${selectedArea ? `: ${selectedArea.name}` : ''}`}
+          </h1>
+          {currentView === 'edit-evaluacion' ? (
+            <button type="button" className="btn-secondary btn-back" onClick={cerrarModalEditarEvaluacion}>
+              <FaArrowLeft /> Volver al área
+            </button>
           ) : (
-            <FaSearch />
+            <button className="btn-secondary btn-back" onClick={volverALista}>
+              <FaArrowLeft /> Volver
+            </button>
           )}
-          <input
-            type="text"
-            placeholder="Buscar por nombre o descripción..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
         </div>
-        
-        <div className="filter-group">
-          <FaFilter />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Inactivas</option>
-          </select>
+      )}
+
+      <div className="area-management-body" data-scroll="true">
+      {currentView === 'edit-evaluacion' && evaluacionEdicionContext ? (
+        <div className="area-evaluacion-edit-screen">
+          <div className="area-evaluacion-edit-body" data-scroll="true">
+            {editarEvaluacionError && (
+              <div className="field-error">{editarEvaluacionError}</div>
+            )}
+            {cargandoEvaluacionEdicion ? (
+              <div className="section-empty">Cargando información de la evaluación...</div>
+            ) : (
+              <>
+                <div className="edit-evaluacion-steps">
+                  {pasosEdicionEvaluacion.map((paso) => (
+                    <button
+                      key={paso.id}
+                      type="button"
+                      className={`step-pill ${editarEvaluacionPaso === paso.id ? 'active' : ''}`}
+                      onClick={() => setEditarEvaluacionPaso(paso.id)}
+                      disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
+                    >
+                      <span className="step-number">{paso.id}</span>
+                      <span className="step-title">{paso.titulo}</span>
+                    </button>
+                  ))}
+                </div>
+                {renderEditarEvaluacionStep()}
+              </>
+            )}
+          </div>
+          <div className="area-evaluacion-edit-footer modal-actions-steps">
+            <div className="step-navigation">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setEditarEvaluacionPaso((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : prev))}
+                disabled={editarEvaluacionPaso === 1 || editarEvaluacionLoading || cargandoEvaluacionEdicion}
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setEditarEvaluacionPaso((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev))}
+                disabled={editarEvaluacionPaso === 4 || editarEvaluacionLoading || cargandoEvaluacionEdicion}
+              >
+                Siguiente
+              </button>
+            </div>
+            <div className="primary-actions">
+              <button type="button" className="btn-secondary" onClick={cerrarModalEditarEvaluacion}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleGuardarCambiosEvaluacion}
+                disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
+              >
+                {editarEvaluacionLoading ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : currentView === 'list' ? (
+        <>
+      <div className="area-management-toolbar">
+        <div className="area-management-toolbar-title">
+          <h2>Áreas <span className="area-management-toolbar-count">({areas.length})</span></h2>
+          <button
+            className="btn-primary area-management-toolbar-cta"
+            onClick={openCreateAreaModal}
+          >
+            <FaPlus /> Nueva Área
+          </button>
+        </div>
+        <div className="area-management-filters">
+          <div className="search-box">
+            {searching ? (
+              <div className="search-loading">
+                <div className="spinner"></div>
+              </div>
+            ) : (
+              <FaSearch />
+            )}
+            <input
+              type="text"
+              placeholder="Buscar por nombre o descripción..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="Buscar por nombre o descripción"
+            />
+          </div>
+
+          <div className="filter-group filter-group-desktop">
+            <FaFilter aria-hidden />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filtrar por estado"
+            >
+              <option value="">Todos los estados</option>
+              <option value="active">Activas</option>
+              <option value="inactive">Inactivas</option>
+            </select>
+          </div>
+
+          <div
+            className="filter-segmented"
+            role="group"
+            aria-label="Filtrar por estado"
+          >
+            <button
+              type="button"
+              className="filter-segmented-btn"
+              aria-pressed={statusFilter === ''}
+              onClick={() => setStatusFilter('')}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              className="filter-segmented-btn"
+              aria-pressed={statusFilter === 'active'}
+              onClick={() => setStatusFilter('active')}
+            >
+              Activas
+            </button>
+            <button
+              type="button"
+              className="filter-segmented-btn"
+              aria-pressed={statusFilter === 'inactive'}
+              onClick={() => setStatusFilter('inactive')}
+            >
+              Inactivas
+            </button>
+          </div>
         </div>
       </div>
 
       {error && <div className="error-message">{error}</div>}
 
       <div className="areas-table-container">
-        <table className="areas-table">
+        <div className="areas-table-x-scroll">
+          <table className="areas-table">
           <thead>
             <tr>
               <th>Nombre</th>
@@ -1422,8 +1575,20 @@ const AreaManagement: React.FC = () => {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
+
+      {showBackToTop && (
+        <button
+          type="button"
+          className="area-management-back-top"
+          onClick={handleBackToTop}
+          aria-label="Volver arriba"
+        >
+          <FaArrowUp aria-hidden />
+        </button>
+      )}
         </>
       ) : (
         selectedArea && (
@@ -1780,7 +1945,10 @@ const AreaManagement: React.FC = () => {
             </form>
           </div>
         )
-      )}
+      )
+      }
+
+      </div>
 
       {/* Modal: Crear Área */}
       {showCreateModal && (
@@ -2295,75 +2463,6 @@ const AreaManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Editar evaluación */}
-      {showEditarEvaluacionModal && evaluacionEdicionContext && (
-        <div className="modal-overlay" onClick={cerrarModalEditarEvaluacion}>
-          <div className="modal-content modal-medium" onClick={(e) => e.stopPropagation()}>
-            <h2>Editar evaluación</h2>
-            <div className="modal-body">
-              {editarEvaluacionError && (
-                <div className="field-error">{editarEvaluacionError}</div>
-              )}
-
-              {cargandoEvaluacionEdicion ? (
-                <div className="section-empty">Cargando información de la evaluación...</div>
-              ) : (
-                <>
-                  <div className="edit-evaluacion-steps">
-                    {pasosEdicionEvaluacion.map((paso) => (
-                      <button
-                        key={paso.id}
-                        type="button"
-                        className={`step-pill ${editarEvaluacionPaso === paso.id ? 'active' : ''}`}
-                        onClick={() => setEditarEvaluacionPaso(paso.id)}
-                        disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
-                      >
-                        <span className="step-number">{paso.id}</span>
-                        <span className="step-title">{paso.titulo}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {renderEditarEvaluacionStep()}
-                </>
-              )}
-            </div>
-            <div className="modal-actions modal-actions-steps">
-              <div className="step-navigation">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setEditarEvaluacionPaso((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : prev))}
-                  disabled={editarEvaluacionPaso === 1 || editarEvaluacionLoading || cargandoEvaluacionEdicion}
-                >
-                  Anterior
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setEditarEvaluacionPaso((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev))}
-                  disabled={editarEvaluacionPaso === 4 || editarEvaluacionLoading || cargandoEvaluacionEdicion}
-                >
-                  Siguiente
-                </button>
-              </div>
-              <div className="primary-actions">
-                <button type="button" className="btn-secondary" onClick={cerrarModalEditarEvaluacion}>
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleGuardarCambiosEvaluacion}
-                  disabled={editarEvaluacionLoading || cargandoEvaluacionEdicion}
-                >
-                  {editarEvaluacionLoading ? 'Guardando...' : 'Guardar Cambios'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

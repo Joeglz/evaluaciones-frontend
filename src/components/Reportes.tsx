@@ -35,6 +35,38 @@ const CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed'];
 // Paleta para varias áreas en la gráfica mensual (todas las áreas vs meses)
 const AREA_CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed', '#0891b2', '#ca8a04', '#c026d3'];
 
+/** Promedio mensual por tipo de área; meses futuros -> null (misma regla que tabla / pantalla). */
+function buildMonthlyTipoPromedioPoints(
+  dataPoints: { month: string; [k: string]: string | number | null | undefined }[],
+  areaNamesTipo: string[],
+  year: number,
+  isFutureMonthFn: (year: number, month1Based: number) => boolean
+): { month: string; Promedio: number | null }[] {
+  return dataPoints.map((row, monthIndex) => {
+    const isFuture = isFutureMonthFn(year, monthIndex + 1);
+    const valores = areaNamesTipo
+      .map((name) => row[name])
+      .filter((v): v is number => typeof v === 'number');
+    const prom =
+      !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+    return { month: row.month, Promedio: prom };
+  });
+}
+
+/** Ancho mínimo del canvas de exportación para que quepan 12 meses con etiqueta cada mes. */
+function monthlyChartExportWidthPx(monthCount: number): number {
+  const n = monthCount > 0 ? monthCount : 12;
+  return Math.min(2800, Math.max(1000, n * 108 + 160));
+}
+
+const MONTHLY_X_AXIS_TICK_PROPS = {
+  interval: 0 as const,
+  angle: -38,
+  textAnchor: 'end' as const,
+  height: 68,
+  tick: { fontSize: 10 },
+};
+
 type TabType = 'avance-global' | 'advance-training-monthly' | 'advance-training-matrix';
 
 type MonthlyRow = { month: string; [areaName: string]: string | number | null };
@@ -394,7 +426,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const buildExcelMonthlyWithChart = useCallback(async (
     dataPoints: { month: string; [k: string]: string | number | null }[],
     chartImagesBase64: { produccion?: string; soporte?: string },
-    fileName: string
+    fileName: string,
+    chartEmbed?: { width: number; height: number }
   ) => {
     const areaNames = dataPoints.length > 0 ? Object.keys(dataPoints[0]).filter((k) => k !== 'month') : [];
     const areaNamesProduccion = areaNames.filter(
@@ -403,6 +436,11 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     const areaNamesSoporte = areaNames.filter(
       (name) => areas.find((a) => a.name === name)?.tipo_area === 'soporte'
     );
+
+    const embedW =
+      chartEmbed?.width ??
+      Math.min(1600, Math.max(720, monthlyChartExportWidthPx(dataPoints.length) - 80));
+    const embedH = chartEmbed?.height ?? Math.round((embedW * 400) / 1000);
 
     const workbook = new ExcelJS.Workbook();
     const appendTipoSheet = (sheetName: string, areaNamesTipo: string[], chartImageBase64?: string) => {
@@ -438,7 +476,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         const startRow = areaNamesTipo.length + 3;
         ws.addImage(imageId, {
           tl: { col: 0, row: startRow },
-          ext: { width: 640, height: 350 },
+          ext: { width: embedW, height: embedH },
           editAs: 'oneCell',
         });
       }
@@ -708,10 +746,14 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         }
         if (exportChartType === 'advance-training-monthly') {
           const dataPoints = exportChartData as { month: string; [k: string]: string | number }[];
+          const wPx = monthlyChartExportWidthPx(dataPoints.length);
+          const embedW = Math.round(wPx * 0.96);
+          const embedH = 420;
           await buildExcelMonthlyWithChart(
             dataPoints,
             { produccion: images[0], soporte: images[1] },
-            exportFileName
+            exportFileName,
+            { width: embedW, height: embedH }
           );
         } else {
           await buildExcelWithCharts(exportChartData as AvanceGlobalResponse[], images, exportFileName);
@@ -725,7 +767,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     };
     runExport();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- exportación matriz usa snapshot en el momento del clic
-  }, [exportChartData, exportChartType, exportFileName, buildMatrixExcelWithTablesAndCharts]);
+  }, [exportChartData, exportChartType, exportFileName, buildMatrixExcelWithTablesAndCharts, buildExcelMonthlyWithChart]);
 
   const getChartData = (data: AvanceGlobalResponse[]): { name: string; Entrenamiento: number; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] => {
     const result: { name: string; Entrenamiento: number; Nivel1: number; Nivel2: number; Nivel3: number; Nivel4: number }[] = [];
@@ -1093,24 +1135,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
 
     const yearChart = selectedYear ?? new Date().getFullYear();
     const monthlyChartDataProduccion = monthlyChartData.length
-      ? monthlyChartData.map((row, monthIndex) => {
-          const isFuture = isFutureMonth(yearChart, monthIndex + 1);
-          const valores = areaNamesProduccion
-            .map((name) => row[name])
-            .filter((v): v is number => typeof v === 'number');
-          const prom = !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-          return { month: row.month, Promedio: prom };
-        })
+      ? buildMonthlyTipoPromedioPoints(monthlyChartData, areaNamesProduccion, yearChart, isFutureMonth)
       : [];
     const monthlyChartDataSoporte = monthlyChartData.length
-      ? monthlyChartData.map((row, monthIndex) => {
-          const isFuture = isFutureMonth(yearChart, monthIndex + 1);
-          const valores = areaNamesSoporte
-            .map((name) => row[name])
-            .filter((v): v is number => typeof v === 'number');
-          const prom = !isFuture && valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-          return { month: row.month, Promedio: prom };
-        })
+      ? buildMonthlyTipoPromedioPoints(monthlyChartData, areaNamesSoporte, yearChart, isFutureMonth)
       : [];
 
     const handleSaveMonthlyManual = async () => {
@@ -1267,9 +1295,9 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                   Avance por mes - {selectedYear} — Producción
                 </h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={monthlyChartDataProduccion} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                  <LineChart data={monthlyChartDataProduccion} margin={{ top: 20, right: 28, left: 16, bottom: 52 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                    <XAxis dataKey="month" stroke={COLORS.black} />
+                    <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                     <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                     <Tooltip
                       formatter={(value: number | undefined, name?: string) => (value != null ? [`${Number(value).toFixed(2)}%`, name ?? 'Promedio'] : '')}
@@ -1295,9 +1323,9 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                   Avance por mes - {selectedYear} — Soporte
                 </h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={monthlyChartDataSoporte} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                  <LineChart data={monthlyChartDataSoporte} margin={{ top: 20, right: 28, left: 16, bottom: 52 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                    <XAxis dataKey="month" stroke={COLORS.black} />
+                    <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                     <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                     <Tooltip
                       formatter={(value: number | undefined, name?: string) => (value != null ? [`${Number(value).toFixed(2)}%`, name ?? 'Promedio'] : '')}
@@ -1977,7 +2005,10 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             position: 'absolute',
             left: -9999,
             top: 0,
-            width: 800,
+            width:
+              exportChartType === 'advance-training-monthly'
+                ? monthlyChartExportWidthPx(exportChartData.length)
+                : 800,
             zIndex: -1,
             pointerEvents: 'none',
           }}
@@ -1985,6 +2016,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
           {exportChartType === 'advance-training-monthly' ? (
             (() => {
               const dataPoints = exportChartData as { month: string; [k: string]: string | number }[];
+              const yearExport = selectedYear ?? new Date().getFullYear();
               const areaNames = dataPoints[0] ? Object.keys(dataPoints[0]).filter((k) => k !== 'month') : [];
               const areaNamesProduccion = areaNames.filter(
                 (name) => (areas.find((a) => a.name === name)?.tipo_area ?? 'produccion') === 'produccion'
@@ -1992,31 +2024,39 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               const areaNamesSoporte = areaNames.filter(
                 (name) => areas.find((a) => a.name === name)?.tipo_area === 'soporte'
               );
-              const chartDataProduccion = dataPoints.map((row) => {
-                const valores = areaNamesProduccion
-                  .map((name) => row[name])
-                  .filter((v): v is number => typeof v === 'number');
-                const prom = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-                return { month: row.month, Promedio: prom };
-              });
-              const chartDataSoporte = dataPoints.map((row) => {
-                const valores = areaNamesSoporte
-                  .map((name) => row[name])
-                  .filter((v): v is number => typeof v === 'number');
-                const prom = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-                return { month: row.month, Promedio: prom };
-              });
+              const chartDataProduccion = buildMonthlyTipoPromedioPoints(
+                dataPoints,
+                areaNamesProduccion,
+                yearExport,
+                isFutureMonth
+              );
+              const chartDataSoporte = buildMonthlyTipoPromedioPoints(
+                dataPoints,
+                areaNamesSoporte,
+                yearExport,
+                isFutureMonth
+              );
+              const w = monthlyChartExportWidthPx(dataPoints.length);
+              const chartH = 380;
               return (
                 <>
                   {areaNamesProduccion.length > 0 && (
-                    <div className="reporte-chart-block" style={{ width: 800, height: 400 }}>
+                    <div className="reporte-chart-block" style={{ width: w, minHeight: chartH + 48 }}>
                       <h3 className="reporte-chart-title">Avance por mes - Producción</h3>
-                      <ResponsiveContainer width={800} height={350}>
-                        <LineChart data={chartDataProduccion} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                      <ResponsiveContainer width={w} height={chartH}>
+                        <LineChart
+                          data={chartDataProduccion}
+                          margin={{ top: 16, right: 28, left: 12, bottom: 52 }}
+                        >
                           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                          <XAxis dataKey="month" stroke={COLORS.black} />
+                          <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                           <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                          <Tooltip formatter={(value: number | undefined) => (value != null ? [`${Number(value).toFixed(2)}%`, 'Promedio'] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                          <Tooltip
+                            formatter={(value: number | undefined) =>
+                              value != null ? [`${Number(value).toFixed(2)}%`, 'Promedio'] : ''
+                            }
+                            contentStyle={{ borderColor: COLORS.red }}
+                          />
                           <Legend />
                           <Line
                             type="monotone"
@@ -2025,20 +2065,29 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                             stroke={COLORS.red}
                             strokeWidth={3}
                             dot={{ r: 4 }}
+                            connectNulls={false}
                           />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
                   )}
                   {areaNamesSoporte.length > 0 && (
-                    <div className="reporte-chart-block" style={{ width: 800, height: 400 }}>
+                    <div className="reporte-chart-block" style={{ width: w, minHeight: chartH + 48 }}>
                       <h3 className="reporte-chart-title">Avance por mes - Soporte</h3>
-                      <ResponsiveContainer width={800} height={350}>
-                        <LineChart data={chartDataSoporte} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                      <ResponsiveContainer width={w} height={chartH}>
+                        <LineChart
+                          data={chartDataSoporte}
+                          margin={{ top: 16, right: 28, left: 12, bottom: 52 }}
+                        >
                           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
-                          <XAxis dataKey="month" stroke={COLORS.black} />
+                          <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                           <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                          <Tooltip formatter={(value: number | undefined) => (value != null ? [`${Number(value).toFixed(2)}%`, 'Promedio'] : '')} contentStyle={{ borderColor: COLORS.red }} />
+                          <Tooltip
+                            formatter={(value: number | undefined) =>
+                              value != null ? [`${Number(value).toFixed(2)}%`, 'Promedio'] : ''
+                            }
+                            contentStyle={{ borderColor: COLORS.red }}
+                          />
                           <Legend />
                           <Line
                             type="monotone"
@@ -2047,6 +2096,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                             stroke="#2563eb"
                             strokeWidth={3}
                             dot={{ r: 4 }}
+                            connectNulls={false}
                           />
                         </LineChart>
                       </ResponsiveContainer>

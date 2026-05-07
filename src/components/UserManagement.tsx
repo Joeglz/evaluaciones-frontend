@@ -10,6 +10,7 @@ import {
   FaTimes,
   FaArrowLeft,
   FaArrowRight,
+  FaArrowUp,
   FaUser,
   FaUserTag,
   FaBuilding,
@@ -25,8 +26,10 @@ import {
 import * as XLSX from 'xlsx';
 import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicion, Grupo, Evaluacion, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
+import { useTopbarOverride } from '../contexts/TopbarContext';
 import ToastContainer from './ToastContainer';
 import './UserManagement.css';
+import './Settings.css';
 
 const MAX_PROFILE_PHOTO_SIZE = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_PROFILE_PHOTO_TYPES = ['image/jpeg', 'image/png'];
@@ -37,6 +40,8 @@ const UserManagement: React.FC = () => {
 
   const [users, setUsers] = useState<User[]>([]);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [areas, setAreas] = useState<Area[]>([]);
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -237,6 +242,25 @@ const UserManagement: React.FC = () => {
       }
     };
   }, [editProfilePhotoPreview]);
+
+  useEffect(() => {
+    const node = bodyRef.current;
+    if (!node) return;
+    const handleScroll = () => {
+      setShowScrollTop(node.scrollTop > 240);
+    };
+    handleScroll();
+    node.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      node.removeEventListener('scroll', handleScroll);
+    };
+  }, [isCreating, isEditing]);
+
+  const scrollBodyToTop = useCallback(() => {
+    const node = bodyRef.current;
+    if (!node) return;
+    node.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleValidationErrors = (error: any): Record<string, string[]> => {
     // Si es un error de validación con el objeto completo de Django
@@ -1480,17 +1504,73 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  /** Supervisores: añadir área al usuario sin grupo ni posición. */
+  const handleAddSupervisorArea = () => {
+    const form = isCreating ? createForm : editForm;
+    if (form.role !== 'SUPERVISOR') return;
+    const aidRaw = step3AreaId !== '' ? step3AreaId : form.areas[0];
+    if (aidRaw === undefined) return;
+    const aid = aidRaw;
+    if (form.areas.includes(aid)) return;
+    const nuevo = [...form.areas, aid];
+    if (isCreating) {
+      setCreateForm({ ...createForm, areas: nuevo });
+    } else {
+      setEditForm({ ...editForm, areas: nuevo });
+    }
+  };
+
+  /** Quitar área del usuario y las posiciones que pertenecen a esa área. */
+  const handleRemoveAreaAssignment = (areaIdToRemove: number) => {
+    const form = isCreating ? createForm : editForm;
+    const posIdsInArea = new Set(
+      posiciones.filter((p) => p.area === areaIdToRemove).map((p) => p.id)
+    );
+    const grupoRow = form.grupo != null ? grupos.find((g) => g.id === form.grupo) : undefined;
+    const clearGrupo = grupoRow?.area === areaIdToRemove;
+
+    const nextAreas = form.areas.filter((id) => id !== areaIdToRemove);
+    const nextPosiciones = form.posiciones.filter((pid) => !posIdsInArea.has(pid));
+
+    if (isCreating) {
+      setCreateForm({
+        ...createForm,
+        areas: nextAreas,
+        posiciones: nextPosiciones,
+        grupo: clearGrupo ? null : createForm.grupo,
+      });
+      setCreatePosicionesNivel((prev) => prev.filter((x) => !posIdsInArea.has(x.posicion)));
+    } else {
+      setEditForm({
+        ...editForm,
+        areas: nextAreas,
+        posiciones: nextPosiciones,
+        grupo: clearGrupo ? null : editForm.grupo,
+      });
+      setEditPosicionesNivel((prev) => prev.filter((x) => !posIdsInArea.has(x.posicion)));
+    }
+  };
+
   const renderStep3 = () => {
     const form = isCreating ? createForm : editForm;
     const errors = isCreating ? createErrors : editErrors;
     const posicionesNivelPaso = isCreating ? createPosicionesNivel : editPosicionesNivel;
+    const esSupervisor = form.role === 'SUPERVISOR';
     const areaId = (step3AreaId !== '' ? step3AreaId : form.areas[0]) || null;
     const posicionesEnArea = areaId ? getPosicionesByArea(areaId) : [];
     const gruposEnArea = areaId ? getGruposByArea(areaId) : [];
 
+    const areaYaAsignada = areaId !== null && form.areas.includes(areaId);
+
     return (
       <div className="step-content">
         <h3>Área, Grupo y Posiciones</h3>
+        {esSupervisor && (
+          <p className="form-hint" style={{ marginBottom: '1rem', color: '#444', lineHeight: 1.45 }}>
+            Como supervisor puedes usar &quot;Agregar área&quot; para asignar solo el área, sin grupo ni posición.
+            También puedes agregar posiciones si lo necesitas.
+          </p>
+        )}
         <div className="form-grid">
           <div className="form-group">
             <label>Área *</label>
@@ -1577,18 +1657,59 @@ const UserManagement: React.FC = () => {
 
               <div className="form-group form-group--button">
                 <label>&nbsp;</label>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleAddPosicion}
-                  disabled={step3PosicionId === '' || form.posiciones.includes(step3PosicionId as number)}
-                >
-                  Agregar
-                </button>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {esSupervisor && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleAddSupervisorArea}
+                      disabled={areaYaAsignada}
+                      title={
+                        areaYaAsignada
+                          ? 'Esta área ya está asignada'
+                          : 'Asignar solo esta área al usuario'
+                      }
+                    >
+                      Agregar área
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleAddPosicion}
+                    disabled={step3PosicionId === '' || form.posiciones.includes(step3PosicionId as number)}
+                  >
+                    Agregar posición
+                  </button>
+                </div>
               </div>
             </>
           )}
         </div>
+
+        {form.areas.length > 0 && (
+          <div className="form-group" style={{ marginTop: '1rem' }}>
+            <label>Áreas asignadas</label>
+            <ul className="posiciones-list">
+              {form.areas.map((aid) => {
+                const aname = areas.find((a) => a.id === aid)?.name || `ID ${aid}`;
+                return (
+                  <li key={aid} className="posiciones-list__item">
+                    <span>{aname}</span>
+                    <button
+                      type="button"
+                      className="posiciones-list__remove"
+                      onClick={() => handleRemoveAreaAssignment(aid)}
+                      title="Quitar área"
+                    >
+                      Quitar
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         {form.posiciones.length > 0 && (
           <div className="form-group" style={{ marginTop: '1rem' }}>
@@ -1772,8 +1893,39 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  // Tomamos control del encabezado del dashboard durante la edición/alta del
+  // usuario para evitar duplicar barras de navegación en la vista interna.
+  const editTopbar = isCreating || isEditing
+    ? {
+        kicker: isCreating ? 'Alta de usuario' : 'Editar usuario',
+        title: isCreating
+          ? 'Nuevo usuario'
+          : selectedUser?.full_name || selectedUser?.username || 'Usuario',
+        badge:
+          !isCreating && selectedUser?.role_display
+            ? {
+                label: selectedUser.role_display,
+                className: getRoleBadgeClass(selectedUser.role),
+              }
+            : undefined,
+        onBack: closeStepModal,
+        backLabel: 'Listado',
+      }
+    : null;
+  useTopbarOverride(editTopbar, [
+    isCreating,
+    isEditing,
+    selectedUser?.id,
+    selectedUser?.full_name,
+    selectedUser?.username,
+    selectedUser?.role_display,
+    selectedUser?.role,
+  ]);
+
   return (
     <div className="user-management">
+      {!(isCreating || isEditing) ? (
+        <div className="user-management-body" data-scroll="true" ref={bodyRef}>
       <div className="user-management-filters">
         <div className="search-box">
           {searching ? (
@@ -1915,6 +2067,96 @@ const UserManagement: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      <button
+        type="button"
+        className={`scroll-to-top-btn ${showScrollTop ? 'is-visible' : ''}`}
+        onClick={scrollBodyToTop}
+        aria-label="Volver arriba"
+        title="Volver arriba"
+      >
+        <FaArrowUp aria-hidden />
+      </button>
+
+      </div>
+      ) : (
+      <div className="user-edit-screen">
+        <nav className="user-edit-stepper" aria-label="Pasos del formulario">
+          {[
+            { id: 1, label: 'Datos', sublabel: 'Información personal', icon: <FaUser /> },
+            { id: 2, label: 'Rol', sublabel: 'Permisos y empleo', icon: <FaUserTag /> },
+            { id: 3, label: 'Ubicación', sublabel: 'Área y posiciones', icon: <FaBuilding /> },
+          ].map((step, idx, arr) => {
+            const state = currentStep === step.id ? 'active' : currentStep > step.id ? 'done' : 'todo';
+            return (
+              <React.Fragment key={step.id}>
+                <button
+                  type="button"
+                  className={`user-edit-step user-edit-step--${state}`}
+                  onClick={() => setCurrentStep(step.id as 1 | 2 | 3)}
+                  aria-current={currentStep === step.id ? 'step' : undefined}
+                >
+                  <span className="user-edit-step__bullet" aria-hidden>
+                    {state === 'done' ? <FaCheck /> : step.id}
+                  </span>
+                  <span className="user-edit-step__text">
+                    <span className="user-edit-step__label">{step.icon}{step.label}</span>
+                    <span className="user-edit-step__sub">{step.sublabel}</span>
+                  </span>
+                </button>
+                {idx < arr.length - 1 && (
+                  <span
+                    className={`user-edit-step__connector ${currentStep > step.id ? 'is-done' : ''}`}
+                    aria-hidden
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </nav>
+
+        <div className="user-edit-screen__body" data-scroll="true">
+          {renderGlobalErrors(
+            isCreating ? createErrors : editErrors,
+            isCreating ? createErrors.detail : editErrors.detail
+          )}
+          <div className="user-edit-card">
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep3()}
+          </div>
+        </div>
+
+        <footer className="user-edit-screen__footer">
+          <button
+            type="button"
+            className="btn-secondary user-edit-screen__cancel"
+            onClick={closeStepModal}
+          >
+            <FaTimes /> Cancelar
+          </button>
+          <div className="user-edit-screen__nav">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={prevStep}
+              disabled={currentStep === 1}
+            >
+              <FaArrowLeft /> Anterior
+            </button>
+            {currentStep < 3 ? (
+              <button type="button" className="btn-primary" onClick={nextStep}>
+                Siguiente <FaArrowRight />
+              </button>
+            ) : (
+              <button type="button" className="btn-primary" onClick={handleFinalSubmit}>
+                {isCreating ? 'Crear usuario' : 'Guardar cambios'}
+              </button>
+            )}
+          </div>
+        </footer>
+      </div>
+      )}
 
       {/* Modal: Cambiar contraseña */}
       {showPasswordModal && selectedUser && (
@@ -2142,77 +2384,6 @@ const UserManagement: React.FC = () => {
                 <FaTrash /> Eliminar
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de pasos para crear/editar usuario */}
-      {(isCreating || isEditing) && (
-        <div className="modal-overlay">
-          <div className="step-modal" onClick={(e) => e.stopPropagation()}>
-            <header className="step-modal__header">
-              <button className="step-modal__close" onClick={closeStepModal} title="Cerrar">
-                <FaTimes />
-              </button>
-              <div className="step-modal__title">
-                <h2>{isCreating ? 'Crear Usuario' : 'Editar Usuario'}</h2>
-                <span className="step-modal__subtitle">Paso {currentStep} de 3</span>
-              </div>
-            </header>
-
-            <nav className="step-modal__progress">
-              <button
-                type="button"
-                className={`progress-chip ${currentStep === 1 ? 'active' : ''}`}
-                onClick={() => setCurrentStep(1)}
-              >
-                <FaUser />
-                <span>Datos</span>
-              </button>
-              <button
-                type="button"
-                className={`progress-chip ${currentStep === 2 ? 'active' : ''}`}
-                onClick={() => setCurrentStep(2)}
-              >
-                <FaUserTag />
-                <span>Rol</span>
-              </button>
-              <button
-                type="button"
-                className={`progress-chip ${currentStep === 3 ? 'active' : ''}`}
-                onClick={() => setCurrentStep(3)}
-              >
-                <FaBuilding />
-                <span>Ubicación</span>
-              </button>
-            </nav>
-
-            <section className="step-modal__body">
-              {renderGlobalErrors(
-                isCreating ? createErrors : editErrors,
-                isCreating ? createErrors.detail : editErrors.detail
-              )}
-              {currentStep === 1 && renderStep1()}
-              {currentStep === 2 && renderStep2()}
-              {currentStep === 3 && renderStep3()}
-            </section>
-
-            <footer className="step-modal__footer">
-              {currentStep > 1 && (
-                <button className="btn-secondary" onClick={prevStep}>
-                  <FaArrowLeft /> Anterior
-                </button>
-              )}
-              {currentStep < 3 ? (
-                <button className="btn-primary" onClick={nextStep}>
-                  Siguiente <FaArrowRight />
-                </button>
-              ) : (
-                <button className="btn-primary" onClick={handleFinalSubmit}>
-                  {isCreating ? 'Crear Usuario' : 'Actualizar Usuario'}
-                </button>
-              )}
-            </footer>
           </div>
         </div>
       )}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaEye, FaCopy, FaSearch } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaEye, FaCopy, FaSearch, FaArrowLeft } from 'react-icons/fa';
 import { apiService } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import ToastContainer from './ToastContainer';
 import './EvaluacionesManagement.css';
+import './Settings.css';
 
 const slugifyText = (value: string): string =>
   value
@@ -25,9 +26,9 @@ const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const [loading, setLoading] = useState(false);
   const [nombreFilter, setNombreFilter] = useState('');
   
-  // Estados para modales
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [plantillaScreen, setPlantillaScreen] = useState<'list' | 'create' | 'detail'>('list');
+
+  // Estados para modales secundarios (punto, criterio, firma, duplicar)
   const [showPuntoModal, setShowPuntoModal] = useState(false);
   const [showCriterioModal, setShowCriterioModal] = useState(false);
   const [showFirmaModal, setShowFirmaModal] = useState(false);
@@ -141,7 +142,7 @@ const [firmaForm, setFirmaForm] = useState({
         criterios_evaluacion: createForm.criterios_evaluacion
       });
       showSuccess('Evaluación creada exitosamente');
-      setShowCreateModal(false);
+      setPlantillaScreen('list');
       resetCreateForm();
       loadData();
     } catch (error: any) {
@@ -242,13 +243,18 @@ const [firmaForm, setFirmaForm] = useState({
     });
   };
 
+  const cerrarPantallaPlantilla = () => {
+    setPlantillaScreen('list');
+    setSelectedEvaluacion(null);
+  };
+
   const openDetailModal = async (evaluacion: any) => {
     try {
       setLoading(true);
       const fullEvaluacion = await apiService.getEvaluacion(evaluacion.id);
       setSelectedEvaluacion(fullEvaluacion);
       setEditNombreValor(fullEvaluacion.nombre || '');
-      setShowDetailModal(true);
+      setPlantillaScreen('detail');
     } catch (error) {
       console.error('Error loading evaluacion details:', error);
       showError('Error al cargar los detalles de la evaluación');
@@ -549,19 +555,42 @@ const [firmaForm, setFirmaForm] = useState({
       <div className="management-header">
         <h2>
           Gestión de Plantillas
-          {nombreFilter.trim()
+          {plantillaScreen === 'list' && nombreFilter.trim()
             ? ` (${filteredEvaluaciones.length} de ${evaluaciones.length})`
-            : ` (${evaluaciones.length})`
+            : plantillaScreen === 'list'
+            ? ` (${evaluaciones.length})`
+            : plantillaScreen === 'create'
+            ? ' — Nueva plantilla'
+            : selectedEvaluacion
+            ? ` — ${selectedEvaluacion.nombre}`
+            : ''
           }
         </h2>
-        <button 
-          className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <FaPlus /> Nueva Plantilla
-        </button>
+        {plantillaScreen === 'list' ? (
+          <button
+            className="btn btn-primary"
+            onClick={() => setPlantillaScreen('create')}
+          >
+            <FaPlus /> Nueva Plantilla
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary evaluaciones-management-btn-back"
+            onClick={() => {
+              if (plantillaScreen === 'create') {
+                resetCreateForm();
+              }
+              cerrarPantallaPlantilla();
+            }}
+          >
+            <FaArrowLeft /> Volver al listado
+          </button>
+        )}
       </div>
 
+      {plantillaScreen === 'list' && (
+        <>
       {/* Filtro por nombre */}
       <div className="evaluaciones-filters">
         <div className="evaluaciones-search">
@@ -640,123 +669,49 @@ const [firmaForm, setFirmaForm] = useState({
         )}
       </div>
 
-      {/* Modal duplicar plantilla */}
-      {showDuplicateModal && evaluacionToDuplicate && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3>Duplicar plantilla</h3>
-              <button 
-                className="modal-close"
-                onClick={() => {
-                  setShowDuplicateModal(false);
-                  setEvaluacionToDuplicate(null);
-                  setDuplicateNombre('');
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <p className="duplicate-source">Plantilla original: <strong>{evaluacionToDuplicate.nombre}</strong></p>
+      </>
+      )}
+
+      {plantillaScreen === 'create' && (
+        <div className="catalog-edit-screen evaluaciones-management-create-screen">
+          <div className="catalog-edit-body plantilla-create-body">
+            <div className="form-grid">
               <div className="form-group">
-                <label>Nombre de la nueva plantilla</label>
-                <input 
+                <label>Nombre de la Plantilla</label>
+                <input
                   type="text"
-                  value={duplicateNombre}
-                  onChange={(e) => setDuplicateNombre(e.target.value)}
-                  placeholder="Ej: Mi plantilla (copia)"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleDuplicateEvaluacion();
-                  }}
+                  value={createForm.nombre}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, nombre: e.target.value }))}
+                  placeholder="Ej: Evaluación de Competencias - Operador"
                 />
               </div>
             </div>
-            <div className="modal-footer">
-              <button 
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowDuplicateModal(false);
-                  setEvaluacionToDuplicate(null);
-                  setDuplicateNombre('');
-                }}
-              >
-                Cancelar
-              </button>
-              <button 
-                className="btn btn-primary"
-                onClick={handleDuplicateEvaluacion}
-                disabled={loading || !duplicateNombre.trim()}
-              >
-                {loading ? 'Duplicando...' : 'Duplicar'}
-              </button>
-            </div>
+          </div>
+          <div className="catalog-edit-footer modal-footer-bar">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                resetCreateForm();
+                setPlantillaScreen('list');
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleCreateEvaluacion}
+              disabled={loading || !createForm.nombre}
+            >
+              {loading ? 'Creando...' : 'Crear'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Modal de creación */}
-      {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3>Nueva Plantilla</h3>
-              <button 
-                className="modal-close"
-                onClick={() => setShowCreateModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="modal-body">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Nombre de la Plantilla</label>
-                  <input 
-                    type="text"
-                    value={createForm.nombre}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, nombre: e.target.value }))}
-                    placeholder="Ej: Evaluación de Competencias - Operador"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div className="modal-footer">
-              <button 
-                className="btn btn-secondary"
-                onClick={() => setShowCreateModal(false)}
-              >
-                Cancelar
-              </button>
-              <button 
-                className="btn btn-primary"
-                onClick={handleCreateEvaluacion}
-                disabled={loading || !createForm.nombre}
-              >
-                {loading ? 'Creando...' : 'Crear'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de detalles */}
-      {showDetailModal && selectedEvaluacion && (
-        <div className="modal-overlay">
-          <div className="modal modal-large">
-            <div className="modal-header">
-              <h3>Detalles de la Plantilla</h3>
-              <button 
-                className="modal-close"
-                onClick={() => setShowDetailModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="modal-body">
+      {plantillaScreen === 'detail' && selectedEvaluacion && (
+        <div className="catalog-edit-screen evaluaciones-management-detail-screen">
+          <div className="catalog-edit-body plantilla-detail-body">
               <div className="detail-sections">
                 <div className="detail-section">
                   <h4>Información General</h4>
@@ -787,7 +742,7 @@ const [firmaForm, setFirmaForm] = useState({
                 <div className="detail-section">
                   <div className="section-header">
                     <h4>Puntos de Evaluación</h4>
-                    <button 
+                    <button
                       className="btn btn-primary btn-sm"
                       onClick={() => {
                         resetPuntoForm();
@@ -798,7 +753,7 @@ const [firmaForm, setFirmaForm] = useState({
                       <FaPlus /> Agregar Punto
                     </button>
                   </div>
-                  
+
                   {selectedEvaluacion.puntos_evaluacion && selectedEvaluacion.puntos_evaluacion.length > 0 ? (
                     <div className="puntos-list">
                       {selectedEvaluacion.puntos_evaluacion.map((punto: any, index: number) => (
@@ -813,14 +768,14 @@ const [firmaForm, setFirmaForm] = useState({
                             )}
                           </div>
                           <div className="punto-actions">
-                            <button 
+                            <button
                               className="btn-icon"
                               onClick={() => openEditPuntoModal(punto)}
                               title="Editar punto"
                             >
                               <FaEdit />
                             </button>
-                            <button 
+                            <button
                               className="btn-icon btn-danger"
                               onClick={() => handleDeletePunto(punto.id)}
                               title="Eliminar punto"
@@ -841,7 +796,7 @@ const [firmaForm, setFirmaForm] = useState({
                 <div className="detail-section">
                   <div className="section-header">
                     <h4>Criterios de Evaluación</h4>
-                    <button 
+                    <button
                       className="btn btn-primary btn-sm"
                       onClick={() => {
                         resetCriterioForm();
@@ -852,7 +807,7 @@ const [firmaForm, setFirmaForm] = useState({
                       <FaPlus /> Agregar Criterio
                     </button>
                   </div>
-                  
+
                   {selectedEvaluacion.criterios_evaluacion && selectedEvaluacion.criterios_evaluacion.length > 0 ? (
                     <div className="criterios-list">
                       {selectedEvaluacion.criterios_evaluacion.map((criterio: any, index: number) => (
@@ -862,14 +817,14 @@ const [firmaForm, setFirmaForm] = useState({
                             <span className="criterio-texto">{criterio.criterio}</span>
                           </div>
                           <div className="criterio-actions">
-                            <button 
+                            <button
                               className="btn-icon"
                               onClick={() => openEditCriterioModal(criterio)}
                               title="Editar criterio"
                             >
                               <FaEdit />
                             </button>
-                            <button 
+                            <button
                               className="btn-icon btn-danger"
                               onClick={() => handleDeleteCriterio(criterio.id)}
                               title="Eliminar criterio"
@@ -947,19 +902,76 @@ const [firmaForm, setFirmaForm] = useState({
                 )}
                 </div>
               </div>
+          </div>
+
+          <div className="catalog-edit-footer modal-footer-bar">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={cerrarPantallaPlantilla}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal duplicar plantilla */}
+      {showDuplicateModal && evaluacionToDuplicate && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Duplicar plantilla</h3>
+              <button 
+                className="modal-close"
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setEvaluacionToDuplicate(null);
+                  setDuplicateNombre('');
+                }}
+              >
+                ×
+              </button>
             </div>
-            
+            <div className="modal-body">
+              <p className="duplicate-source">Plantilla original: <strong>{evaluacionToDuplicate.nombre}</strong></p>
+              <div className="form-group">
+                <label>Nombre de la nueva plantilla</label>
+                <input 
+                  type="text"
+                  value={duplicateNombre}
+                  onChange={(e) => setDuplicateNombre(e.target.value)}
+                  placeholder="Ej: Mi plantilla (copia)"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleDuplicateEvaluacion();
+                  }}
+                />
+              </div>
+            </div>
             <div className="modal-footer">
               <button 
                 className="btn btn-secondary"
-                onClick={() => setShowDetailModal(false)}
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setEvaluacionToDuplicate(null);
+                  setDuplicateNombre('');
+                }}
               >
-                Cerrar
+                Cancelar
+              </button>
+              <button 
+                className="btn btn-primary"
+                onClick={handleDuplicateEvaluacion}
+                disabled={loading || !duplicateNombre.trim()}
+              >
+                {loading ? 'Duplicando...' : 'Duplicar'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      
 
       {/* Modal para Puntos de Evaluación */}
       {showPuntoModal && (
