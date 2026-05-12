@@ -2395,6 +2395,29 @@
   display: none;
 }
 
+/* Pantallas cortas: stepper compacto para que la card tenga más alto útil. */
+@media (max-height: 720px) {
+  .user-edit-stepper {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .user-edit-step {
+    min-height: 40px;
+    padding: 0.35rem 0.7rem;
+  }
+
+  .user-edit-step__bullet {
+    width: 28px;
+    height: 28px;
+    font-size: 0.78rem;
+  }
+
+  .user-edit-step__sub {
+    display: none;
+  }
+}
+
 .user-edit-step {
   display: flex;
   align-items: center;
@@ -2571,6 +2594,22 @@
   flex-direction: column;
 }
 
+/* Los hijos directos del body NO deben encogerse: si la altura del viewport
+   es corta, el body debe hacer scroll en lugar de comprimir la card y dejar
+   fuera el bloque inferior (p.ej. ÁREAS ASIGNADAS) sin posibilidad de verlo. */
+.user-edit-screen__body > * {
+  flex: 0 0 auto;
+}
+
+/* Pantallas cortas (tablets en horizontal pequeñas, ventanas reducidas):
+   reducimos padding vertical para dar más altura útil al contenido scrollable. */
+@media (max-height: 720px) {
+  .user-edit-screen__body {
+    padding-top: 1rem;
+    padding-bottom: 1.25rem;
+  }
+}
+
 /* ---------- CARD PRINCIPAL ---------- */
 .user-edit-card {
   background: var(--ue-card-bg);
@@ -2582,12 +2621,22 @@
   max-width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
-  overflow: hidden;
+  /* Dejamos visible el overflow para que el scroll real (vertical) lo maneje
+     siempre el body. Si la card tuviera overflow: hidden y se comprime por
+     flex en pantallas cortas, recorta el final del formulario. */
+  overflow: visible;
 }
 
 @media (max-width: 720px) {
   .user-edit-card {
     border-radius: var(--ue-radius-md);
+  }
+}
+
+@media (max-height: 720px) {
+  .user-edit-card .step-content {
+    padding: 1.1rem 1.4rem 1.4rem;
+    gap: 1rem;
   }
 }
 
@@ -2991,6 +3040,22 @@
   position: sticky;
   bottom: 0;
   z-index: 5;
+}
+
+/* Footer compacto en pantallas cortas para liberar altura útil. */
+@media (max-height: 720px) {
+  .user-edit-screen__footer {
+    padding-top: 0.55rem;
+    padding-bottom: calc(0.55rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .user-edit-screen__cancel,
+  .user-edit-screen__nav .btn-secondary,
+  .user-edit-screen__nav .btn-primary {
+    min-height: 40px;
+    padding: 0.4rem 0.95rem;
+    font-size: 0.88rem;
+  }
 }
 
 .user-edit-screen__cancel {
