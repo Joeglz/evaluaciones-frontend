@@ -858,10 +858,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
           return;
         }
         const prom = areaData.grupos?.find((g: any) => String(g.grupo_nombre).toUpperCase() === 'PROMEDIO');
-        const val = prom
-          ? (prom.entrenamiento ??
-              (prom.nivel_1 + prom.nivel_2 + prom.nivel_3 + prom.nivel_4) / 4)
-          : 0;
+        // Entrenamiento = N1 por operaciones (misma API que Avance global/Matrix); no promediar N1–N4.
+        const val = prom ? (prom.entrenamiento ?? prom.nivel_1 ?? 0) : 0;
         point[areaData.area_nombre] = typeof val === 'number' ? val : 0;
       });
       return point;
