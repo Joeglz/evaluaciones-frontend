@@ -198,6 +198,17 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+/* Bloques off-screen para exportación Excel: sin recorte del SVG de Recharts */
+.reporte-chart-block--export {
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.reporte-chart-block--export .recharts-wrapper,
+.reporte-chart-block--export svg {
+  overflow: visible !important;
+}
+
 .reporte-chart-title {
   margin: 0 0 1rem 0;
   color: var(--reporte-red);

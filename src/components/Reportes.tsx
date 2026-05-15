@@ -35,6 +35,13 @@ const CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed'];
 // Paleta para varias áreas en la gráfica mensual (todas las áreas vs meses)
 const AREA_CHART_COLORS = ['#e12026', '#2563eb', '#16a34a', '#ea580c', '#7c3aed', '#0891b2', '#ca8a04', '#c026d3'];
 
+/** Meses editables con override manual de entrenamiento (Advance Training Monthly). */
+const MONTHS_MANUAL_ENTRENAMIENTO = [1, 2, 3, 4] as const;
+
+function isMonthManualEntrenamientoEditable(month: number): boolean {
+  return (MONTHS_MANUAL_ENTRENAMIENTO as readonly number[]).includes(month);
+}
+
 /** Promedio mensual por tipo de área; meses futuros -> null (misma regla que tabla / pantalla). */
 function buildMonthlyTipoPromedioPoints(
   dataPoints: { month: string; [k: string]: string | number | null | undefined }[],
@@ -66,6 +73,41 @@ const MONTHLY_X_AXIS_TICK_PROPS = {
   height: 68,
   tick: { fontSize: 10 },
 };
+
+/** Márgenes amplios a la derecha: evita que Recharts recorte el trazo del último mes. */
+const MONTHLY_LINE_CHART_MARGIN = { top: 20, right: 72, left: 16, bottom: 56 };
+
+const MONTHLY_LINE_CHART_EXPORT_MARGIN = { top: 16, right: 88, left: 20, bottom: 56 };
+
+/** Captura fiable de un bloque de gráfica para Excel (dimensiones explícitas). */
+async function captureReporteChartBlock(el: HTMLElement): Promise<{ base64: string; width: number; height: number }> {
+  const width = Math.max(el.offsetWidth, el.scrollWidth, 1);
+  const height = Math.max(el.offsetHeight, el.scrollHeight, 1);
+  const scale = 2;
+  const canvas = await html2canvas(el, {
+    useCORS: true,
+    scale,
+    backgroundColor: COLORS.white,
+    width,
+    height,
+    windowWidth: width,
+    windowHeight: height,
+  });
+  const dataUrl = canvas.toDataURL('image/png');
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+  return { base64, width: canvas.width / scale, height: canvas.height / scale };
+}
+
+/** Espera a que Recharts termine de pintar el SVG antes de html2canvas. */
+function waitForChartsToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 400);
+      });
+    });
+  });
+}
 
 type TabType = 'avance-global' | 'advance-training-monthly' | 'advance-training-matrix';
 
@@ -425,9 +467,11 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
 
   const buildExcelMonthlyWithChart = useCallback(async (
     dataPoints: { month: string; [k: string]: string | number | null }[],
-    chartImagesBase64: { produccion?: string; soporte?: string },
-    fileName: string,
-    chartEmbed?: { width: number; height: number }
+    chartImages: {
+      produccion?: { base64: string; width: number; height: number };
+      soporte?: { base64: string; width: number; height: number };
+    },
+    fileName: string
   ) => {
     const areaNames = dataPoints.length > 0 ? Object.keys(dataPoints[0]).filter((k) => k !== 'month') : [];
     const areaNamesProduccion = areaNames.filter(
@@ -437,13 +481,12 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       (name) => areas.find((a) => a.name === name)?.tipo_area === 'soporte'
     );
 
-    const embedW =
-      chartEmbed?.width ??
-      Math.min(1600, Math.max(720, monthlyChartExportWidthPx(dataPoints.length) - 80));
-    const embedH = chartEmbed?.height ?? Math.round((embedW * 400) / 1000);
-
     const workbook = new ExcelJS.Workbook();
-    const appendTipoSheet = (sheetName: string, areaNamesTipo: string[], chartImageBase64?: string) => {
+    const appendTipoSheet = (
+      sheetName: string,
+      areaNamesTipo: string[],
+      chartCapture?: { base64: string; width: number; height: number }
+    ) => {
       if (!areaNamesTipo.length) return;
       const ws = workbook.addWorksheet(sheetName, { views: [{ state: 'normal' }] });
       ws.columns = [{ width: 22 }, ...dataPoints.map(() => ({ width: 12 })), { width: 14 }];
@@ -471,9 +514,11 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         promedioGeneralVal != null ? formatPercentage(promedioGeneralVal) : '',
       ]);
 
-      if (chartImageBase64) {
-        const imageId = workbook.addImage({ base64: chartImageBase64, extension: 'png' });
+      if (chartCapture?.base64) {
+        const imageId = workbook.addImage({ base64: chartCapture.base64, extension: 'png' });
         const startRow = areaNamesTipo.length + 3;
+        const embedW = Math.min(1600, Math.max(720, Math.round(chartCapture.width)));
+        const embedH = Math.round((embedW * chartCapture.height) / chartCapture.width);
         ws.addImage(imageId, {
           tl: { col: 0, row: startRow },
           ext: { width: embedW, height: embedH },
@@ -482,8 +527,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       }
     };
 
-    appendTipoSheet('Producción', areaNamesProduccion, chartImagesBase64.produccion);
-    appendTipoSheet('Soporte', areaNamesSoporte, chartImagesBase64.soporte);
+    appendTipoSheet('Producción', areaNamesProduccion, chartImages.produccion);
+    appendTipoSheet('Soporte', areaNamesSoporte, chartImages.soporte);
 
     if (workbook.worksheets.length === 0) {
       const ws = workbook.addWorksheet('Avance por mes', { views: [{ state: 'normal' }] });
@@ -731,31 +776,27 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     const runExport = async () => {
       setExportingWithCharts(true);
       try {
-        await new Promise((r) => setTimeout(r, 900));
+        await new Promise((r) => setTimeout(r, 1100));
+        await waitForChartsToPaint();
         const blocks = container.querySelectorAll('.reporte-chart-block');
-        const images: string[] = [];
+        const captures: { base64: string; width: number; height: number }[] = [];
         for (let i = 0; i < blocks.length; i++) {
-          const canvas = await html2canvas(blocks[i] as HTMLElement, {
-            useCORS: true,
-            scale: 2,
-            backgroundColor: COLORS.white,
-          });
-          const dataUrl = canvas.toDataURL('image/png');
-          const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-          images.push(base64);
+          captures.push(await captureReporteChartBlock(blocks[i] as HTMLElement));
         }
         if (exportChartType === 'advance-training-monthly') {
           const dataPoints = exportChartData as { month: string; [k: string]: string | number }[];
-          const wPx = monthlyChartExportWidthPx(dataPoints.length);
-          const embedW = Math.round(wPx * 0.96);
-          const embedH = 420;
+          const produccionCap = captures[0];
+          const soporteCap = captures[1];
           await buildExcelMonthlyWithChart(
             dataPoints,
-            { produccion: images[0], soporte: images[1] },
-            exportFileName,
-            { width: embedW, height: embedH }
+            {
+              produccion: produccionCap,
+              soporte: soporteCap,
+            },
+            exportFileName
           );
         } else {
+          const images = captures.map((c) => c.base64);
           await buildExcelWithCharts(exportChartData as AvanceGlobalResponse[], images, exportFileName);
         }
       } finally {
@@ -828,7 +869,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     if (!isAdmin || !Object.keys(monthlyManualEdits).length) return base;
     return base.map((row, monthIndex) => {
       const month = monthIndex + 1;
-      if (month !== 1 && month !== 2 && month !== 3) return row;
+      if (!isMonthManualEntrenamientoEditable(month)) return row;
       const copy = { ...row };
       areas.forEach((a) => {
         const k = `${a.id}-${month}`;
@@ -1170,7 +1211,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       };
       setSavingMonthlyManual(true);
       try {
-        for (const month of [1, 2, 3] as const) {
+        for (const month of MONTHS_MANUAL_ENTRENAMIENTO) {
           await apiService.saveAdvanceTrainingMonthlyManual({
             year: selectedYear,
             month,
@@ -1179,7 +1220,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         }
         await reloadMonthlyReportData();
         setMonthlyManualEdits({});
-        window.alert('Valores de enero, febrero y marzo guardados correctamente.');
+        window.alert('Valores de enero, febrero, marzo y abril guardados correctamente.');
       } catch (e: unknown) {
         console.error(e);
         const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Error al guardar.';
@@ -1199,7 +1240,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       const month = monthIndex + 1;
       const areaId = areas.find((a) => a.name === areaName)?.id;
       const editable =
-        isAdmin && !isFuture && (month === 1 || month === 2 || month === 3) && areaId != null;
+        isAdmin && !isFuture && isMonthManualEntrenamientoEditable(month) && areaId != null;
       const value = typeof rawValue === 'number' ? rawValue : rawValue == null ? null : Number(rawValue);
       if (!editable) {
         return isFuture || value == null ? '—' : formatPercentage(Number(value));
@@ -1277,7 +1318,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 onClick={handleSaveMonthlyManual}
                 disabled={savingMonthlyManual || monthlyChartData.length === 0 || selectedYear === null}
               >
-                {savingMonthlyManual ? 'Guardando...' : 'Guardar ene / feb / mar'}
+                {savingMonthlyManual ? 'Guardando...' : 'Guardar ene / feb / mar / abr'}
               </button>
             )}
           </div>
@@ -1295,7 +1336,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                   Avance por mes - {selectedYear} — Producción
                 </h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={monthlyChartDataProduccion} margin={{ top: 20, right: 28, left: 16, bottom: 52 }}>
+                  <LineChart data={monthlyChartDataProduccion} margin={MONTHLY_LINE_CHART_MARGIN}>
                     <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
                     <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                     <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
@@ -1305,13 +1346,14 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                     />
                     <Legend />
                     <Line
-                      type="monotone"
+                      type="linear"
                       dataKey="Promedio"
                       name="Promedio"
                       stroke={COLORS.red}
                       strokeWidth={2}
                       dot={{ r: 4 }}
                       connectNulls={false}
+                      isAnimationActive={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1323,7 +1365,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                   Avance por mes - {selectedYear} — Soporte
                 </h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={monthlyChartDataSoporte} margin={{ top: 20, right: 28, left: 16, bottom: 52 }}>
+                  <LineChart data={monthlyChartDataSoporte} margin={MONTHLY_LINE_CHART_MARGIN}>
                     <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
                     <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                     <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
@@ -1333,13 +1375,14 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                     />
                     <Legend />
                     <Line
-                      type="monotone"
+                      type="linear"
                       dataKey="Promedio"
                       name="Promedio"
                       stroke={AREA_CHART_COLORS[1]}
                       strokeWidth={2}
                       dot={{ r: 4 }}
                       connectNulls={false}
+                      isAnimationActive={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -2041,13 +2084,14 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               return (
                 <>
                   {areaNamesProduccion.length > 0 && (
-                    <div className="reporte-chart-block" style={{ width: w, minHeight: chartH + 48 }}>
+                    <div className="reporte-chart-block reporte-chart-block--export" style={{ width: w }}>
                       <h3 className="reporte-chart-title">Avance por mes - Producción</h3>
-                      <ResponsiveContainer width={w} height={chartH}>
-                        <LineChart
-                          data={chartDataProduccion}
-                          margin={{ top: 16, right: 28, left: 12, bottom: 52 }}
-                        >
+                      <LineChart
+                        width={w}
+                        height={chartH}
+                        data={chartDataProduccion}
+                        margin={MONTHLY_LINE_CHART_EXPORT_MARGIN}
+                      >
                           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
                           <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                           <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
@@ -2059,26 +2103,27 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                           />
                           <Legend />
                           <Line
-                            type="monotone"
+                            type="linear"
                             dataKey="Promedio"
                             name="Promedio Producción"
                             stroke={COLORS.red}
                             strokeWidth={3}
                             dot={{ r: 4 }}
                             connectNulls={false}
+                            isAnimationActive={false}
                           />
                         </LineChart>
-                      </ResponsiveContainer>
                     </div>
                   )}
                   {areaNamesSoporte.length > 0 && (
-                    <div className="reporte-chart-block" style={{ width: w, minHeight: chartH + 48 }}>
+                    <div className="reporte-chart-block reporte-chart-block--export" style={{ width: w }}>
                       <h3 className="reporte-chart-title">Avance por mes - Soporte</h3>
-                      <ResponsiveContainer width={w} height={chartH}>
-                        <LineChart
-                          data={chartDataSoporte}
-                          margin={{ top: 16, right: 28, left: 12, bottom: 52 }}
-                        >
+                      <LineChart
+                        width={w}
+                        height={chartH}
+                        data={chartDataSoporte}
+                        margin={MONTHLY_LINE_CHART_EXPORT_MARGIN}
+                      >
                           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grayLight} />
                           <XAxis dataKey="month" stroke={COLORS.black} {...MONTHLY_X_AXIS_TICK_PROPS} />
                           <YAxis stroke={COLORS.black} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
@@ -2090,16 +2135,16 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                           />
                           <Legend />
                           <Line
-                            type="monotone"
+                            type="linear"
                             dataKey="Promedio"
                             name="Promedio Soporte"
                             stroke="#2563eb"
                             strokeWidth={3}
                             dot={{ r: 4 }}
                             connectNulls={false}
+                            isAnimationActive={false}
                           />
                         </LineChart>
-                      </ResponsiveContainer>
                     </div>
                   )}
                 </>

@@ -1641,7 +1641,7 @@ class ApiService {
   }
 
   /**
-   * Guarda porcentajes manuales para enero, febrero o marzo (solo admin).
+   * Guarda porcentajes manuales para enero–abril (solo admin).
    * Si porcentaje es null, elimina el override de ese área/mes/año.
    */
   async saveAdvanceTrainingMonthlyManual(body: {
