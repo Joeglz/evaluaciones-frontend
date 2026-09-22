@@ -97,8 +97,8 @@
 }
 
 .settings-card {
-  background: white;
-  border: 2px solid #e0e0e0;
+  background: var(--color-surface, white);
+  border: 2px solid var(--color-border, #e0e0e0);
   border-radius: 16px;
   padding: 2rem;
   display: flex;
@@ -107,12 +107,19 @@
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  min-height: var(--touch-target-min, 44px);
 }
 
-.settings-card:hover {
-  border-color: #e12026;
+.settings-card:hover,
+.settings-card:focus-visible {
+  border-color: var(--color-brand, #e12026);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(225, 32, 38, 0.15);
+}
+
+.settings-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 3px rgba(225, 32, 38, 0.35));
 }
 
 .settings-card-icon {

@@ -16,7 +16,15 @@ import {
   FaTimes
 } from 'react-icons/fa';
 import { apiService, Area, GrupoNested, PosicionNested, NivelPosicion, Evaluacion, User, FirmaEvaluacion, PuntoEvaluacion, CriterioEvaluacion } from '../services/api';
+import Fase2MultihabilidadEmbed from './fase2/Fase2MultihabilidadEmbed';
+import BancoExamenEditor from './fase2/BancoExamenEditor';
+import { useTopbarOverride, TopbarBreadcrumbItem } from '../contexts/TopbarContext';
+import { useToast } from '../hooks/useToast';
+import { useConfirm } from '../hooks/useConfirm';
+import ToastContainer from './ToastContainer';
 import './AreaManagement.css';
+
+type AreaEditTab = 'general' | 'grupos' | 'posiciones' | 'multihabilidad' | 'examenes';
 
 const slugifyText = (value: string): string =>
   value
@@ -39,6 +47,8 @@ function getScrollParent(element: HTMLElement | null): HTMLElement | null {
 }
 
 const AreaManagement: React.FC = () => {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
+  const { confirm, confirmDialog } = useConfirm();
   const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -55,6 +65,9 @@ const AreaManagement: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [currentView, setCurrentView] = useState<'list' | 'edit' | 'edit-evaluacion'>('list');
+  const [editTab, setEditTab] = useState<AreaEditTab>('general');
+  const [posicionExpandidaKey, setPosicionExpandidaKey] = useState<string | null>(null);
+  const [nivelTabPorPosicion, setNivelTabPorPosicion] = useState<Record<string, number>>({});
   
   // Área seleccionada
   const [selectedArea, setSelectedArea] = useState<Area | null>(null);
@@ -139,6 +152,9 @@ const AreaManagement: React.FC = () => {
     is_active: true,
     include_onboarding: true,
     tipo_area: 'produccion' as 'produccion' | 'soporte',
+    fase2_activa: false,
+    n4_basicas_requeridas: 5,
+    n4_complejas_requeridas: 3,
     grupos: [] as GrupoNested[],
     posiciones: [] as PosicionNested[]
   });
@@ -148,6 +164,9 @@ const AreaManagement: React.FC = () => {
     is_active: true,
     include_onboarding: true,
     tipo_area: 'produccion' as 'produccion' | 'soporte',
+    fase2_activa: false,
+    n4_basicas_requeridas: 5,
+    n4_complejas_requeridas: 3,
     grupos: [] as GrupoNested[],
     posiciones: [] as PosicionNested[]
   });
@@ -248,7 +267,7 @@ const AreaManagement: React.FC = () => {
       setShowCreateModal(false);
       resetCreateForm();
       loadAreas();
-      alert('Área creada exitosamente');
+      showSuccess('Área creada exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setCreateErrors(validationErrors);
@@ -265,7 +284,7 @@ const AreaManagement: React.FC = () => {
       await apiService.updateArea(selectedArea.id, editForm);
       await loadAreas();
       volverALista();
-      alert('Área actualizada exitosamente');
+      showSuccess('Área actualizada exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setEditErrors(validationErrors);
@@ -280,9 +299,9 @@ const AreaManagement: React.FC = () => {
       setShowDeleteModal(false);
       setSelectedArea(null);
       loadAreas();
-      alert('Área eliminada exitosamente');
+      showSuccess('Área eliminada exitosamente');
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(`Error: ${err.message}`);
     }
   };
 
@@ -292,16 +311,16 @@ const AreaManagement: React.FC = () => {
     try {
       if (selectedArea.is_active) {
         await apiService.deactivateArea(selectedArea.id);
-        alert('Área desactivada exitosamente');
+        showSuccess('Área desactivada exitosamente');
       } else {
         await apiService.activateArea(selectedArea.id);
-        alert('Área activada exitosamente');
+        showSuccess('Área activada exitosamente');
       }
       setShowDeactivateModal(false);
       setSelectedArea(null);
       loadAreas();
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(`Error: ${err.message}`);
     }
   };
 
@@ -339,6 +358,9 @@ const AreaManagement: React.FC = () => {
       is_active: area.is_active,
       include_onboarding: (area as Area & { include_onboarding?: boolean }).include_onboarding !== false,
       tipo_area: area.tipo_area === 'soporte' ? 'soporte' : 'produccion',
+      fase2_activa: Boolean(area.fase2_activa),
+      n4_basicas_requeridas: area.n4_basicas_requeridas ?? 5,
+      n4_complejas_requeridas: area.n4_complejas_requeridas ?? 3,
       grupos: gruposConSupervisores,
       posiciones: area.posiciones || []
     });
@@ -348,6 +370,9 @@ const AreaManagement: React.FC = () => {
     }
     
     setCurrentView('edit');
+    setEditTab('general');
+    setPosicionExpandidaKey(null);
+    setNivelTabPorPosicion({});
     
     // Cargar niveles y evaluaciones para cada posición existente
     if (area.posiciones && area.posiciones.length > 0) {
@@ -409,16 +434,21 @@ const AreaManagement: React.FC = () => {
   };
 
   const handleEliminarEvaluacionNivel = async (evaluacionId: number, posicionId: number) => {
-    const confirmar = window.confirm('¿Eliminar esta evaluación asignada al nivel?');
+    const confirmar = await confirm({
+      title: 'Eliminar evaluación',
+      message: '¿Eliminar esta evaluación asignada al nivel?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
     if (!confirmar) return;
     try {
       setEliminandoEvaluacionId(evaluacionId);
       await apiService.deleteEvaluacion(evaluacionId);
       await loadNivelesYEvaluaciones([posicionId]);
-      alert('Evaluación eliminada correctamente');
+      showSuccess('Evaluación eliminada correctamente');
     } catch (err: any) {
       console.error('Error al eliminar evaluación del nivel:', err);
-      alert(`Error al eliminar la evaluación: ${err.message || err}`);
+      showError(`Error al eliminar la evaluación: ${err.message || err}`);
     } finally {
       setEliminandoEvaluacionId(null);
     }
@@ -443,6 +473,9 @@ const AreaManagement: React.FC = () => {
       is_active: true,
       include_onboarding: true,
       tipo_area: 'produccion',
+      fase2_activa: false,
+      n4_basicas_requeridas: 5,
+      n4_complejas_requeridas: 3,
       grupos: [],
       posiciones: []
     });
@@ -457,23 +490,6 @@ const AreaManagement: React.FC = () => {
     setModalNombresPorPlantilla({});
     setModalMinimoAprobatorio('');
     setModalError(null);
-
-    const minimoParsed = parseInt(modalMinimoAprobatorio || '', 10);
-    const divisorParsed = parseInt(modalFormulaDivisor || '', 10);
-    const multiplicadorParsed = parseInt(modalFormulaMultiplicador || '', 10);
-
-    if (Number.isNaN(minimoParsed) || minimoParsed < 0 || minimoParsed > 100) {
-      setModalError('Ingresa un mínimo aprobatorio válido entre 0 y 100.');
-      return;
-    }
-    if (Number.isNaN(divisorParsed) || divisorParsed <= 0) {
-      setModalError('Ingresa un divisor válido mayor a cero.');
-      return;
-    }
-    if (Number.isNaN(multiplicadorParsed) || multiplicadorParsed < 0) {
-      setModalError('Ingresa un multiplicador válido (0 o mayor).');
-      return;
-    }
     setModalPlantillaDetalle(null);
     setModalFirmasDisponibles([]);
     setModalFirmasSeleccionadas({});
@@ -483,6 +499,13 @@ const AreaManagement: React.FC = () => {
     setModalMinimoAprobatorio('70');
     setModalFormulaDivisor('17');
     setModalFormulaMultiplicador('80');
+    setEditTab('general');
+    setPosicionExpandidaKey(null);
+    setNivelTabPorPosicion({});
+  };
+
+  const togglePosicionExclusive = (posicionKey: string) => {
+    setPosicionExpandidaKey((prev) => (prev === posicionKey ? null : posicionKey));
   };
 
   const togglePosicion = (posicionKey: string, defaultOpen: boolean) => {
@@ -504,7 +527,7 @@ const AreaManagement: React.FC = () => {
     if (target.closest('button')) {
       return;
     }
-    togglePosicion(posicionKey, defaultOpen);
+    togglePosicionExclusive(posicionKey);
   };
 
   const handleNivelHeaderClick = (
@@ -553,6 +576,7 @@ const AreaManagement: React.FC = () => {
 
   const cerrarModalEditarEvaluacion = () => {
     setCurrentView('edit');
+    setEditTab('posiciones');
     setEvaluacionEdicionContext(null);
     setEditarEvaluacionNombre('');
     setEditarEvaluacionFirmas([]);
@@ -911,7 +935,7 @@ const AreaManagement: React.FC = () => {
         formula_divisor: editarEvaluacionDivisor,
         formula_multiplicador: editarEvaluacionMultiplicador
       });
-      alert('Evaluación actualizada exitosamente');
+      showSuccess('Evaluación actualizada exitosamente');
       await loadNivelesYEvaluaciones([evaluacionEdicionContext.posicionId]);
       cerrarModalEditarEvaluacion();
     } catch (error: any) {
@@ -953,7 +977,7 @@ const AreaManagement: React.FC = () => {
       });
       await recargarEvaluacionEdicion();
       setEditarFirmaNombre('');
-      alert('Firma agregada correctamente');
+      showSuccess('Firma agregada correctamente');
     } catch (error: any) {
       console.error('Error al agregar firma:', error);
       const message =
@@ -979,13 +1003,19 @@ const AreaManagement: React.FC = () => {
       return;
     }
 
-    if (!window.confirm('¿Eliminar esta firma de la evaluación?')) return;
+    const ok = await confirm({
+      title: 'Eliminar firma',
+      message: '¿Eliminar esta firma de la evaluación?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       setEliminandoFirmaEvaluacionId(firma.id);
       await apiService.deleteFirmaEvaluacion(firma.id);
       await recargarEvaluacionEdicion();
-      alert('Firma eliminada correctamente');
+      showSuccess('Firma eliminada correctamente');
     } catch (error: any) {
       console.error('Error al eliminar firma:', error);
       const message =
@@ -1014,6 +1044,9 @@ const AreaManagement: React.FC = () => {
       is_active: true,
       include_onboarding: true,
       tipo_area: 'produccion',
+      fase2_activa: false,
+      n4_basicas_requeridas: 5,
+      n4_complejas_requeridas: 3,
       grupos: [],
       posiciones: []
     });
@@ -1372,31 +1405,75 @@ const AreaManagement: React.FC = () => {
     );
   };
 
+  const areaTopbarOverride = useMemo(() => {
+    if (currentView === 'list') {
+      return null;
+    }
+
+    const breadcrumb: TopbarBreadcrumbItem[] = [
+      {
+        label: 'Gestión de Áreas',
+        onClick: volverALista,
+        isClickable: true,
+      },
+    ];
+
+    if (selectedArea) {
+      if (currentView === 'edit-evaluacion') {
+        breadcrumb.push({
+          label: selectedArea.name,
+          onClick: cerrarModalEditarEvaluacion,
+          isClickable: true,
+        });
+      } else {
+        breadcrumb.push({
+          label: selectedArea.name,
+          isClickable: false,
+        });
+      }
+    }
+
+    if (currentView === 'edit-evaluacion') {
+      breadcrumb.push({
+        label: 'Editar evaluación',
+        isClickable: false,
+      });
+    }
+
+    return {
+      breadcrumb,
+      onBack:
+        currentView === 'edit-evaluacion'
+          ? cerrarModalEditarEvaluacion
+          : volverALista,
+      backLabel: 'Volver',
+    };
+  }, [currentView, selectedArea?.id, selectedArea?.name]);
+
+  useTopbarOverride(areaTopbarOverride, [areaTopbarOverride]);
+
+  useEffect(() => {
+    const enEdicion = currentView !== 'list';
+    document.documentElement.classList.toggle(
+      'area-management-edit-activa',
+      enEdicion,
+    );
+    return () => {
+      document.documentElement.classList.remove('area-management-edit-activa');
+    };
+  }, [currentView]);
+
   if (loading) {
     return <div className="area-management-loading">Cargando áreas...</div>;
   }
 
   return (
-    <div className="area-management" ref={areaManagementRef}>
-      {currentView !== 'list' && (
-        <div className="area-management-header">
-          <h1>
-            {currentView === 'edit-evaluacion'
-              ? 'Editar evaluación'
-              : `Editar Área${selectedArea ? `: ${selectedArea.name}` : ''}`}
-          </h1>
-          {currentView === 'edit-evaluacion' ? (
-            <button type="button" className="btn-secondary btn-back" onClick={cerrarModalEditarEvaluacion}>
-              <FaArrowLeft /> Volver al área
-            </button>
-          ) : (
-            <button className="btn-secondary btn-back" onClick={volverALista}>
-              <FaArrowLeft /> Volver
-            </button>
-          )}
-        </div>
-      )}
-
+    <div
+      className={`area-management${
+        currentView !== 'list' ? ' area-management--edit' : ''
+      }`}
+      ref={areaManagementRef}
+    >
       <div className="area-management-body" data-scroll="true">
       {currentView === 'edit-evaluacion' && evaluacionEdicionContext ? (
         <div className="area-evaluacion-edit-screen">
@@ -1538,6 +1615,27 @@ const AreaManagement: React.FC = () => {
 
       {error && <div className="error-message">{error}</div>}
 
+      <div className="areas-card-grid">
+        {areas.map((area) => (
+          <button
+            key={area.id}
+            type="button"
+            className="area-list-card"
+            onClick={() => openEditModal(area)}
+          >
+            <span className="area-list-card__name">{area.name}</span>
+            <span
+              className={`area-list-card__status ${area.is_active ? 'is-active' : 'is-inactive'}`}
+            >
+              {area.is_active ? 'Activa' : 'Inactiva'}
+            </span>
+            <span className="area-list-card__date">
+              {new Date(area.created_at).toLocaleDateString()}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="areas-table-container">
         <div className="areas-table-x-scroll">
           <table className="areas-table">
@@ -1593,9 +1691,38 @@ const AreaManagement: React.FC = () => {
       ) : (
         selectedArea && (
           <div className="area-edit-view">
-            <form onSubmit={handleUpdateArea} className="area-edit-form">
-              <div className="form-grid">
-                <div className="form-group">
+            <form onSubmit={handleUpdateArea} className="area-edit-form area-edit-form--tabbed">
+              <nav className="area-edit-tabs" aria-label="Secciones del área">
+                {(
+                  [
+                    { id: 'general' as const, label: 'General' },
+                    { id: 'grupos' as const, label: `Grupos (${editForm.grupos.length})` },
+                    { id: 'posiciones' as const, label: `Posiciones (${editForm.posiciones.length})` },
+                    ...(editForm.fase2_activa
+                      ? [
+                          { id: 'multihabilidad' as const, label: 'Multihabilidad' },
+                          { id: 'examenes' as const, label: 'Exámenes' },
+                        ]
+                      : []),
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`area-edit-tabs__btn${editTab === tab.id ? ' is-active' : ''}`}
+                    aria-current={editTab === tab.id ? 'page' : undefined}
+                    onClick={() => setEditTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="area-edit-tab-panel">
+              {editTab === 'general' && (
+              <div className="area-edit-general">
+              <div className="area-edit-general__row">
+                <div className="form-group area-edit-general__name">
                   <label>Nombre *</label>
                   <input
                     type="text"
@@ -1606,30 +1733,7 @@ const AreaManagement: React.FC = () => {
                   />
                   <FieldError errors={editErrors.name} />
                 </div>
-                
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
-                    />
-                    Área activa
-                  </label>
-                </div>
-
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={editForm.include_onboarding}
-                      onChange={(e) => setEditForm({...editForm, include_onboarding: e.target.checked})}
-                    />
-                    Incluir Onboarding (Listas de Asistencia)
-                  </label>
-                </div>
-
-                <div className="form-group">
+                <div className="form-group area-edit-general__tipo">
                   <label>Tipo de área</label>
                   <select
                     value={editForm.tipo_area}
@@ -1640,17 +1744,53 @@ const AreaManagement: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <div className="area-edit-toggles" role="group" aria-label="Opciones del área">
+                <label className="area-edit-toggle">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_active}
+                    onChange={(e) => setEditForm({...editForm, is_active: e.target.checked})}
+                  />
+                  <span>Área activa</span>
+                </label>
+                <label className="area-edit-toggle">
+                  <input
+                    type="checkbox"
+                    checked={editForm.include_onboarding}
+                    onChange={(e) => setEditForm({...editForm, include_onboarding: e.target.checked})}
+                  />
+                  <span>Onboarding</span>
+                </label>
+                <label className="area-edit-toggle">
+                  <input
+                    type="checkbox"
+                    checked={editForm.fase2_activa}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setEditForm({...editForm, fase2_activa: on});
+                      setEditTab((tab) => {
+                        if (on) return 'multihabilidad';
+                        if (tab === 'multihabilidad' || tab === 'examenes') return 'general';
+                        return tab;
+                      });
+                    }}
+                  />
+                  <span>Multihabilidad (Fase 2)</span>
+                </label>
+              </div>
+              </div>
+              )}
 
-              <div className="edit-sections">
-                <section className="edit-section grupos-edit">
+              {editTab === 'grupos' && (
+              <section className="edit-section grupos-edit edit-section--flat">
                   <div className="section-title">
-                  <h3><FaUsers /> Grupos ({editForm.grupos.length})</h3>
+                  <h3><FaUsers /> Grupos</h3>
                   <button 
                     type="button" 
                     className="btn-add-grupo"
                       onClick={() => addGrupo('edit')}
                   >
-                    <FaPlus /> Agregar Grupo
+                    <FaPlus /> Agregar
                   </button>
                 </div>
                   {editForm.grupos.length === 0 ? (
@@ -1658,60 +1798,59 @@ const AreaManagement: React.FC = () => {
                       No hay grupos configurados para esta área.
                     </div>
                   ) : (
-                    <div className="grupos-tablet-grid">
+                    <div className="grupos-row-list">
                       {editForm.grupos.map((grupo, grupoIndex) => (
-                        <div key={grupoIndex} className="grupo-card-edit">
-                          <div className="grupo-card-edit-header">
-                            <span className="grupo-badge-edit">{grupo.name || `Grupo ${grupoIndex + 1}`}</span>
-                      <button 
-                        type="button" 
-                        className="btn-remove-grupo"
-                              onClick={() => removeGrupo(grupoIndex, 'edit')}
-                              title="Eliminar grupo"
-                      >
-                        <FaTrash />
-                      </button>
-                    </div>
-                          <div className="grupo-card-edit-body">
-                            <label>Nombre del Grupo *</label>
-                            <input
-                              type="text"
-                              value={grupo.name}
-                              onChange={(e) => updateGrupo(grupoIndex, 'name', e.target.value, 'edit')}
-                              placeholder="Ingresa el nombre del grupo"
-                              required
-                            />
-                            <label>Supervisor del grupo</label>
+                        <div key={grupoIndex} className="grupo-row-edit">
+                      <input
+                        type="text"
+                        className="grupo-row-edit__name"
+                        value={grupo.name}
+                        onChange={(e) => updateGrupo(grupoIndex, 'name', e.target.value, 'edit')}
+                        placeholder="Nombre del grupo"
+                        required
+                        aria-label={`Nombre grupo ${grupoIndex + 1}`}
+                      />
                             <select
+                              className="grupo-row-edit__supervisor"
                               value={(grupo.supervisores && grupo.supervisores[0])?.toString() || ''}
                               onChange={(e) => {
                                 const id = e.target.value ? parseInt(e.target.value, 10) : null;
                                 updateGrupo(grupoIndex, 'supervisores', id ? [id] : [], 'edit');
                               }}
+                              aria-label={`Supervisor grupo ${grupoIndex + 1}`}
                             >
-                              <option value="">Seleccionar supervisor...</option>
+                              <option value="">Supervisor...</option>
                               {supervisoresDisponibles.map((sup) => (
                                 <option key={sup.id} value={sup.id}>
-                                  {sup.full_name} — {sup.role_display}
+                                  {sup.full_name}
                                 </option>
                               ))}
                             </select>
-                          </div>
+                      <button 
+                        type="button" 
+                        className="btn-icon btn-delete grupo-row-edit__remove"
+                              onClick={() => removeGrupo(grupoIndex, 'edit')}
+                              title="Eliminar grupo"
+                      >
+                        <FaTrash />
+                      </button>
                         </div>
                       ))}
               </div>
                   )}
                 </section>
+              )}
 
-                <section className="edit-section posiciones-edit">
+              {editTab === 'posiciones' && (
+                <section className="edit-section posiciones-edit edit-section--flat">
                   <div className="section-title">
-                  <h3><FaBriefcase /> Posiciones ({editForm.posiciones.length})</h3>
+                  <h3><FaBriefcase /> Posiciones</h3>
                   <button 
                     type="button" 
                     className="btn-add-posicion"
                       onClick={() => addPosicion('edit')}
                   >
-                    <FaPlus /> Agregar Posición
+                    <FaPlus /> Agregar
                   </button>
                 </div>
 
@@ -1726,23 +1865,21 @@ const AreaManagement: React.FC = () => {
                         const niveles = nivelesPorPosicion[posicionId] || [];
                         const nivelesDisponibles: number[] = [1, 2, 3, 4];
                         const posicionKey = posicion.id ? `pos-${posicion.id}` : `pos-nuevo-${posicionIndex}`;
-                        const defaultOpen = false;
-                        const isPosicionOpen = posicionesAbiertas.hasOwnProperty(posicionKey)
-                          ? posicionesAbiertas[posicionKey]
-                          : defaultOpen;
+                        const isPosicionOpen = posicionExpandidaKey === posicionKey;
+                        const nivelTabActivo = nivelTabPorPosicion[posicionKey] ?? 1;
 
                         return (
                           <div key={posicionIndex} className={`posicion-card-edit ${isPosicionOpen ? 'open' : ''}`}>
                             <div
                               className="posicion-card-edit-header"
-                              onClick={(event) => handlePosicionHeaderClick(event, posicionKey, defaultOpen)}
+                              onClick={(event) => handlePosicionHeaderClick(event, posicionKey, false)}
                             >
                               <button
                                 type="button"
                                 className="posicion-toggle"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  togglePosicion(posicionKey, defaultOpen);
+                                  togglePosicionExclusive(posicionKey);
                                 }}
                                 title={isPosicionOpen ? 'Ocultar detalles de la posición' : 'Mostrar detalles de la posición'}
                               >
@@ -1786,141 +1923,169 @@ const AreaManagement: React.FC = () => {
                               ) : (
                                 <div className="niveles-wrapper">
                                   <h4>Niveles y Evaluaciones</h4>
-                                  <div className="niveles-grid">
-                                  {nivelesDisponibles.map((nivelNum: number) => {
+                                  <div className="nivel-tabs-row" role="tablist" aria-label="Nivel de la posición">
+                                    {nivelesDisponibles.map((nivelNum: number) => {
+                                      const nivelEx = niveles.find((n: NivelPosicion) => n.nivel === nivelNum);
+                                      const nId = nivelEx?.id ?? 0;
+                                      const evalCount = nId
+                                        ? (Array.isArray(evaluacionesPorNivel[nId])
+                                            ? evaluacionesPorNivel[nId].length
+                                            : 0)
+                                        : 0;
+                                      return (
+                                        <button
+                                          key={nivelNum}
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={nivelTabActivo === nivelNum}
+                                          className={`nivel-tab-chip${nivelTabActivo === nivelNum ? ' is-active' : ''}${!nivelEx ? ' is-inactive' : ''}`}
+                                          onClick={() =>
+                                            setNivelTabPorPosicion((prev) => ({
+                                              ...prev,
+                                              [posicionKey]: nivelNum,
+                                            }))
+                                          }
+                                        >
+                                          N{nivelNum}
+                                          {nivelEx ? ` (${evalCount})` : ''}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {(() => {
+                                    const nivelNum = nivelTabActivo;
                                     const nivelExistente = niveles.find((n: NivelPosicion) => n.nivel === nivelNum);
                                     const nivelId = nivelExistente?.id ?? 0;
-                                    const evalList = nivelId ? (Array.isArray(evaluacionesPorNivel[nivelId]) ? evaluacionesPorNivel[nivelId] : []) : [];
+                                    const evalList = nivelId
+                                      ? (Array.isArray(evaluacionesPorNivel[nivelId])
+                                          ? evaluacionesPorNivel[nivelId]
+                                          : [])
+                                      : [];
                                     const nivelKey = `${posicionId}-${nivelNum}`;
-                                    const defaultOpen = !!nivelExistente;
-                                    const isOpen = nivelesAbiertos.hasOwnProperty(nivelKey)
-                                      ? nivelesAbiertos[nivelKey]
-                                      : defaultOpen;
 
-                                    return (
-                                      <div key={nivelNum} className={`nivel-card ${nivelExistente ? 'nivel-activo' : 'nivel-inactivo'} ${isOpen && nivelExistente ? 'open' : ''}`}>
-                                        <div
-                                          className="nivel-card-header"
-                                          onClick={(event) => handleNivelHeaderClick(event, posicionId, nivelNum, defaultOpen)}
-                                        >
+                                    if (!nivelExistente) {
+                                      return (
+                                        <div className="nivel-tab-panel nivel-tab-panel--empty">
+                                          <p className="nivel-empty">
+                                            Nivel {nivelNum} no activo para esta posición.
+                                          </p>
                                           <button
                                             type="button"
-                                            className="nivel-toggle"
-                                            onClick={(event) => {
-                                              event.stopPropagation();
-                                              nivelExistente && toggleNivel(posicionId, nivelNum, defaultOpen);
+                                            className="btn-primary btn-sm"
+                                            onClick={async () => {
+                                              try {
+                                                await apiService.createNivelPosicion({
+                                                  posicion: posicionId,
+                                                  nivel: nivelNum,
+                                                  is_active: true,
+                                                });
+                                                await loadNivelesYEvaluaciones([posicionId]);
+                                                setNivelTabPorPosicion((prev) => ({
+                                                  ...prev,
+                                                  [posicionKey]: nivelNum,
+                                                }));
+                                              } catch (err: unknown) {
+                                                const msg =
+                                                  err instanceof Error ? err.message : 'Error desconocido';
+                                                showError(`Error al crear nivel: ${msg}`);
+                                              }
                                             }}
-                                            disabled={!nivelExistente}
-                                            title={nivelExistente ? (isOpen ? 'Ocultar detalles' : 'Mostrar detalles') : 'Activa el nivel para administrar'}
                                           >
-                                            {nivelExistente ? (isOpen ? <FaChevronDown /> : <FaChevronRight />) : <FaChevronRight />}
+                                            <FaPlus /> Activar nivel {nivelNum}
                                           </button>
-                                          <span className="nivel-badge">Nivel {nivelNum} ({evalList.length})</span>
-                                          <div className="nivel-header-actions">
-                                            {nivelExistente ? (
-                                              <button
-                                                type="button"
-                                                className="btn-icon btn-delete"
-                                                onClick={async (event) => {
-                                                  event.stopPropagation();
-                                                  if (window.confirm('¿Estás seguro de eliminar este nivel?')) {
-                                                    try {
-                                                      await apiService.deleteNivelPosicion(nivelExistente.id);
-                                                      await loadNivelesYEvaluaciones([posicionId]);
-                                                    } catch (err: any) {
-                                                      alert(`Error al eliminar nivel: ${err.message}`);
-                                                    }
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <div className="nivel-tab-panel">
+                                        <div className="nivel-tab-panel__actions">
+                                          <button
+                                            type="button"
+                                            className="btn-primary btn-sm btn-add-evaluacion"
+                                            onClick={() =>
+                                              abrirModalAgregarEvaluacion(nivelExistente.id, posicionId)
+                                            }
+                                          >
+                                            <FaPlus /> Agregar evaluación
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-icon btn-delete"
+                                            onClick={async () => {
+                                              const ok = await confirm({
+                                                title: 'Eliminar nivel',
+                                                message: `¿Eliminar nivel ${nivelNum} y sus evaluaciones asignadas?`,
+                                                confirmLabel: 'Eliminar',
+                                                danger: true,
+                                              });
+                                              if (ok) {
+                                                try {
+                                                  await apiService.deleteNivelPosicion(nivelExistente.id);
+                                                  await loadNivelesYEvaluaciones([posicionId]);
+                                                } catch (err: unknown) {
+                                                  const msg =
+                                                    err instanceof Error ? err.message : 'Error desconocido';
+                                                  showError(`Error al eliminar nivel: ${msg}`);
+                                                }
+                                              }
+                                            }}
+                                            title="Eliminar nivel"
+                                          >
+                                            <FaTrash />
+                                          </button>
+                                        </div>
+                                        <ul className="evaluaciones-dense-list">
+                                          {evalList.length === 0 ? (
+                                            <li className="section-empty small">
+                                              Sin evaluaciones en este nivel.
+                                            </li>
+                                          ) : (
+                                            evalList.map((evaluacion) => (
+                                              <li key={evaluacion.id}>
+                                                <button
+                                                  type="button"
+                                                  className="evaluacion-dense-row"
+                                                  onClick={() =>
+                                                    abrirModalEditarEvaluacion(
+                                                      evaluacion.id,
+                                                      nivelExistente.id,
+                                                      posicionId,
+                                                    )
                                                   }
-                                                }}
-                                                title="Eliminar nivel"
-                                              >
-                                                <FaTrash />
-                                              </button>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                className="btn-primary btn-sm"
-                                                onClick={async (event) => {
-                                                  event.stopPropagation();
-                                                  try {
-                                                    await apiService.createNivelPosicion({
-                                                      posicion: posicionId,
-                                                      nivel: nivelNum,
-                                                      is_active: true
-                                                    });
-                                                    await loadNivelesYEvaluaciones([posicionId]);
-                                                    setNivelesAbiertos(prev => ({
-                                                      ...prev,
-                                                      [nivelKey]: true
-                                                    }));
-                                                  } catch (err: any) {
-                                                    alert(`Error al crear nivel: ${err.message}`);
+                                                >
+                                                  <span className="evaluacion-dense-row__name">
+                                                    {evaluacion.nombre}
+                                                  </span>
+                                                  <span className="evaluacion-dense-row__actions">
+                                                    <FaEdit aria-hidden />
+                                                  </span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="btn-icon btn-delete-evaluacion evaluacion-dense-row__delete"
+                                                  onClick={() =>
+                                                    handleEliminarEvaluacionNivel(
+                                                      evaluacion.id,
+                                                      posicionId,
+                                                    )
                                                   }
-                                                }}
-                                              >
-                                                <FaPlus /> Activar nivel
-                                              </button>
-                                            )}
-                  </div>
-              </div>
-              
-                                        {nivelExistente ? (
-                                          <div className={`nivel-card-content ${isOpen ? 'open' : ''}`}>
-                                            <button
-                                              type="button"
-                                              className="btn-primary btn-add-evaluacion"
-                                              onClick={() => abrirModalAgregarEvaluacion(nivelExistente.id, posicionId)}
-                                            >
-                                              <FaPlus /> Agregar Evaluación
-                                            </button>
-                                            <div className="evaluaciones-list">
-                                              {evalList.length === 0 ? (
-                                                <div className="section-empty small">
-                                                  No hay evaluaciones asignadas a este nivel.
-                                                </div>
-                                              ) : (
-                                                evalList.map(evaluacion => (
-                                                  <div 
-                                                    key={evaluacion.id} 
-                                                    className="evaluacion-pill evaluacion-pill-clickable"
-                                                    onClick={() => abrirModalEditarEvaluacion(evaluacion.id, nivelExistente.id, posicionId)}
-                                                  >
-                                                    <span>{evaluacion.nombre}</span>
-                                                    <div className="evaluacion-pill-actions" onClick={(e) => e.stopPropagation()}>
-                                                      <button
-                                                        type="button"
-                                                        className="btn-icon btn-edit-evaluacion"
-                                                        onClick={() =>
-                                                          abrirModalEditarEvaluacion(evaluacion.id, nivelExistente.id, posicionId)
-                                                        }
-                                                        title="Editar evaluación"
-                                                      >
-                                                        <FaEdit />
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        className="btn-icon btn-delete-evaluacion"
-                                                        onClick={() => handleEliminarEvaluacionNivel(evaluacion.id, posicionId)}
-                                                        disabled={eliminandoEvaluacionId === evaluacion.id}
-                                                        title="Eliminar evaluación"
-                                                      >
-                                                        {eliminandoEvaluacionId === evaluacion.id ? '...' : <FaTrash />}
-                                                      </button>
-                                                    </div>
-                                                  </div>
-                                                ))
-                                              )}
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <p className="nivel-empty">
-                                            Activa el nivel para asignar evaluaciones.
-                                          </p>
-                                        )}
+                                                  disabled={eliminandoEvaluacionId === evaluacion.id}
+                                                  title="Eliminar evaluación"
+                                                >
+                                                  {eliminandoEvaluacionId === evaluacion.id ? (
+                                                    '...'
+                                                  ) : (
+                                                    <FaTrash />
+                                                  )}
+                                                </button>
+                                              </li>
+                                            ))
+                                          )}
+                                        </ul>
                                       </div>
                                     );
-                                  })}
-                                  </div>
+                                  })()}
                                 </div>
                               )}
                             </div>
@@ -1930,18 +2095,33 @@ const AreaManagement: React.FC = () => {
                     </div>
                   )}
                 </section>
+              )}
+
+              {editTab === 'multihabilidad' && editForm.fase2_activa && selectedArea && (
+                <section className="edit-section edit-section--flat edit-section--multihabilidad">
+                  <Fase2MultihabilidadEmbed areaId={selectedArea.id} />
+                </section>
+              )}
+
+              {editTab === 'examenes' && editForm.fase2_activa && selectedArea && (
+                <section className="edit-section edit-section--flat">
+                  <BancoExamenEditor areaId={selectedArea.id} />
+                </section>
+              )}
               </div>
 
               <FieldError errors={editErrors.general} />
 
-              <div className="edit-actions">
+              {editTab !== 'multihabilidad' && editTab !== 'examenes' && (
+              <div className="area-edit-footer">
                 <button type="button" className="btn-secondary" onClick={volverALista}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary">
-                  Guardar Cambios
+                  Guardar cambios
                 </button>
               </div>
+              )}
             </form>
           </div>
         )
@@ -2463,6 +2643,8 @@ const AreaManagement: React.FC = () => {
         </div>
       )}
 
+      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+      {confirmDialog}
     </div>
   );
 };

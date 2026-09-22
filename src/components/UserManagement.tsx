@@ -28,11 +28,47 @@ import { apiService, User, UserCreate, UserUpdate, ChangePassword, Area, Posicio
 import { useToast } from '../hooks/useToast';
 import { useTopbarOverride } from '../contexts/TopbarContext';
 import ToastContainer from './ToastContainer';
+import UserTechnologiesEditor from './fase2/UserTechnologiesEditor';
+import BulkUserTechnologiesModal from './fase2/BulkUserTechnologiesModal';
 import './UserManagement.css';
+import './fase2/UserTechnologiesEditor.css';
 import './Settings.css';
 
 const MAX_PROFILE_PHOTO_SIZE = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_PROFILE_PHOTO_TYPES = ['image/jpeg', 'image/png'];
+
+
+/** IDs de grupo desde API (preferir `grupos`; fallback legado `grupo`). */
+function grupoIdsFromUser(user: User): number[] {
+  if (user.grupos?.length) {
+    return user.grupos.map((g) => g.grupo_id);
+  }
+  return user.grupo != null ? [user.grupo] : [];
+}
+
+/** Grupo del área en la lista de IDs. */
+function grupoIdEnArea(grupoIds: number[], areaId: number, allGrupos: Grupo[]): number | null {
+  for (const id of grupoIds) {
+    const g = allGrupos.find((x) => x.id === id);
+    if (g && g.area === areaId) return id;
+  }
+  return null;
+}
+
+/** Reemplaza el grupo de un área (máximo uno por área). */
+function conGrupoEnArea(
+  grupoIds: number[],
+  areaId: number,
+  nuevoGrupoId: number | null,
+  allGrupos: Grupo[],
+): number[] {
+  const sinArea = grupoIds.filter((id) => {
+    const g = allGrupos.find((x) => x.id === id);
+    return g != null && g.area !== areaId;
+  });
+  if (nuevoGrupoId == null) return sinArea;
+  return [...sinArea, nuevoGrupoId];
+}
 
 const UserManagement: React.FC = () => {
   // Hook para manejar toasts
@@ -55,7 +91,11 @@ const UserManagement: React.FC = () => {
   const [grupoFilter, setGrupoFilter] = useState<number | ''>('');
   
   // Estados para el sistema de pasos
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  /** Paso más alto al que el usuario ya llegó (permite volver atrás en el stepper). */
+  const [maxReachedStep, setMaxReachedStep] = useState<1 | 2 | 3 | 4>(1);
+  const [showBulkTechModal, setShowBulkTechModal] = useState(false);
+  const usersLoadSeq = useRef(0);
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   
@@ -104,6 +144,7 @@ const UserManagement: React.FC = () => {
     areas: [],
     posiciones: [],
     grupo: null,
+    grupos: [],
     numero_empleado: null,
     fecha_ingreso: null,
     is_active: true
@@ -118,6 +159,7 @@ const UserManagement: React.FC = () => {
     areas: [],
     posiciones: [],
     grupo: null,
+    grupos: [],
     numero_empleado: null,
     fecha_ingreso: null,
     is_active: true
@@ -201,24 +243,33 @@ const UserManagement: React.FC = () => {
     loadAreas();
     loadPosiciones();
     loadGrupos();
-    loadUsers();
+    void loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounce para la búsqueda
+  // Debounce solo para búsqueda / rol / estado (van al API).
+  // Área y grupo se filtran en cliente: no re-fetch.
+  // El mount ya carga una vez; este efecto ignora la primera corrida.
+  const skipFirstApiFilterEffect = useRef(true);
   useEffect(() => {
+    if (skipFirstApiFilterEffect.current) {
+      skipFirstApiFilterEffect.current = false;
+      return;
+    }
     const timeoutId = setTimeout(() => {
-      loadUsers();
-    }, 500); // Esperar 500ms después del último cambio
+      void loadUsers();
+    }, 400);
 
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, roleFilter, statusFilter]);
 
-  // Indicador de búsqueda cuando hay cambios en los filtros
+  // Indicador de búsqueda cuando hay cambios en los filtros de API
   useEffect(() => {
-    if (searchTerm || roleFilter || statusFilter || areaFilter || grupoFilter) {
+    if (searchTerm || roleFilter || statusFilter) {
       setSearching(true);
     }
-  }, [searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter]);
+  }, [searchTerm, roleFilter, statusFilter]);
 
   // Resetear filtro de grupo cuando cambia el área
   useEffect(() => {
@@ -407,6 +458,7 @@ const UserManagement: React.FC = () => {
     setIsCreating(true);
     setIsEditing(false);
     setCurrentStep(1);
+    setMaxReachedStep(1);
     setCreateForm({
       username: '',
       email: '',
@@ -418,6 +470,7 @@ const UserManagement: React.FC = () => {
       areas: [],
       posiciones: [],
       grupo: null,
+      grupos: [],
       numero_empleado: null,
       fecha_ingreso: null,
       is_active: true
@@ -434,10 +487,12 @@ const UserManagement: React.FC = () => {
     setIsCreating(false);
     setIsEditing(true);
     setCurrentStep(1);
+    setMaxReachedStep(1);
     setSelectedUser(user);
     const userPosicionesIds = user.posiciones?.length
       ? user.posiciones.map((p) => p.posicion_id)
       : (user.posicion != null ? [user.posicion] : []);
+    const userGrupoIds = grupoIdsFromUser(user);
     setEditForm({
       username: user.username,
       email: user.email,
@@ -447,12 +502,21 @@ const UserManagement: React.FC = () => {
       areas: user.areas,
       posiciones: userPosicionesIds,
       grupo: user.grupo,
+      grupos: userGrupoIds,
       numero_empleado: user.numero_empleado,
       fecha_ingreso: user.fecha_ingreso,
       is_active: user.is_active
     });
     setEditErrors({});
-    setStep3AreaId(user.areas?.length ? user.areas[0] : '');
+    // Abrir área del primer grupo asignado o la primera área.
+    const areaDelGrupo =
+      userGrupoIds.length > 0
+        ? grupos.find((g) => g.id === userGrupoIds[0])?.area
+        : undefined;
+    const areaInicial =
+      areaDelGrupo ??
+      (user.areas?.length ? user.areas[0] : '');
+    setStep3AreaId(areaInicial);
     setStep3PosicionId('');
 
     if (editProfilePhotoPreview && editProfilePhotoPreview.startsWith('blob:')) {
@@ -465,19 +529,124 @@ const UserManagement: React.FC = () => {
     setStep3Nivel('');
   };
 
+  const editFormAreas = editForm.areas;
+  const showTechStep =
+    isEditing &&
+    selectedUser != null &&
+    editFormAreas.some((aid) => areas.find((a) => a.id === aid)?.fase2_activa);
+  const maxStep: 3 | 4 = showTechStep ? 4 : 3;
+
+  const areaF2Filtrada = useMemo(() => {
+    if (typeof areaFilter !== 'number') {
+      return null;
+    }
+    const area = areas.find((a) => a.id === areaFilter);
+    return area?.fase2_activa ? area : null;
+  }, [areaFilter, areas]);
+
+  const hayAreasConTechs = useMemo(
+    () => areas.some((a) => a.fase2_activa),
+    [areas],
+  );
+
+  useEffect(() => {
+    if (currentStep > maxStep) {
+      setCurrentStep(maxStep);
+    }
+  }, [currentStep, maxStep]);
+
+  const validateCurrentStep = (): boolean => {
+    const form = isCreating ? createForm : editForm;
+    const errors: ValidationErrors = {};
+
+    if (currentStep === 1) {
+      if (!form.username?.trim()) {
+        errors.username = ['El usuario es obligatorio'];
+      }
+      if (!form.email?.trim()) {
+        errors.email = ['El correo es obligatorio'];
+      }
+      if (!form.first_name?.trim()) {
+        errors.first_name = ['El nombre es obligatorio'];
+      }
+      if (!form.last_name?.trim()) {
+        errors.last_name = ['El apellido es obligatorio'];
+      }
+      if (isCreating) {
+        if (!createForm.password) {
+          errors.password = ['La contraseña es obligatoria'];
+        }
+        if (!createForm.password_confirm) {
+          errors.password_confirm = ['Confirma la contraseña'];
+        } else if (createForm.password !== createForm.password_confirm) {
+          errors.password_confirm = ['Las contraseñas no coinciden'];
+        }
+      }
+    } else if (currentStep === 2) {
+      if (!form.role) {
+        errors.role = ['El rol es obligatorio'];
+      }
+      if (isCreating && !form.numero_empleado) {
+        errors.numero_empleado = ['El número de empleado es obligatorio'];
+      }
+    } else if (currentStep === 3) {
+      if (!form.areas || form.areas.length === 0) {
+        errors.areas = ['Selecciona al menos un área'];
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      if (isCreating) {
+        setCreateErrors(errors);
+      } else {
+        setEditErrors(errors);
+      }
+      showError('Corrige los campos del paso actual antes de continuar.');
+      return false;
+    }
+
+    if (isCreating) {
+      setCreateErrors({});
+    } else {
+      setEditErrors({});
+    }
+    return true;
+  };
+
   const nextStep = () => {
-    if (currentStep < 3) {
-      setCurrentStep(currentStep + 1);
+    if (!validateCurrentStep()) {
+      return;
+    }
+    if (currentStep < maxStep) {
+      const next = (currentStep + 1) as 1 | 2 | 3 | 4;
+      setCurrentStep(next);
+      setMaxReachedStep((prev) => (next > prev ? next : prev));
+    }
+  };
+
+  const goToStep = (step: 1 | 2 | 3 | 4) => {
+    if (step === currentStep) {
+      return;
+    }
+    if (step <= maxReachedStep) {
+      setCurrentStep(step);
+      return;
+    }
+    if (step === currentStep + 1 && validateCurrentStep()) {
+      setCurrentStep(step);
+      setMaxReachedStep((prev) => (step > prev ? step : prev));
     }
   };
 
   const prevStep = () => {
     if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+      setCurrentStep((currentStep - 1) as 1 | 2 | 3 | 4);
     }
   };
 
   const closeStepModal = () => {
+    const shouldReloadList = isEditing && showTechStep;
+
     if (createProfilePhotoPreview && createProfilePhotoPreview.startsWith('blob:')) {
       URL.revokeObjectURL(createProfilePhotoPreview);
     }
@@ -494,6 +663,7 @@ const UserManagement: React.FC = () => {
     setIsCreating(false);
     setIsEditing(false);
     setCurrentStep(1);
+    setMaxReachedStep(1);
     setSelectedUser(null);
     setStep3AreaId('');
     setStep3PosicionId('');
@@ -502,6 +672,10 @@ const UserManagement: React.FC = () => {
     setEditPosicionesNivel([]);
     setCreateErrors({});
     setEditErrors({});
+
+    if (shouldReloadList) {
+      void loadUsers();
+    }
   };
 
   // Funciones para obtener datos filtrados
@@ -514,6 +688,7 @@ const UserManagement: React.FC = () => {
   };
 
   const loadUsers = async () => {
+    const seq = ++usersLoadSeq.current;
     try {
       if (users.length === 0) setLoading(true);
       else setSearching(true);
@@ -524,14 +699,22 @@ const UserManagement: React.FC = () => {
       if (statusFilter) params.is_active = statusFilter === 'active';
 
       const response = await apiService.getUsers(params);
+      if (seq !== usersLoadSeq.current) {
+        return;
+      }
       setUsers(response.results ?? []);
       setError(null);
     } catch (err) {
+      if (seq !== usersLoadSeq.current) {
+        return;
+      }
       setError('Error al cargar usuarios');
       console.error(err);
     } finally {
-      setLoading(false);
-      setSearching(false);
+      if (seq === usersLoadSeq.current) {
+        setLoading(false);
+        setSearching(false);
+      }
     }
   };
 
@@ -570,9 +753,9 @@ const UserManagement: React.FC = () => {
       setShowDeleteModal(false);
       setSelectedUser(null);
       loadUsers();
-      alert('Usuario eliminado exitosamente');
+      showSuccess('Usuario eliminado exitosamente');
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(err.message || 'Error al eliminar usuario');
     }
   };
 
@@ -582,16 +765,16 @@ const UserManagement: React.FC = () => {
     try {
       if (selectedUser.is_active) {
         await apiService.deactivateUser(selectedUser.id);
-        alert('Usuario desactivado exitosamente');
+        showSuccess('Usuario desactivado exitosamente');
       } else {
         await apiService.activateUser(selectedUser.id);
-        alert('Usuario activado exitosamente');
+        showSuccess('Usuario activado exitosamente');
       }
       setShowDeactivateModal(false);
       setSelectedUser(null);
       loadUsers();
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(err.message || 'Error al cambiar el estado del usuario');
     }
   };
 
@@ -948,6 +1131,7 @@ const UserManagement: React.FC = () => {
       areas: [],
       posiciones: [],
       grupo: null,
+      grupos: [],
       numero_empleado: null,
       fecha_ingreso: null,
       is_active: true
@@ -1018,6 +1202,12 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const gruposById = useMemo(() => {
+    const map = new Map<number, string>();
+    grupos.forEach((g) => map.set(g.id, g.name));
+    return map;
+  }, [grupos]);
+
   const getUserPositionName = (user: User): string => {
     if (user.posiciones?.length) {
       const principal = user.posiciones.find((p) => p.es_principal) || user.posiciones[0];
@@ -1026,18 +1216,18 @@ const UserManagement: React.FC = () => {
       }
       return principal.posicion_name;
     }
-    const posicion = posiciones.find((pos) => pos.id === user.posicion);
-    if (posicion) return posicion.name;
     if (user.posicion_name) return user.posicion_name;
     return 'Sin posición';
   };
 
   const getUserGrupoName = (user: User): string => {
+    if (user.grupos?.length) {
+      return user.grupos.map((g) => `${g.grupo_name} (${g.area_name})`).join(', ');
+    }
     if (!user.grupo) {
       return 'Sin grupo';
     }
-    const grupo = grupos.find((g) => g.id === user.grupo);
-    return grupo ? grupo.name : 'Sin grupo';
+    return gruposById.get(user.grupo) ?? 'Sin grupo';
   };
 
   const filteredUsersList = useMemo(() => {
@@ -1048,7 +1238,9 @@ const UserManagement: React.FC = () => {
     if (term) {
       filtered = filtered.filter((user) => {
         const hayNumeroEmpleado = user.numero_empleado ? `#${user.numero_empleado}` : '';
-        const posicionNombre = getUserPositionName(user);
+        const posicionNombre = user.posicion_name
+          || user.posiciones?.[0]?.posicion_name
+          || '';
         const areasTexto = (user.areas_list || []).join(' ').toLowerCase();
 
         return (
@@ -1081,13 +1273,17 @@ const UserManagement: React.FC = () => {
       );
     }
 
-    // Filtrar por grupo
+    // Filtrar por grupo (cualquier área)
     if (grupoFilter) {
-      filtered = filtered.filter((user) => user.grupo === Number(grupoFilter));
+      const gid = Number(grupoFilter);
+      filtered = filtered.filter((user) => {
+        if (user.grupos?.some((g) => g.grupo_id === gid)) return true;
+        return user.grupo === gid;
+      });
     }
 
     return filtered;
-  }, [users, searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter, posiciones]);
+  }, [users, searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter]);
 
   const FieldError: React.FC<{ errors: string[] | undefined }> = ({ errors }) => {
     if (!errors || errors.length === 0) return null;
@@ -1520,14 +1716,18 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  /** Quitar área del usuario y las posiciones que pertenecen a esa área. */
+  /** Quitar área del usuario y las posiciones/grupo de esa área. */
   const handleRemoveAreaAssignment = (areaIdToRemove: number) => {
     const form = isCreating ? createForm : editForm;
     const posIdsInArea = new Set(
       posiciones.filter((p) => p.area === areaIdToRemove).map((p) => p.id)
     );
-    const grupoRow = form.grupo != null ? grupos.find((g) => g.id === form.grupo) : undefined;
-    const clearGrupo = grupoRow?.area === areaIdToRemove;
+    const nextGrupos = conGrupoEnArea(
+      form.grupos ?? [],
+      areaIdToRemove,
+      null,
+      grupos,
+    );
 
     const nextAreas = form.areas.filter((id) => id !== areaIdToRemove);
     const nextPosiciones = form.posiciones.filter((pid) => !posIdsInArea.has(pid));
@@ -1537,7 +1737,8 @@ const UserManagement: React.FC = () => {
         ...createForm,
         areas: nextAreas,
         posiciones: nextPosiciones,
-        grupo: clearGrupo ? null : createForm.grupo,
+        grupos: nextGrupos,
+        grupo: nextGrupos[0] ?? null,
       });
       setCreatePosicionesNivel((prev) => prev.filter((x) => !posIdsInArea.has(x.posicion)));
     } else {
@@ -1545,7 +1746,8 @@ const UserManagement: React.FC = () => {
         ...editForm,
         areas: nextAreas,
         posiciones: nextPosiciones,
-        grupo: clearGrupo ? null : editForm.grupo,
+        grupos: nextGrupos,
+        grupo: nextGrupos[0] ?? null,
       });
       setEditPosicionesNivel((prev) => prev.filter((x) => !posIdsInArea.has(x.posicion)));
     }
@@ -1579,11 +1781,6 @@ const UserManagement: React.FC = () => {
               onChange={(e) => {
                 const id = e.target.value ? parseInt(e.target.value) : '';
                 setStep3AreaId(id);
-                if (isCreating) {
-                  setCreateForm({ ...createForm, grupo: null });
-                } else {
-                  setEditForm({ ...editForm, grupo: null });
-                }
                 setStep3PosicionId('');
               }}
               className={errors.areas ? 'error' : ''}
@@ -1599,22 +1796,40 @@ const UserManagement: React.FC = () => {
           {areaId && (
             <>
               <div className="form-group">
-                <label>Grupo</label>
+                <label>Grupo (de esta área)</label>
                 <select
-                  value={form.grupo || ''}
+                  value={grupoIdEnArea(form.grupos ?? [], areaId, grupos) ?? ''}
                   onChange={(e) => {
+                    const nextId = e.target.value ? parseInt(e.target.value) : null;
+                    const nextGrupos = conGrupoEnArea(
+                      form.grupos ?? [],
+                      areaId,
+                      nextId,
+                      grupos,
+                    );
                     if (isCreating) {
-                      setCreateForm({ ...createForm, grupo: e.target.value ? parseInt(e.target.value) : null });
+                      setCreateForm({
+                        ...createForm,
+                        grupos: nextGrupos,
+                        grupo: nextGrupos[0] ?? null,
+                      });
                     } else {
-                      setEditForm({ ...editForm, grupo: e.target.value ? parseInt(e.target.value) : null });
+                      setEditForm({
+                        ...editForm,
+                        grupos: nextGrupos,
+                        grupo: nextGrupos[0] ?? null,
+                      });
                     }
                   }}
                 >
-                  <option value="">Seleccionar grupo</option>
+                  <option value="">Sin grupo en esta área</option>
                   {gruposEnArea.map((grupo) => (
                     <option key={grupo.id} value={grupo.id}>{grupo.name}</option>
                   ))}
                 </select>
+                <small className="form-hint" style={{ display: 'block', marginTop: '0.35rem', color: '#666' }}>
+                  Un grupo por área (como en las matrices Excel).
+                </small>
               </div>
 
               <div className="form-group">
@@ -1711,6 +1926,54 @@ const UserManagement: React.FC = () => {
           </div>
         )}
 
+        {(form.grupos ?? []).length > 0 && (
+          <div className="form-group" style={{ marginTop: '1rem' }}>
+            <label>Grupos asignados (por área)</label>
+            <ul className="posiciones-list">
+              {(form.grupos ?? []).map((gid) => {
+                const g = grupos.find((x) => x.id === gid);
+                const aname = g ? areas.find((a) => a.id === g.area)?.name : '';
+                return (
+                  <li key={gid} className="posiciones-list__item">
+                    <span>
+                      {g ? `${g.name}${aname ? ` (${aname})` : ''}` : `ID ${gid}`}
+                    </span>
+                    <button
+                      type="button"
+                      className="posiciones-list__remove"
+                      onClick={() => {
+                        if (!g) return;
+                        const nextGrupos = conGrupoEnArea(
+                          form.grupos ?? [],
+                          g.area,
+                          null,
+                          grupos,
+                        );
+                        if (isCreating) {
+                          setCreateForm({
+                            ...createForm,
+                            grupos: nextGrupos,
+                            grupo: nextGrupos[0] ?? null,
+                          });
+                        } else {
+                          setEditForm({
+                            ...editForm,
+                            grupos: nextGrupos,
+                            grupo: nextGrupos[0] ?? null,
+                          });
+                        }
+                      }}
+                      title="Quitar grupo"
+                    >
+                      Quitar
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {form.posiciones.length > 0 && (
           <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>Posiciones asignadas</label>
@@ -1749,6 +2012,45 @@ const UserManagement: React.FC = () => {
     );
   };
 
+  const renderStep4 = () => {
+    if (!selectedUser) {
+      return null;
+    }
+    return (
+      <div className="step-content">
+        <h3>Tecnologías</h3>
+        <UserTechnologiesEditor
+          userId={selectedUser.id}
+          role={editForm.role}
+          posicionIds={editForm.posiciones}
+          areas={areas}
+          areaIds={editForm.areas}
+          posicionesCatalog={posiciones}
+          onError={setError}
+        />
+      </div>
+    );
+  };
+
+  const renderTechChips = (user: User) => {
+    const names = user.tecnologia_nombres ?? [];
+    if (names.length === 0) {
+      return <span className="tech-badge tech-badge--muted">Sin asignar</span>;
+    }
+    const visible = names.slice(0, 2);
+    const rest = names.length - visible.length;
+    return (
+      <div className="user-tech-list-chips">
+        {visible.map((name) => (
+          <span key={name} className="tech-badge">
+            {name}
+          </span>
+        ))}
+        {rest > 0 && <span className="tech-badge tech-badge--more">+{rest}</span>}
+      </div>
+    );
+  };
+
   const handleFinalSubmit = async () => {
     if (isCreating) {
       setCreateErrors({});
@@ -1781,7 +2083,8 @@ const UserManagement: React.FC = () => {
 
           createForm.posiciones.forEach((posId) => formData.append('posiciones', String(posId)));
 
-          if (createForm.grupo !== null) {
+          (createForm.grupos ?? []).forEach((gid) => formData.append('grupos', String(gid)));
+          if ((createForm.grupos ?? []).length === 0 && createForm.grupo !== null) {
             formData.append('grupo', String(createForm.grupo));
           }
 
@@ -1828,8 +2131,9 @@ const UserManagement: React.FC = () => {
 
           editForm.posiciones.forEach((posId) => formData.append('posiciones', String(posId)));
 
-          if (editForm.grupo !== null) {
-            formData.append('grupo', String(editForm.grupo));
+          (editForm.grupos ?? []).forEach((gid) => formData.append('grupos', String(gid)));
+          if ((editForm.grupos ?? []).length === 0) {
+            formData.append('grupo', '');
           }
 
           editForm.areas.forEach((areaId) => formData.append('areas', String(areaId)));
@@ -1870,7 +2174,7 @@ const UserManagement: React.FC = () => {
 
         const targetStep = getStepForErrors(errorData);
         if (targetStep !== currentStep) {
-          setCurrentStep(targetStep);
+          setCurrentStep(Math.min(targetStep, maxStep) as 1 | 2 | 3 | 4);
         }
 
         const nonField = Array.isArray(errorData?.non_field_errors) ? errorData.non_field_errors : [];
@@ -1984,6 +2288,15 @@ const UserManagement: React.FC = () => {
         </div>
 
         <div className="header-actions">
+          {areaF2Filtrada && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowBulkTechModal(true)}
+            >
+              <FaList /> Asignación masiva
+            </button>
+          )}
           <button className="btn-secondary" onClick={handleDownloadTemplate}>
             <FaDownload /> Descargar Plantilla
           </button>
@@ -2008,6 +2321,7 @@ const UserManagement: React.FC = () => {
               <th>Posición</th>
               <th>Áreas</th>
               <th>Grupo</th>
+              {hayAreasConTechs && <th>Máquinas</th>}
             </tr>
           </thead>
           <tbody>
@@ -2024,6 +2338,8 @@ const UserManagement: React.FC = () => {
                         <img
                           src={getMediaUrl(user.profile_photo)}
                           alt={`Foto de ${user.full_name}`}
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <FaUser />
@@ -2062,6 +2378,7 @@ const UserManagement: React.FC = () => {
                 <td>
                   {getUserGrupoName(user)}
                 </td>
+                {hayAreasConTechs && <td>{renderTechChips(user)}</td>}
               </tr>
             ))}
           </tbody>
@@ -2082,18 +2399,23 @@ const UserManagement: React.FC = () => {
       ) : (
       <div className="user-edit-screen">
         <nav className="user-edit-stepper" aria-label="Pasos del formulario">
-          {[
-            { id: 1, label: 'Datos', sublabel: 'Información personal', icon: <FaUser /> },
-            { id: 2, label: 'Rol', sublabel: 'Permisos y empleo', icon: <FaUserTag /> },
-            { id: 3, label: 'Ubicación', sublabel: 'Área y posiciones', icon: <FaBuilding /> },
-          ].map((step, idx, arr) => {
+          {(
+            [
+              { id: 1 as const, label: 'Datos', sublabel: 'Información personal', icon: <FaUser /> },
+              { id: 2 as const, label: 'Rol', sublabel: 'Permisos y empleo', icon: <FaUserTag /> },
+              { id: 3 as const, label: 'Ubicación', sublabel: 'Área y posiciones', icon: <FaBuilding /> },
+              ...(showTechStep
+                ? [{ id: 4 as const, label: 'Tecnologías', sublabel: 'Máquinas asignadas', icon: <FaList /> }]
+                : []),
+            ] as const
+          ).map((step, idx, arr) => {
             const state = currentStep === step.id ? 'active' : currentStep > step.id ? 'done' : 'todo';
             return (
               <React.Fragment key={step.id}>
                 <button
                   type="button"
                   className={`user-edit-step user-edit-step--${state}`}
-                  onClick={() => setCurrentStep(step.id as 1 | 2 | 3)}
+                  onClick={() => goToStep(step.id)}
                   aria-current={currentStep === step.id ? 'step' : undefined}
                 >
                   <span className="user-edit-step__bullet" aria-hidden>
@@ -2124,6 +2446,7 @@ const UserManagement: React.FC = () => {
             {currentStep === 1 && renderStep1()}
             {currentStep === 2 && renderStep2()}
             {currentStep === 3 && renderStep3()}
+            {currentStep === 4 && showTechStep && renderStep4()}
           </div>
         </div>
 
@@ -2144,7 +2467,7 @@ const UserManagement: React.FC = () => {
             >
               <FaArrowLeft /> Anterior
             </button>
-            {currentStep < 3 ? (
+            {currentStep < maxStep ? (
               <button type="button" className="btn-primary" onClick={nextStep}>
                 Siguiente <FaArrowRight />
               </button>
@@ -2156,6 +2479,18 @@ const UserManagement: React.FC = () => {
           </div>
         </footer>
       </div>
+      )}
+
+      {showBulkTechModal && areaF2Filtrada && (
+        <BulkUserTechnologiesModal
+          areaId={areaF2Filtrada.id}
+          areaName={areaF2Filtrada.name}
+          users={filteredUsersList}
+          onClose={() => {
+            setShowBulkTechModal(false);
+            void loadUsers();
+          }}
+        />
       )}
 
       {/* Modal: Cambiar contraseña */}

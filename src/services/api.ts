@@ -86,6 +86,9 @@ export interface Area {
   is_active: boolean;
   include_onboarding?: boolean;
   tipo_area?: 'produccion' | 'soporte';
+  fase2_activa?: boolean;
+  n4_basicas_requeridas?: number;
+  n4_complejas_requeridas?: number;
   created_at: string;
   updated_at: string;
 }
@@ -108,6 +111,38 @@ export interface Posicion {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Tecnologia {
+  id: number;
+  name: string;
+  area: number;
+  area_name: string;
+  orden: number;
+  complejidad: 'basica' | 'compleja';
+  is_active: boolean;
+}
+
+export interface BancoPreguntaExamen {
+  id: number;
+  area: number;
+  nivel: number;
+  texto: string;
+  opciones: string[];
+  indice_correcta: number;
+  is_active: boolean;
+  orden: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UserTecnologia {
+  id: number;
+  user: number;
+  user_nombre: string;
+  tecnologia: number;
+  tecnologia_nombre: string;
+  area_id: number;
 }
 
 export interface NivelPosicion {
@@ -148,6 +183,14 @@ export interface UserPosicionItem {
   es_principal: boolean;
 }
 
+export interface UserGrupoItem {
+  id: number;
+  grupo_id: number;
+  grupo_name: string;
+  area_id: number;
+  area_name: string;
+}
+
 export interface User {
   id: number;
   username: string;
@@ -162,7 +205,10 @@ export interface User {
   posicion: number | null;
   posicion_name?: string | null;
   posiciones?: UserPosicionItem[];
+  /** Grupo primario (legado); preferir `grupos`. */
   grupo: number | null;
+  /** Grupos por área (un grupo por área). */
+  grupos?: UserGrupoItem[];
   numero_empleado: string | null;
   fecha_ingreso: string | null;
   profile_photo: string | null;
@@ -171,6 +217,8 @@ export interface User {
   date_joined: string;
   last_login: string | null;
   niveles_completos?: Record<number, boolean>;
+  tecnologia_ids?: number[];
+  tecnologia_nombres?: string[];
 }
 
 export interface UserCreate {
@@ -185,7 +233,10 @@ export interface UserCreate {
   posiciones: number[];
   /** Completar evaluaciones hasta ese nivel por posición (misma lógica que carga masiva). */
   posiciones_nivel?: Array<{ posicion: number; nivel: number }>;
+  /** @deprecated Preferir `grupos` (IDs, un grupo por área). */
   grupo: number | null;
+  /** IDs de Grupo (máximo uno por área). */
+  grupos?: number[];
   numero_empleado: string | null;
   fecha_ingreso: string | null;
   is_active: boolean;
@@ -202,7 +253,9 @@ export interface UserUpdate {
   posiciones: number[];
   /** Completar evaluaciones hasta ese nivel por posición (misma lógica que creación y carga masiva). */
   posiciones_nivel?: Array<{ posicion: number; nivel: number }>;
+  /** @deprecated Preferir `grupos`. */
   grupo: number | null;
+  grupos?: number[];
   numero_empleado: string | null;
   fecha_ingreso: string | null;
   is_active: boolean;
@@ -211,6 +264,7 @@ export interface UserUpdate {
 }
 
 export interface ChangePassword {
+  current_password?: string;
   new_password: string;
   new_password_confirm: string;
 }
@@ -300,6 +354,9 @@ export interface AreaCreateWithGroups {
   is_active?: boolean;
   include_onboarding?: boolean;
   tipo_area?: 'produccion' | 'soporte';
+  fase2_activa?: boolean;
+  n4_basicas_requeridas?: number;
+  n4_complejas_requeridas?: number;
 }
 
 export interface AreaUpdateWithGroups {
@@ -309,6 +366,9 @@ export interface AreaUpdateWithGroups {
   is_active?: boolean;
   include_onboarding?: boolean;
   tipo_area?: 'produccion' | 'soporte';
+  fase2_activa?: boolean;
+  n4_basicas_requeridas?: number;
+  n4_complejas_requeridas?: number;
 }
 
 export interface UsersListResponse {
@@ -493,6 +553,14 @@ export interface Evaluacion {
   puntos_evaluacion: PuntoEvaluacion[];
   criterios_evaluacion: CriterioEvaluacion[];
   firmas: FirmaEvaluacion[];
+  tecnologia?: number | null;
+  tecnologia_ids?: number[];
+  tecnologia_nombres?: string[];
+  tecnologia_nombre?: string | null;
+  es_tronco_comun?: boolean;
+  tronco_prioritario?: boolean;
+  es_prerrequisito_seguridad?: boolean;
+  nivel_seguridad?: 1 | 2 | null;
   created_at: string;
   updated_at: string;
 }
@@ -848,6 +916,7 @@ class ApiService {
     area_id?: number;
     grupo_id?: number;
     posicion_id?: number;
+    page?: number;
   }): Promise<UsersListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
@@ -859,6 +928,7 @@ class ApiService {
     if (params?.area_id !== undefined) searchParams.append('area_id', String(params.area_id));
     if (params?.grupo_id !== undefined) searchParams.append('grupo_id', String(params.grupo_id));
     if (params?.posicion_id !== undefined) searchParams.append('posicion_id', String(params.posicion_id));
+    if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
     const response = await this.request<User[] | UsersListResponse>(`/users/${queryString ? '?' + queryString : ''}`);
@@ -869,8 +939,9 @@ class ApiService {
   }
 
   /**
-   * Obtiene todos los usuarios (todas las páginas) según los filtros.
-   * Necesario para Evaluaciones donde se filtran por área/grupo/posición.
+   * Obtiene todos los usuarios según los filtros.
+   * Si la respuesta trae `next` o `count` mayor que la página actual, recorre page++.
+   * Si el backend no pagina (array plano o next=null), devuelve esa única página.
    */
   async getUsersAll(params?: {
     search?: string;
@@ -882,8 +953,21 @@ class ApiService {
     grupo_id?: number;
     posicion_id?: number;
   }): Promise<User[]> {
-    const res = await this.getUsers(params);
-    return res.results ?? [];
+    const all: User[] = [];
+    let page = 1;
+    while (true) {
+      const res = await this.getUsers({ ...params, page });
+      const results = res.results ?? [];
+      if (results.length === 0) {
+        break;
+      }
+      all.push(...results);
+      if (!res.next) {
+        break;
+      }
+      page += 1;
+    }
+    return all;
   }
 
   async getUser(id: number): Promise<User> {
@@ -1263,7 +1347,36 @@ class ApiService {
     if (params?.page) searchParams.append('page', params.page.toString());
     
     const queryString = searchParams.toString();
-    return this.request<ListasAsistenciaListResponse>(`/users/listas-asistencia/${queryString ? '?' + queryString : ''}`);
+    const response = await this.request<ListaAsistencia[] | ListasAsistenciaListResponse>(
+      `/users/listas-asistencia/${queryString ? '?' + queryString : ''}`
+    );
+    if (Array.isArray(response)) {
+      return { results: response, next: null, previous: null, count: response.length };
+    }
+    return response;
+  }
+
+  /** Recorre todas las páginas de listas de asistencia. */
+  async getListasAsistenciaAll(params?: {
+    search?: string;
+    area?: number;
+    is_active?: boolean;
+  }): Promise<ListaAsistencia[]> {
+    const all: ListaAsistencia[] = [];
+    let page = 1;
+    while (true) {
+      const res = await this.getListasAsistencia({ ...params, page });
+      const results = res.results ?? [];
+      if (results.length === 0) {
+        break;
+      }
+      all.push(...results);
+      if (!res.next) {
+        break;
+      }
+      page += 1;
+    }
+    return all;
   }
 
   async getListaAsistencia(id: number): Promise<ListaAsistencia> {
@@ -1319,6 +1432,9 @@ class ApiService {
     plantilla_id?: number;
     es_plantilla?: boolean;
     search?: string;
+    usuario_id?: number;
+    tecnologia_id?: number | 'tronco';
+    ver_todas_techs?: boolean;
   }): Promise<Evaluacion[]> {
     const searchParams = new URLSearchParams();
     if (params?.area_id) searchParams.append('area_id', params.area_id.toString());
@@ -1329,6 +1445,9 @@ class ApiService {
     if (params?.plantilla_id) searchParams.append('plantilla_id', params.plantilla_id.toString());
     if (params?.es_plantilla !== undefined) searchParams.append('es_plantilla', params.es_plantilla.toString());
     if (params?.search) searchParams.append('search', params.search);
+    if (params?.usuario_id) searchParams.append('usuario_id', params.usuario_id.toString());
+    if (params?.tecnologia_id != null) searchParams.append('tecnologia_id', String(params.tecnologia_id));
+    if (params?.ver_todas_techs) searchParams.append('ver_todas_techs', '1');
     
     const queryString = searchParams.toString();
     const response = await this.request<Evaluacion[] | { results: Evaluacion[] }>(`/users/evaluaciones/${queryString ? '?' + queryString : ''}`);
@@ -1362,7 +1481,17 @@ class ApiService {
 
   async patchEvaluacion(
     id: number,
-    evaluacionData: Partial<EvaluacionUpdate & { nivel_posicion?: number | null; plantilla?: number | null }>
+    evaluacionData: Partial<
+      EvaluacionUpdate & {
+        nivel_posicion?: number | null;
+        plantilla?: number | null;
+        tecnologia_ids?: number[];
+        es_tronco_comun?: boolean;
+        tronco_prioritario?: boolean;
+        es_prerrequisito_seguridad?: boolean;
+        nivel_seguridad?: 1 | 2 | null;
+      }
+    >
   ): Promise<Evaluacion> {
     return this.request<Evaluacion>(`/users/evaluaciones/${id}/`, {
       method: 'PATCH',
@@ -1600,6 +1729,7 @@ class ApiService {
     area_id?: number;
     week?: number;
     year?: number;
+    tecnologia_id?: number;
   }): Promise<AvanceGlobalResponse[]> {
     const searchParams = new URLSearchParams();
     if (params.area_id !== undefined) {
@@ -1610,6 +1740,9 @@ class ApiService {
     }
     if (params.year !== undefined) {
       searchParams.append('year', String(params.year));
+    }
+    if (params.tecnologia_id !== undefined) {
+      searchParams.append('tecnologia_id', String(params.tecnologia_id));
     }
     const query = searchParams.toString();
     const url = query ? `/users/reportes/avance-global/?${query}` : '/users/reportes/avance-global/';
@@ -1622,6 +1755,7 @@ class ApiService {
     area_id?: number;
     month?: number;
     year?: number;
+    tecnologia_id?: number;
   }): Promise<any[]> {
     const searchParams = new URLSearchParams();
     if (params.area_id !== undefined) {
@@ -1632,6 +1766,9 @@ class ApiService {
     }
     if (params.year !== undefined) {
       searchParams.append('year', String(params.year));
+    }
+    if (params.tecnologia_id !== undefined) {
+      searchParams.append('tecnologia_id', String(params.tecnologia_id));
     }
     const query = searchParams.toString();
     const url = query ? `/users/reportes/advance-training-monthly/?${query}` : '/users/reportes/advance-training-monthly/';
@@ -1661,7 +1798,10 @@ class ApiService {
   async getAdvanceTrainingMatrix(params: {
     week?: number;
     year?: number;
-  }): Promise<any[]> {
+    tecnologia_id?: number;
+    /** Solo true en vista Gráfica: las series mensuales son costosas en backend. */
+    include_charts?: boolean;
+  }): Promise<any> {
     const searchParams = new URLSearchParams();
     if (params.week !== undefined) {
       searchParams.append('week', String(params.week));
@@ -1669,10 +1809,219 @@ class ApiService {
     if (params.year !== undefined) {
       searchParams.append('year', String(params.year));
     }
+    if (params.tecnologia_id !== undefined) {
+      searchParams.append('tecnologia_id', String(params.tecnologia_id));
+    }
+    searchParams.append('include_charts', params.include_charts ? '1' : '0');
     const query = searchParams.toString();
     const url = query ? `/users/reportes/advance-training-matrix/?${query}` : '/users/reportes/advance-training-matrix/';
-    return this.request<any[]>(url, {
+    return this.request<any>(url, {
       method: 'GET',
+    });
+  }
+
+  async getTecnologias(params?: { area_id?: number; is_active?: boolean }): Promise<Tecnologia[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.area_id) searchParams.append('area_id', String(params.area_id));
+    if (params?.is_active !== undefined) searchParams.append('is_active', String(params.is_active));
+    const q = searchParams.toString();
+    const response = await this.request<Tecnologia[] | { results: Tecnologia[] }>(
+      `/users/tecnologias/${q ? `?${q}` : ''}`
+    );
+    return Array.isArray(response) ? response : (response?.results ?? []);
+  }
+
+  async createTecnologia(data: {
+    name: string;
+    area: number;
+    orden?: number;
+    complejidad?: 'basica' | 'compleja';
+    is_active?: boolean;
+  }): Promise<Tecnologia> {
+    return this.request<Tecnologia>('/users/tecnologias/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async patchTecnologia(
+    id: number,
+    data: Partial<Pick<Tecnologia, 'name' | 'orden' | 'complejidad' | 'is_active'>>
+  ): Promise<Tecnologia> {
+    return this.request<Tecnologia>(`/users/tecnologias/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async generarCandadosTech(areaId: number, plantillaId?: number): Promise<{ creadas: number; actualizadas: number }> {
+    return this.request<{ creadas: number; actualizadas: number }>('/users/tecnologias/generar-candados/', {
+      method: 'POST',
+      body: JSON.stringify({
+        area_id: areaId,
+        ...(plantillaId != null ? { plantilla_id: plantillaId } : {}),
+      }),
+    });
+  }
+
+  async getIndicadorN4(usuarioId: number, areaId: number): Promise<{
+    basicas: number;
+    complejas: number;
+    requeridas_basicas: number;
+    requeridas_complejas: number;
+    cumple: boolean;
+    tecnologias_asignadas: number;
+  }> {
+    const q = new URLSearchParams({
+      usuario: String(usuarioId),
+      area_id: String(areaId),
+    });
+    return this.request(`/users/indicador-n4/?${q.toString()}`);
+  }
+
+  async getExamenesNivel(params: {
+    usuario?: number;
+    area_id?: number;
+    pendiente?: boolean;
+  }): Promise<Array<{
+    id: number;
+    usuario: number;
+    area: number;
+    nivel: number;
+    estado: string;
+    aciertos: number | null;
+    aprobado: boolean;
+  }>> {
+    const searchParams = new URLSearchParams();
+    if (params.usuario) searchParams.append('usuario', String(params.usuario));
+    if (params.area_id) searchParams.append('area_id', String(params.area_id));
+    if (params.pendiente) searchParams.append('pendiente', '1');
+    const q = searchParams.toString();
+    const response = await this.request<
+      | Array<{
+          id: number;
+          usuario: number;
+          area: number;
+          nivel: number;
+          estado: string;
+          aciertos: number | null;
+          aprobado: boolean;
+        }>
+      | {
+          results: Array<{
+            id: number;
+            usuario: number;
+            area: number;
+            nivel: number;
+            estado: string;
+            aciertos: number | null;
+            aprobado: boolean;
+          }>;
+        }
+    >(`/users/examenes-nivel/${q ? `?${q}` : ''}`);
+    return Array.isArray(response) ? response : (response?.results ?? []);
+  }
+
+  async iniciarExamenNivel(id: number): Promise<{
+    intento: { id: number; nivel: number; estado: string };
+    preguntas: Array<{ id: number; texto: string; opciones: string[]; orden: number }>;
+    total_preguntas?: number;
+    aciertos_requeridos?: number;
+    banco_completo?: boolean;
+  }> {
+    return this.request(`/users/examenes-nivel/${id}/iniciar/`, { method: 'POST' });
+  }
+
+  async enviarExamenNivel(
+    id: number,
+    respuestas: Record<string, number>
+  ): Promise<{ id: number; aciertos: number | null; aprobado: boolean; estado: string; nivel: number }> {
+    return this.request(`/users/examenes-nivel/${id}/enviar/`, {
+      method: 'POST',
+      body: JSON.stringify({ respuestas }),
+    });
+  }
+
+  async getBancoExamen(params: {
+    area_id: number;
+    nivel?: number;
+    activas?: boolean;
+  }): Promise<BancoPreguntaExamen[]> {
+    const searchParams = new URLSearchParams();
+    searchParams.append('area_id', String(params.area_id));
+    if (params.nivel != null) searchParams.append('nivel', String(params.nivel));
+    if (params.activas) searchParams.append('activas', '1');
+    const q = searchParams.toString();
+    const response = await this.request<BancoPreguntaExamen[] | { results: BancoPreguntaExamen[] }>(
+      `/users/banco-examen/${q ? `?${q}` : ''}`
+    );
+    return Array.isArray(response) ? response : (response?.results ?? []);
+  }
+
+  async getBancoExamenResumen(areaId: number): Promise<{
+    area_id: number;
+    niveles: Array<{
+      nivel: number;
+      activas: number;
+      meta: number;
+      listo_aleatorio: boolean;
+      examen_disponible: boolean;
+    }>;
+  }> {
+    return this.request(`/users/banco-examen/resumen/?area_id=${areaId}`);
+  }
+
+  async createBancoPregunta(data: {
+    area: number;
+    nivel: number;
+    texto: string;
+    opciones: string[];
+    indice_correcta: number;
+    orden?: number;
+    is_active?: boolean;
+  }): Promise<BancoPreguntaExamen> {
+    return this.request<BancoPreguntaExamen>('/users/banco-examen/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async patchBancoPregunta(
+    id: number,
+    data: Partial<{
+      texto: string;
+      opciones: string[];
+      indice_correcta: number;
+      orden: number;
+      is_active: boolean;
+      nivel: number;
+    }>
+  ): Promise<BancoPreguntaExamen> {
+    return this.request<BancoPreguntaExamen>(`/users/banco-examen/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteBancoPregunta(id: number): Promise<void> {
+    await this.request(`/users/banco-examen/${id}/`, { method: 'DELETE' });
+  }
+
+  async getUserTecnologias(params?: { user?: number; area_id?: number }): Promise<UserTecnologia[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.user) searchParams.append('user', String(params.user));
+    if (params?.area_id) searchParams.append('area_id', String(params.area_id));
+    const q = searchParams.toString();
+    const response = await this.request<UserTecnologia[] | { results: UserTecnologia[] }>(
+      `/users/user-tecnologias/${q ? `?${q}` : ''}`
+    );
+    return Array.isArray(response) ? response : (response?.results ?? []);
+  }
+
+  async toggleUserTecnologia(userId: number, tecnologiaId: number, assigned: boolean): Promise<void> {
+    await this.request(`/users/user-tecnologias/toggle/`, {
+      method: 'POST',
+      body: JSON.stringify({ user: userId, tecnologia: tecnologiaId, assigned }),
     });
   }
 
@@ -1681,7 +2030,8 @@ class ApiService {
     posicion?: number;
     nivel?: number;
     completado?: boolean;
-  }): Promise<ProgresoNivel[]> {
+    page?: number;
+  }): Promise<ProgresoNivel[] | { results: ProgresoNivel[]; next: string | null; count?: number }> {
     const searchParams = new URLSearchParams();
     if (params?.usuario !== undefined) {
       searchParams.append('usuario', String(params.usuario));
@@ -1695,11 +2045,42 @@ class ApiService {
     if (params?.completado !== undefined) {
       searchParams.append('completado', String(params.completado));
     }
+    if (params?.page) {
+      searchParams.append('page', String(params.page));
+    }
     const query = searchParams.toString();
     const url = query ? `/users/progresos-nivel/?${query}` : '/users/progresos-nivel/';
-    return this.request<ProgresoNivel[]>(url, {
+    return this.request<ProgresoNivel[] | { results: ProgresoNivel[]; next: string | null; count?: number }>(url, {
       method: 'GET',
     });
+  }
+
+  /** Recorre todas las páginas de progresos de nivel. */
+  async getProgresosNivelAll(params?: {
+    usuario?: number;
+    posicion?: number;
+    nivel?: number;
+    completado?: boolean;
+  }): Promise<ProgresoNivel[]> {
+    const all: ProgresoNivel[] = [];
+    let page = 1;
+    while (true) {
+      const res = await this.getProgresosNivel({ ...params, page });
+      const results = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.results)
+          ? res.results
+          : [];
+      if (results.length === 0) {
+        break;
+      }
+      all.push(...results);
+      if (Array.isArray(res) || !res.next) {
+        break;
+      }
+      page += 1;
+    }
+    return all;
   }
 
 }

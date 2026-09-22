@@ -15,7 +15,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { apiService, Area, AvanceGlobalResponse } from '../services/api';
+import { apiService, Area, AvanceGlobalResponse, Tecnologia } from '../services/api';
+import { useToast } from '../hooks/useToast';
+import ToastContainer from './ToastContainer';
 import './Reportes.css';
 
 // Colores corporativos
@@ -264,10 +266,13 @@ interface ReportesProps {
 }
 
 const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
   const isAdmin = userRole === 'ADMIN';
   const [activeTab, setActiveTab] = useState<TabType>('avance-global');
   const [areas, setAreas] = useState<Area[]>([]);
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
+  const [tecnologiasReporte, setTecnologiasReporte] = useState<Tecnologia[]>([]);
+  const [selectedTecnologiaId, setSelectedTecnologiaId] = useState<number | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [reportData, setReportData] = useState<AvanceGlobalResponse[]>([]);
@@ -276,6 +281,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const [matrixReportData, setMatrixReportData] = useState<any>(null);
   const [matrixSelectedWeek, setMatrixSelectedWeek] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingMonthly, setLoadingMonthly] = useState<boolean>(false);
+  const [loadingMatrix, setLoadingMatrix] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
   const [matrixViewMode, setMatrixViewMode] = useState<'table' | 'chart'>('table');
   const [exportingWithCharts, setExportingWithCharts] = useState<boolean>(false);
@@ -286,6 +293,9 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   const [exportFileName, setExportFileName] = useState<string>('');
   const exportChartsContainerRef = useRef<HTMLDivElement>(null);
   const exportMatrixChartsContainerRef = useRef<HTMLDivElement>(null);
+  /** Evita que recargas solapadas (HMR / Strict Mode / cambio de deps) dejen loadingMonthly pegado o disparen deadlocks. */
+  const monthlyLoadGenRef = useRef(0);
+  const matrixLoadGenRef = useRef(0);
   /** Borradores de % para ene–mar: clave `areaId-mes` (mes 1, 2 o 3) */
   const [monthlyManualEdits, setMonthlyManualEdits] = useState<Record<string, string>>({});
   const [savingMonthlyManual, setSavingMonthlyManual] = useState(false);
@@ -380,9 +390,32 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
     }
   }, [reportAreaScopeLoaded, userRole, areasForReporte, selectedArea]);
 
-  // Cargar datos del reporte
+  useEffect(() => {
+    const areaSel = areas.find((a) => a.id === selectedArea);
+    if (!areaSel?.fase2_activa || selectedArea == null) {
+      setTecnologiasReporte([]);
+      setSelectedTecnologiaId(null);
+      return;
+    }
+    let cancelado = false;
+    void apiService.getTecnologias({ area_id: selectedArea, is_active: true }).then((lista) => {
+      if (!cancelado) {
+        setTecnologiasReporte(lista);
+      }
+    }).catch(() => {
+      if (!cancelado) {
+        setTecnologiasReporte([]);
+      }
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [selectedArea, areas]);
+
+  // Cargar datos del reporte (solo pestaña Avance Global)
   useEffect(() => {
     const loadReportData = async () => {
+      if (activeTab !== 'avance-global') return;
       if (selectedWeek === null || selectedYear === null) return;
       
       setLoading(true);
@@ -394,6 +427,9 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         if (selectedArea !== null) {
           params.area_id = selectedArea;
         }
+        if (selectedTecnologiaId != null) {
+          params.tecnologia_id = selectedTecnologiaId;
+        }
         const data = await apiService.getAvanceGlobal(params);
         setReportData(data);
       } catch (error) {
@@ -403,7 +439,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
       }
     };
     loadReportData();
-  }, [selectedArea, selectedWeek, selectedYear]);
+  }, [activeTab, selectedArea, selectedWeek, selectedYear, selectedTecnologiaId]);
 
   const formatPercentage = (value: number): string => {
     return `${value.toFixed(2)}%`;
@@ -884,20 +920,48 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
 
   const reloadMonthlyReportData = useCallback(async () => {
     if (selectedYear === null || activeTab !== 'advance-training-monthly') return;
-    setLoading(true);
+    const gen = ++monthlyLoadGenRef.current;
+    setLoadingMonthly(true);
     try {
-      const promises = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) =>
-        apiService.getAdvanceTrainingMonthly({ month, year: selectedYear })
-      );
-      const results = await Promise.all(promises);
+      // Un mes a la vez: paralelo contiende con Matrix/Avance y provoca deadlock SQL Server.
+      const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      const results: Awaited<ReturnType<typeof apiService.getAdvanceTrainingMonthly>>[] = [];
+      for (const month of months) {
+        if (gen !== monthlyLoadGenRef.current) return;
+        let lastError: unknown;
+        let loaded = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            results.push(
+              await apiService.getAdvanceTrainingMonthly({
+                month,
+                year: selectedYear,
+                ...(selectedTecnologiaId != null ? { tecnologia_id: selectedTecnologiaId } : {}),
+              })
+            );
+            loaded = true;
+            break;
+          } catch (err) {
+            lastError = err;
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          }
+        }
+        if (!loaded) {
+          throw lastError;
+        }
+      }
+      if (gen !== monthlyLoadGenRef.current) return;
       setMonthlyReportData(results);
     } catch (error) {
+      if (gen !== monthlyLoadGenRef.current) return;
       console.error('Error al cargar reporte mensual:', error);
       setMonthlyReportData([]);
     } finally {
-      setLoading(false);
+      if (gen === monthlyLoadGenRef.current) {
+        setLoadingMonthly(false);
+      }
     }
-  }, [selectedYear, activeTab]);
+  }, [selectedYear, activeTab, selectedTecnologiaId]);
 
   // Cargar datos del reporte mensual: 12 meses del año seleccionado
   useEffect(() => {
@@ -919,24 +983,34 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   useEffect(() => {
     const loadMatrixReportData = async () => {
       if (matrixSelectedWeek === null || selectedYear === null || activeTab !== 'advance-training-matrix') return;
-      
-      setLoading(true);
+
+      const gen = ++matrixLoadGenRef.current;
+      setLoadingMatrix(true);
       try {
         const params: any = {
           week: matrixSelectedWeek,
           year: selectedYear,
+          // Series mensuales solo si el usuario está en Gráfica (evita ~2 min en Tabla).
+          include_charts: matrixViewMode === 'chart',
         };
-        const data = await apiService.getAdvanceTrainingMatrix(params);
+        const data = await apiService.getAdvanceTrainingMatrix({
+          ...params,
+          ...(selectedTecnologiaId != null ? { tecnologia_id: selectedTecnologiaId } : {}),
+        });
+        if (gen !== matrixLoadGenRef.current) return;
         setMatrixReportData(data);
       } catch (error) {
+        if (gen !== matrixLoadGenRef.current) return;
         console.error('Error al cargar reporte matrix:', error);
         setMatrixReportData(null);
       } finally {
-        setLoading(false);
+        if (gen === matrixLoadGenRef.current) {
+          setLoadingMatrix(false);
+        }
       }
     };
     loadMatrixReportData();
-  }, [matrixSelectedWeek, selectedYear, activeTab]);
+  }, [matrixSelectedWeek, selectedYear, activeTab, selectedTecnologiaId, matrixViewMode]);
 
   const renderAvanceGlobal = () => (
     <>
@@ -957,6 +1031,24 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
             ))}
           </select>
         </div>
+        {tecnologiasReporte.length > 0 && (
+          <div className="filter-group">
+            <label>Tecnología:</label>
+            <select
+              value={selectedTecnologiaId || ''}
+              onChange={(e) =>
+                setSelectedTecnologiaId(e.target.value ? parseInt(e.target.value, 10) : null)
+              }
+            >
+              <option value="">Todas (tronco + asignadas)</option>
+              {tecnologiasReporte.map((tech) => (
+                <option key={tech.id} value={tech.id}>
+                  {tech.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="filter-group">
           <label>Semana (CW):</label>
@@ -1200,7 +1292,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
               v = typeof val === 'number' ? val : 0;
             }
             if (v < 0 || v > 100) {
-              window.alert(`El porcentaje debe estar entre 0 y 100 (${name}).`);
+              showError(`El porcentaje debe estar entre 0 y 100 (${name}).`);
               return null;
             }
             return { area_id: aid, porcentaje: v };
@@ -1218,11 +1310,11 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         }
         await reloadMonthlyReportData();
         setMonthlyManualEdits({});
-        window.alert('Valores de enero, febrero, marzo y abril guardados correctamente.');
+        showSuccess('Valores de enero, febrero, marzo y abril guardados correctamente.');
       } catch (e: unknown) {
         console.error(e);
         const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Error al guardar.';
-        window.alert(msg);
+        showError(msg);
       } finally {
         setSavingMonthlyManual(false);
       }
@@ -1322,7 +1414,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
           </div>
         </div>
 
-        {loading ? (
+        {loadingMonthly ? (
           <div className="reportes-loading">Cargando datos...</div>
         ) : selectedYear === null ? (
           <div className="reportes-empty">Selecciona un año para ver el avance de todas las áreas por mes.</div>
@@ -1386,7 +1478,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 </ResponsiveContainer>
               </div>
             )}
-            {monthlyChartData.length === 0 && !loading && (
+            {monthlyChartData.length === 0 && !loadingMonthly && (
               <div className="reportes-empty">No hay datos disponibles para el año seleccionado.</div>
             )}
             {monthlyChartData.length > 0 && areaNamesProduccion.length === 0 && areaNamesSoporte.length === 0 && (
@@ -1553,7 +1645,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
                 </table>
               </div>
             )}
-            {monthlyChartData.length === 0 && !loading && (
+            {monthlyChartData.length === 0 && !loadingMonthly && (
               <div className="reportes-empty">No hay datos disponibles para el año seleccionado.</div>
             )}
             {monthlyChartData.length > 0 && areaNamesProduccion.length === 0 && areaNamesSoporte.length === 0 && (
@@ -1959,7 +2051,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
           </div>
         </div>
 
-        {loading ? (
+        {loadingMatrix ? (
           <div className="reportes-loading">Cargando datos...</div>
         ) : matrixViewMode === 'chart' ? (
           <div className="matrix-charts-grid">
@@ -2006,6 +2098,7 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
   };
 
   return (
+    <>
     <div className="reportes-container">
       <div className="reportes-header">
         <h1>Reportes</h1>
@@ -2391,6 +2484,8 @@ const Reportes: React.FC<ReportesProps> = ({ userRole }) => {
         </div>
       )}
     </div>
+      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+    </>
   );
 };
 

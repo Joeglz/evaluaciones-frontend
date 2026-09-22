@@ -1,0 +1,43 @@
+/**
+ * Design tokens — paleta Yank (#e12026 / blanco) y targets táctiles.
+ * Importar desde index.css para uso global via var(--token).
+ */
+
+:root {
+  /* Marca */
+  --color-brand: #e12026;
+  --color-brand-hover: #c41c21;
+  --color-brand-soft: #fef2f2;
+  --color-brand-border: #fecaca;
+  --color-on-brand: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-border: #e5e7eb;
+  --color-text: #111827;
+  --color-text-muted: #64748b;
+
+  /* Estados */
+  --color-success: #15803d;
+  --color-success-soft: #f0fdf4;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #e12026;
+  --color-danger-soft: #fef2f2;
+  --color-info: #1d4ed8;
+  --color-info-soft: #eff6ff;
+
+  /* Touch / a11y */
+  --touch-target-min: 44px;
+  --focus-ring: 0 0 0 3px rgba(225, 32, 38, 0.35);
+}
+
+/* Utilidades mínimas reutilizables */
+.touch-target {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

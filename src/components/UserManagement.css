@@ -141,6 +141,21 @@
   display: none;
 }
 
+.user-tech-matrix {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  overflow-x: auto;
+}
+
+.user-tech-matrix h2 {
+  margin: 0 0 0.5rem;
+  color: #e12026;
+  font-size: 1.15rem;
+}
+
 .user-management-filters {
   display: flex;
   flex-direction: row;
@@ -2236,7 +2251,7 @@
   margin-top: 0.5rem;
 }
 
-.evaluaciones-list {
+.user-management .evaluaciones-list {
   max-height: 400px;
   overflow-y: auto;
 }

@@ -1,15 +1,16 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
 import {
   FaUsers,
   FaBuilding,
   FaUser,
   FaChartBar
 } from 'react-icons/fa';
-import UserManagement from './UserManagement';
-import AreaManagement from './AreaManagement';
-import UserProfile from './UserProfile';
-import EvaluacionesManagement from './EvaluacionesManagement';
 import './Settings.css';
+
+const UserManagement = lazy(() => import('./UserManagement'));
+const AreaManagement = lazy(() => import('./AreaManagement'));
+const UserProfile = lazy(() => import('./UserProfile'));
+const EvaluacionesManagement = lazy(() => import('./EvaluacionesManagement'));
 
 interface SettingsProps {
   userRole?: string;
@@ -80,16 +81,36 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
     </div>
   );
 
+  const openSection = (section: string) => {
+    setActiveSection(section);
+  };
+
+  const onCardKeyDown = (section: string) => (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openSection(section);
+    }
+  };
+
   const renderContent = () => {
+    const fallback = <div className="settings-lazy-fallback">Cargando...</div>;
     switch (activeSection) {
       case 'users':
-        return allowedSections.includes('users') ? <UserManagement /> : renderAccessDenied();
+        return allowedSections.includes('users') ? (
+          <Suspense fallback={fallback}><UserManagement /></Suspense>
+        ) : renderAccessDenied();
       case 'areas':
-        return allowedSections.includes('areas') ? <AreaManagement /> : renderAccessDenied();
+        return allowedSections.includes('areas') ? (
+          <Suspense fallback={fallback}><AreaManagement /></Suspense>
+        ) : renderAccessDenied();
       case 'plantillas':
-        return allowedSections.includes('plantillas') ? <EvaluacionesManagement /> : renderAccessDenied();
+        return allowedSections.includes('plantillas') ? (
+          <Suspense fallback={fallback}><EvaluacionesManagement /></Suspense>
+        ) : renderAccessDenied();
       case 'profile':
-        return <UserProfile />;
+        return (
+          <Suspense fallback={fallback}><UserProfile /></Suspense>
+        );
       case 'main':
       default:
         return (
@@ -99,74 +120,90 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
               <p>Gestiona la configuración del sistema de evaluaciones</p>
             </div>
 
-            <div className="settings-grid">
+            <div className="settings-grid" role="list">
               {allowedSections.includes('profile') && (
-                <div 
+                <div
                   className="settings-card"
-                  onClick={() => setActiveSection('profile')}
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={() => openSection('profile')}
+                  onKeyDown={onCardKeyDown('profile')}
+                  aria-label="Mi Perfil"
                 >
-                  <div className="settings-card-icon">
+                  <div className="settings-card-icon" aria-hidden="true">
                     <FaUser />
                   </div>
                   <div className="settings-card-content">
                     <h3>Mi Perfil</h3>
                     <p>Edita tu información personal</p>
                   </div>
-                  <div className="settings-card-arrow">
+                  <div className="settings-card-arrow" aria-hidden="true">
                     →
                   </div>
                 </div>
               )}
 
               {allowedSections.includes('users') && (
-                <div 
+                <div
                   className="settings-card"
-                  onClick={() => setActiveSection('users')}
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={() => openSection('users')}
+                  onKeyDown={onCardKeyDown('users')}
+                  aria-label="Gestión de Usuarios"
                 >
-                  <div className="settings-card-icon">
+                  <div className="settings-card-icon" aria-hidden="true">
                     <FaUsers />
                   </div>
                   <div className="settings-card-content">
                     <h3>Gestión de Usuarios</h3>
                     <p>Administra usuarios, roles y permisos del sistema</p>
                   </div>
-                  <div className="settings-card-arrow">
+                  <div className="settings-card-arrow" aria-hidden="true">
                     →
                   </div>
                 </div>
               )}
 
               {allowedSections.includes('areas') && (
-                <div 
+                <div
                   className="settings-card"
-                  onClick={() => setActiveSection('areas')}
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={() => openSection('areas')}
+                  onKeyDown={onCardKeyDown('areas')}
+                  aria-label="Gestión de Áreas"
                 >
-                  <div className="settings-card-icon">
+                  <div className="settings-card-icon" aria-hidden="true">
                     <FaBuilding />
                   </div>
                   <div className="settings-card-content">
                     <h3>Gestión de Áreas</h3>
-                    <p>Crea y administra las áreas de trabajo</p>
+                    <p>Administra áreas, grupos y posiciones</p>
                   </div>
-                  <div className="settings-card-arrow">
+                  <div className="settings-card-arrow" aria-hidden="true">
                     →
                   </div>
                 </div>
               )}
 
               {allowedSections.includes('plantillas') && (
-                <div 
+                <div
                   className="settings-card"
-                  onClick={() => setActiveSection('plantillas')}
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={() => openSection('plantillas')}
+                  onKeyDown={onCardKeyDown('plantillas')}
+                  aria-label="Gestión de Plantillas"
                 >
-                  <div className="settings-card-icon">
+                  <div className="settings-card-icon" aria-hidden="true">
                     <FaChartBar />
                   </div>
                   <div className="settings-card-content">
                     <h3>Gestión de Plantillas</h3>
-                    <p>Crea y administra plantillas de evaluación</p>
+                    <p>Administra plantillas de evaluación</p>
                   </div>
-                  <div className="settings-card-arrow">
+                  <div className="settings-card-arrow" aria-hidden="true">
                     →
                   </div>
                 </div>

@@ -1,24 +1,25 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { 
   FaClipboardList, 
   FaChartBar, 
   FaBell, 
-  FaComments, 
   FaCog,
-  FaArrowLeft
+  FaArrowLeft,
+  FaUsers
 } from 'react-icons/fa';
 import { apiService } from '../services/api';
-import Settings from './Settings';
-import Evaluaciones from './Evaluaciones';
-import Notificaciones from './Notificaciones';
-import Reportes from './Reportes';
 import { TopbarProvider, useTopbar } from '../contexts/TopbarContext';
 import './Dashboard.css';
 
+const Settings = lazy(() => import('./Settings'));
+const Evaluaciones = lazy(() => import('./Evaluaciones'));
+const Notificaciones = lazy(() => import('./Notificaciones'));
+const Reportes = lazy(() => import('./Reportes'));
+
 const ROLE_MENU: Record<string, string[]> = {
-  ADMIN: ['home', 'evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
-  ENTRENADOR: ['evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
-  SUPERVISOR: ['evaluaciones', 'reportes', 'notificaciones', 'mensajes', 'ajustes'],
+  ADMIN: ['home', 'evaluaciones', 'reportes', 'notificaciones', 'ajustes'],
+  ENTRENADOR: ['evaluaciones', 'reportes', 'notificaciones', 'ajustes'],
+  SUPERVISOR: ['evaluaciones', 'reportes', 'notificaciones', 'ajustes'],
   USUARIO: ['evaluaciones', 'notificaciones', 'ajustes'],
   VISOR: ['evaluaciones', 'reportes', 'ajustes'],
 };
@@ -33,7 +34,6 @@ const MENU_ITEMS: MenuItemConfig[] = [
   { key: 'evaluaciones', label: 'Evaluaciones', icon: FaClipboardList },
   { key: 'reportes', label: 'Reportes', icon: FaChartBar },
   { key: 'notificaciones', label: 'Notificaciones', icon: FaBell },
-  { key: 'mensajes', label: 'Mensajes', icon: FaComments },
   { key: 'ajustes', label: 'Ajustes', icon: FaCog },
 ];
 
@@ -58,7 +58,8 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
   const [activeView, setActiveView] = useState<string>('home');
   const [evaluacionUsuarioIdParaAbrir, setEvaluacionUsuarioIdParaAbrir] = useState<number | null>(null);
   const [firmaDesdeNotificaciones, setFirmaDesdeNotificaciones] = useState(false);
-  const [notificacionesNoLeidasCount, setNotificacionesNoLeidasCount] = useState<number>(0);
+  const [notificacionesNoLeidasCount, setNotificacionesNoLeidasCount] = useState<number | null>(null);
+  const [notificacionesBadgeError, setNotificacionesBadgeError] = useState(false);
   const [settingsResetSignal, setSettingsResetSignal] = useState<number>(0);
   const [settingsSectionTitle, setSettingsSectionTitle] = useState<string | null>(null);
 
@@ -71,12 +72,21 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
 
   const cargarCantidadNotificacionesNoLeidas = useCallback(async () => {
     if (!allowedMenuItems.includes('notificaciones')) return;
-    try {
-      const lista = await apiService.obtenerNotificaciones({ solo_no_leidas: true });
-      setNotificacionesNoLeidasCount(Array.isArray(lista) ? lista.length : 0);
-    } catch {
-      setNotificacionesNoLeidasCount(0);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const lista = await apiService.obtenerNotificaciones({ solo_no_leidas: true });
+        setNotificacionesNoLeidasCount(Array.isArray(lista) ? lista.length : 0);
+        setNotificacionesBadgeError(false);
+        return;
+      } catch (err) {
+        lastError = err;
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      }
     }
+    console.error('Error cargando contador de notificaciones', lastError);
+    setNotificacionesBadgeError(true);
+    setNotificacionesNoLeidasCount(null);
   }, [allowedMenuItems]);
 
   useEffect(() => {
@@ -168,6 +178,12 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const renderLazyFallback = () => (
+    <div className="dashboard-content dashboard-lazy-fallback">
+      <p>Cargando sección...</p>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeView) {
       case 'evaluaciones':
@@ -175,52 +191,94 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
           return renderAccessDenied();
         }
         return (
-          <Evaluaciones
-            userRole={role}
-            currentUser={user}
-            evaluacionUsuarioIdParaAbrir={evaluacionUsuarioIdParaAbrir}
-            onAbiertoEvaluacionParaFirmar={() => setEvaluacionUsuarioIdParaAbrir(null)}
-            firmaDesdeNotificaciones={firmaDesdeNotificaciones}
-            onVolverNotificaciones={handleVolverNotificacionesDesdeFirma}
-          />
+          <Suspense fallback={renderLazyFallback()}>
+            <Evaluaciones
+              userRole={role}
+              currentUser={user}
+              evaluacionUsuarioIdParaAbrir={evaluacionUsuarioIdParaAbrir}
+              onAbiertoEvaluacionParaFirmar={() => setEvaluacionUsuarioIdParaAbrir(null)}
+              firmaDesdeNotificaciones={firmaDesdeNotificaciones}
+              onVolverNotificaciones={handleVolverNotificacionesDesdeFirma}
+            />
+          </Suspense>
         );
       case 'ajustes':
         if (!allowedMenuItems.includes('ajustes')) {
           return renderAccessDenied();
         }
         return (
-          <Settings
-            userRole={role}
-            resetSignal={settingsResetSignal}
-            onSectionChange={handleSettingsSectionChange}
-          />
+          <Suspense fallback={renderLazyFallback()}>
+            <Settings
+              userRole={role}
+              resetSignal={settingsResetSignal}
+              onSectionChange={handleSettingsSectionChange}
+            />
+          </Suspense>
         );
       case 'reportes':
         if (!allowedMenuItems.includes('reportes')) {
           return renderAccessDenied();
         }
-        return <Reportes userRole={role} />;
+        return (
+          <Suspense fallback={renderLazyFallback()}>
+            <Reportes userRole={role} />
+          </Suspense>
+        );
       case 'notificaciones':
         if (!allowedMenuItems.includes('notificaciones')) {
           return renderAccessDenied();
         }
         return (
-          <Notificaciones onIrAFirmarEvaluacion={handleIrAFirmarEvaluacion} onNotificacionesActualizadas={cargarCantidadNotificacionesNoLeidas} />
-        );
-      case 'mensajes':
-        if (!allowedMenuItems.includes('mensajes')) {
-          return renderAccessDenied();
-        }
-        return (
-          <div className="dashboard-content">
-            <p>El módulo de mensajes estará disponible próximamente.</p>
-          </div>
+          <Suspense fallback={renderLazyFallback()}>
+            <Notificaciones
+              onIrAFirmarEvaluacion={handleIrAFirmarEvaluacion}
+              onNotificacionesActualizadas={cargarCantidadNotificacionesNoLeidas}
+            />
+          </Suspense>
         );
       case 'home':
       default:
         return (
-          <div className="dashboard-content">
-            <p>Contenido del dashboard aquí...</p>
+          <div className="dashboard-content dashboard-home">
+            <h2 className="dashboard-home__title">Inicio</h2>
+            <p className="dashboard-home__lead">
+              Accede rápido a las secciones más usadas del sistema de evaluaciones.
+            </p>
+            <div className="dashboard-home__actions">
+              {allowedMenuItems.includes('evaluaciones') && (
+                <button
+                  type="button"
+                  className="dashboard-home__card"
+                  onClick={() => handleMenuNavigate('evaluaciones')}
+                >
+                  <FaClipboardList aria-hidden />
+                  <span>Evaluaciones</span>
+                  <small>Consultar y capturar avances</small>
+                </button>
+              )}
+              {allowedMenuItems.includes('reportes') && (
+                <button
+                  type="button"
+                  className="dashboard-home__card"
+                  onClick={() => handleMenuNavigate('reportes')}
+                >
+                  <FaChartBar aria-hidden />
+                  <span>Reportes</span>
+                  <small>Avance e indicadores</small>
+                </button>
+              )}
+              {allowedMenuItems.includes('ajustes') && (
+                <button
+                  type="button"
+                  className="dashboard-home__card"
+                  onClick={() => handleMenuNavigate('ajustes')}
+                >
+                  <FaUsers aria-hidden />
+                  <span>Usuarios / Ajustes</span>
+                  <small>Perfil, usuarios y catálogos</small>
+                </button>
+              )}
+            </div>
           </div>
         );
     }
@@ -251,18 +309,26 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
 
     const reapplyWithRetries = () => {
       const checkpoints = [0, 60, 150, 300, 600, 1000];
-      checkpoints.forEach((ms) => window.setTimeout(resetScroll, ms));
+      const timeoutIds = checkpoints.map((ms) => window.setTimeout(resetScroll, ms));
+      return timeoutIds;
     };
 
     resetScroll();
 
-    window.addEventListener('orientationchange', reapplyWithRetries);
-    window.addEventListener('focusout', reapplyWithRetries);
+    let pendingTimeouts: number[] = [];
+    const onReapply = () => {
+      pendingTimeouts.forEach((id) => window.clearTimeout(id));
+      pendingTimeouts = reapplyWithRetries();
+    };
+
+    window.addEventListener('orientationchange', onReapply);
+    window.addEventListener('focusout', onReapply);
     window.visualViewport?.addEventListener('resize', resetScroll);
 
     return () => {
-      window.removeEventListener('orientationchange', reapplyWithRetries);
-      window.removeEventListener('focusout', reapplyWithRetries);
+      pendingTimeouts.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener('orientationchange', onReapply);
+      window.removeEventListener('focusout', onReapply);
       window.visualViewport?.removeEventListener('resize', resetScroll);
     };
   }, []);
@@ -362,9 +428,21 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
         >
           <div className="menu-item-icon-wrap">
             <item.icon className="menu-icon" />
-            {item.key === 'notificaciones' && notificacionesNoLeidasCount > 0 && (
+            {item.key === 'notificaciones' &&
+              !notificacionesBadgeError &&
+              notificacionesNoLeidasCount != null &&
+              notificacionesNoLeidasCount > 0 && (
               <span className="menu-item-badge" aria-label={`${notificacionesNoLeidasCount} notificaciones no leídas`}>
                 {notificacionesNoLeidasCount > 99 ? '99+' : notificacionesNoLeidasCount}
+              </span>
+            )}
+            {item.key === 'notificaciones' && notificacionesBadgeError && (
+              <span
+                className="menu-item-badge menu-item-badge--error"
+                title="No se pudo cargar el contador de notificaciones"
+                aria-label="Error al cargar notificaciones"
+              >
+                !
               </span>
             )}
           </div>
@@ -380,62 +458,146 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
     activeView === 'evaluaciones' ||
     activeView === 'reportes';
 
+  const headerHidden = Boolean(topbarOverride?.hideHeader);
+  const breadcrumbTrail = topbarOverride?.breadcrumb;
+  const hasBreadcrumbNav = Boolean(breadcrumbTrail && breadcrumbTrail.length > 0);
+
+  const renderDashboardBreadcrumb = () => {
+    if (!breadcrumbTrail?.length) return null;
+    const actual = breadcrumbTrail[breadcrumbTrail.length - 1];
+    const padre =
+      breadcrumbTrail.length > 1
+        ? breadcrumbTrail[breadcrumbTrail.length - 2]
+        : null;
+
+    return (
+      <>
+        <div className="dashboard-header__breadcrumb dashboard-header__breadcrumb--full">
+          {breadcrumbTrail.map((item, index) => (
+            <React.Fragment key={`${item.label}-${index}`}>
+              {item.isClickable && item.onClick ? (
+                <button
+                  type="button"
+                  className="dashboard-header__breadcrumb-link"
+                  onClick={item.onClick}
+                >
+                  {item.label}
+                </button>
+              ) : (
+                <span className="dashboard-header__breadcrumb-text">
+                  {item.label}
+                </span>
+              )}
+              {index < breadcrumbTrail.length - 1 && (
+                <span className="dashboard-header__breadcrumb-separator">
+                  {' '}
+                  &gt;{' '}
+                </span>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+        <div
+          className="dashboard-header__breadcrumb dashboard-header__breadcrumb--compact"
+          aria-label="Ubicación actual"
+        >
+          {padre ? (
+            <span className="dashboard-header__breadcrumb-kicker">
+              {padre.label}
+            </span>
+          ) : null}
+          <span className="dashboard-header__breadcrumb-current">
+            {actual?.label ?? ''}
+          </span>
+        </div>
+      </>
+    );
+  };
+
   return (
     <>
       <div className="dashboard-container">
         {/* Cabecera: muestra el título de la sección actual o un override
             contextual (p.ej. al editar un usuario en Ajustes). */}
-        {showHeader && (
+        {showHeader && !headerHidden && (
           <header
-            className={`dashboard-header${topbarOverride ? ' dashboard-header--override' : ''}`}
+            className={`dashboard-header${
+              topbarOverride && !hasBreadcrumbNav
+                ? ' dashboard-header--override'
+                : ''
+            }${hasBreadcrumbNav ? ' dashboard-header--breadcrumb' : ''}`}
           >
-            {topbarOverride ? (
-              <div className="dashboard-header__override">
-                {topbarOverride.onBack && (
+            {hasBreadcrumbNav ? (
+              <>
+                <div className="dashboard-header__breadcrumb-wrap">
+                  {renderDashboardBreadcrumb()}
+                </div>
+                {topbarOverride?.onBack && (
                   <button
                     type="button"
-                    className="dashboard-header__back"
+                    className="logout-button dashboard-header__nav-back"
                     onClick={topbarOverride.onBack}
                     title={topbarOverride.backLabel || 'Volver'}
                   >
                     <FaArrowLeft aria-hidden />
-                    <span className="dashboard-header__back-label">
-                      {topbarOverride.backLabel || 'Volver'}
-                    </span>
+                    <span>{topbarOverride.backLabel || 'Volver'}</span>
                   </button>
                 )}
-                <div className="dashboard-header__heading">
-                  {topbarOverride.kicker && (
-                    <span className="dashboard-header__kicker">
-                      {topbarOverride.kicker}
-                    </span>
+              </>
+            ) : topbarOverride ? (
+              <>
+                <div className="dashboard-header__override">
+                  {topbarOverride.onBack && (
+                    <button
+                      type="button"
+                      className="dashboard-header__back"
+                      onClick={topbarOverride.onBack}
+                      title={topbarOverride.backLabel || 'Volver'}
+                    >
+                      <FaArrowLeft aria-hidden />
+                      <span className="dashboard-header__back-label">
+                        {topbarOverride.backLabel || 'Volver'}
+                      </span>
+                    </button>
                   )}
-                  <div className="dashboard-header__title-row">
-                    <h1 className="dashboard-header__title">
-                      {topbarOverride.title}
-                    </h1>
-                    {topbarOverride.badge && (
-                      <span
-                        className={`role-badge ${topbarOverride.badge.className || ''}`}
-                      >
-                        {topbarOverride.badge.label}
+                  <div className="dashboard-header__heading">
+                    {topbarOverride.kicker && (
+                      <span className="dashboard-header__kicker">
+                        {topbarOverride.kicker}
                       </span>
                     )}
+                    <div className="dashboard-header__title-row">
+                      <h1 className="dashboard-header__title">
+                        {topbarOverride.title}
+                      </h1>
+                      {topbarOverride.badge && (
+                        <span
+                          className={`role-badge ${topbarOverride.badge.className || ''}`}
+                        >
+                          {topbarOverride.badge.label}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+                <button onClick={handleLogout} className="logout-button">
+                  Cerrar Sesión
+                </button>
+              </>
             ) : (
-              <div className="welcome-message">
-                <h1>
-                  {activeView === 'ajustes' && settingsSectionTitle
-                    ? settingsSectionTitle
-                    : `Hola ${getDisplayName()}, ¿qué quieres hacer hoy?`}
-                </h1>
-              </div>
+              <>
+                <div className="welcome-message">
+                  <h1>
+                    {activeView === 'ajustes' && settingsSectionTitle
+                      ? settingsSectionTitle
+                      : `Hola ${getDisplayName()}, ¿qué quieres hacer hoy?`}
+                  </h1>
+                </div>
+                <button onClick={handleLogout} className="logout-button">
+                  Cerrar Sesión
+                </button>
+              </>
             )}
-            <button onClick={handleLogout} className="logout-button">
-              Cerrar Sesión
-            </button>
           </header>
         )}
 

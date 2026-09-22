@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fa';
 import { apiService, Notificacion, NotificacionMetadata } from '../services/api';
 import { useToast } from '../hooks/useToast';
+import { useConfirm } from '../hooks/useConfirm';
 import ToastContainer from './ToastContainer';
 import './Notificaciones.css';
 
@@ -23,6 +24,7 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
   const [cargando, setCargando] = useState<boolean>(false);
   const [soloNoLeidas, setSoloNoLeidas] = useState<boolean>(false);
   const { toasts, removeToast, showError, showSuccess } = useToast();
+  const { confirm, confirmDialog } = useConfirm();
 
   const cargarNotificaciones = useCallback(async () => {
     try {
@@ -89,11 +91,14 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
   };
 
   const eliminarTodasLasLeidas = async () => {
-    if (
-      !window.confirm(
-        '¿Eliminar todas las notificaciones ya leídas? Esta acción no se puede deshacer.'
-      )
-    ) {
+    const ok = await confirm({
+      title: 'Eliminar notificaciones',
+      message:
+        '¿Eliminar todas las notificaciones ya leídas? Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     try {
@@ -130,6 +135,7 @@ const Notificaciones: React.FC<NotificacionesProps> = ({ onIrAFirmarEvaluacion, 
   return (
     <div className="notificaciones-container">
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+      {confirmDialog}
       <div className="notificaciones-header">
         <div className="notificaciones-titulo-fila">
           <h2 id="notificaciones-titulo">Notificaciones</h2>

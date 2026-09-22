@@ -1,0 +1,149 @@
+.user-tech-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.user-tech-editor__hint,
+.user-tech-editor__note,
+.user-tech-editor__empty,
+.user-tech-editor__loading {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.user-tech-editor__note {
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde047;
+}
+
+.user-tech-editor__area {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.85rem;
+  background: #fff;
+}
+
+.user-tech-editor__area-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  color: #e12026;
+}
+
+.user-tech-editor__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.user-tech-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.user-tech-chip.is-active {
+  border-color: #e12026;
+  background: rgba(225, 32, 38, 0.08);
+}
+
+.user-tech-chip.is-locked {
+  opacity: 0.85;
+  cursor: default;
+}
+
+.user-tech-chip input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: #e12026;
+  flex-shrink: 0;
+}
+
+.user-tech-chip__name {
+  font-weight: 600;
+  color: #111827;
+}
+
+.user-tech-chip__meta {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.user-tech-list-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.tech-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.tech-badge--muted {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #e2e8f0;
+  font-style: italic;
+}
+
+.tech-badge--more {
+  background: #fff;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.bulk-tech-modal.modal-content {
+  max-width: min(96vw, 1200px);
+  width: 100%;
+}
+
+.bulk-tech-modal .modal-body {
+  overflow-x: auto;
+}
+
+.bulk-tech-modal .users-table {
+  min-width: 640px;
+}
+
+.bulk-tech-modal .users-table th small {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.bulk-tech-modal .users-table td.tech-matrix-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.bulk-tech-modal .users-table input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #e12026;
+  cursor: pointer;
+}
+
+.bulk-tech-modal__note {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}

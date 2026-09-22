@@ -25,7 +25,11 @@ const UserProfile: React.FC<UserProfileProps> = () => {
   const [errors, setErrors] = useState<any>({});
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ new_password: '', new_password_confirm: '' });
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: '',
+    new_password: '',
+    new_password_confirm: '',
+  });
   const [passwordErrors, setPasswordErrors] = useState<any>({});
   const [passwordLoading, setPasswordLoading] = useState(false);
   const { toasts, showSuccess, showError, removeToast } = useToast();
@@ -33,7 +37,7 @@ const UserProfile: React.FC<UserProfileProps> = () => {
   const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
-    loadUserData();
+    void loadUserData();
   }, []);
 
 useEffect(() => {
@@ -44,23 +48,41 @@ useEffect(() => {
   };
 }, [profilePhotoPreview]);
 
-  const loadUserData = () => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-        setFormData({
-          first_name: parsedUser.first_name || '',
-          last_name: parsedUser.last_name || '',
-          email: parsedUser.email || '',
-          numero_empleado: parsedUser.numero_empleado || ''
-        });
-        setProfilePhotoFile(null);
-        setProfilePhotoPreview(parsedUser.profile_photo ? getMediaUrl(parsedUser.profile_photo) : null);
-        setRemoveProfilePhoto(false);
-      } catch (error) {
-        console.error('Error parsing user data:', error);
+  const loadUserData = async () => {
+    try {
+      const me = await apiService.getCurrentUser();
+      setUser(me);
+      setFormData({
+        first_name: me.first_name || '',
+        last_name: me.last_name || '',
+        email: me.email || '',
+        numero_empleado: me.numero_empleado || ''
+      });
+      setProfilePhotoFile(null);
+      setProfilePhotoPreview(me.profile_photo ? getMediaUrl(me.profile_photo) : null);
+      setRemoveProfilePhoto(false);
+      localStorage.setItem('user', JSON.stringify(me));
+    } catch (error) {
+      console.error('Error loading current user:', error);
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          setUser(parsedUser);
+          setFormData({
+            first_name: parsedUser.first_name || '',
+            last_name: parsedUser.last_name || '',
+            email: parsedUser.email || '',
+            numero_empleado: parsedUser.numero_empleado || ''
+          });
+          setProfilePhotoFile(null);
+          setProfilePhotoPreview(parsedUser.profile_photo ? getMediaUrl(parsedUser.profile_photo) : null);
+          setRemoveProfilePhoto(false);
+        } catch (parseError) {
+          console.error('Error parsing user data:', parseError);
+          showError('Error al cargar los datos del usuario');
+        }
+      } else {
         showError('Error al cargar los datos del usuario');
       }
     }
@@ -254,6 +276,10 @@ const startEditingProfile = () => {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordErrors({});
+    if (!passwordForm.current_password) {
+      setPasswordErrors({ current_password: 'Ingresa tu contraseña actual.' });
+      return;
+    }
     if (passwordForm.new_password !== passwordForm.new_password_confirm) {
       setPasswordErrors({ new_password_confirm: 'Las contraseñas no coinciden.' });
       return;
@@ -266,7 +292,7 @@ const startEditingProfile = () => {
       setPasswordLoading(true);
       await apiService.changeOwnPassword(passwordForm);
       setShowPasswordModal(false);
-      setPasswordForm({ new_password: '', new_password_confirm: '' });
+      setPasswordForm({ current_password: '', new_password: '', new_password_confirm: '' });
       showSuccess('Contraseña actualizada exitosamente');
     } catch (error: any) {
       const errData = error?.response?.data || {};
@@ -485,6 +511,20 @@ const startEditingProfile = () => {
             <form onSubmit={handleChangePassword}>
               <div className="modal-body">
                 <div className="form-group">
+                  <label>Contraseña actual</label>
+                  <input
+                    type="password"
+                    value={passwordForm.current_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
+                    placeholder="Tu contraseña actual"
+                    required
+                    autoComplete="current-password"
+                  />
+                  {passwordErrors.current_password && (
+                    <span className="error-message">{Array.isArray(passwordErrors.current_password) ? passwordErrors.current_password[0] : passwordErrors.current_password}</span>
+                  )}
+                </div>
+                <div className="form-group">
                   <label>Nueva contraseña</label>
                   <input
                     type="password"
@@ -493,6 +533,7 @@ const startEditingProfile = () => {
                     placeholder="Mínimo 8 caracteres"
                     required
                     minLength={8}
+                    autoComplete="new-password"
                   />
                   {passwordErrors.new_password && (
                     <span className="error-message">{Array.isArray(passwordErrors.new_password) ? passwordErrors.new_password[0] : passwordErrors.new_password}</span>

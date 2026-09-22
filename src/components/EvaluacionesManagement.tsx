@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FaPlus, FaEdit, FaTrash, FaEye, FaCopy, FaSearch, FaArrowLeft } from 'react-icons/fa';
 import { apiService } from '../services/api';
 import { useToast } from '../hooks/useToast';
+import { useConfirm } from '../hooks/useConfirm';
 import ToastContainer from './ToastContainer';
 import './EvaluacionesManagement.css';
 import './Settings.css';
@@ -17,6 +18,7 @@ interface EvaluacionesManagementProps {}
 
 const EvaluacionesManagement: React.FC<EvaluacionesManagementProps> = () => {
   const { showSuccess, showError, toasts, removeToast } = useToast();
+  const { confirm, confirmDialog } = useConfirm();
   
   // Estados principales
   const [evaluaciones, setEvaluaciones] = useState<any[]>([]);
@@ -154,8 +156,14 @@ const [firmaForm, setFirmaForm] = useState({
   };
 
   const handleDeleteEvaluacion = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de que quieres eliminar esta evaluación?')) return;
-    
+    const ok = await confirm({
+      title: 'Eliminar evaluación',
+      message: '¿Estás seguro de que quieres eliminar esta evaluación?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
+
     try {
       setLoading(true);
       await apiService.deleteEvaluacion(id);
@@ -353,7 +361,13 @@ const [firmaForm, setFirmaForm] = useState({
   };
 
   const handleDeletePunto = async (puntoId: number) => {
-    if (!window.confirm('¿Estás seguro de que quieres eliminar este punto de evaluación?')) return;
+    const ok = await confirm({
+      title: 'Eliminar punto',
+      message: '¿Estás seguro de que quieres eliminar este punto de evaluación?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       setLoading(true);
@@ -444,7 +458,13 @@ const [firmaForm, setFirmaForm] = useState({
   };
 
   const handleDeleteCriterio = async (criterioId: number) => {
-    if (!window.confirm('¿Estás seguro de que quieres eliminar este criterio de evaluación?')) return;
+    const ok = await confirm({
+      title: 'Eliminar criterio',
+      message: '¿Estás seguro de que quieres eliminar este criterio de evaluación?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       setLoading(true);
@@ -534,7 +554,13 @@ const [firmaForm, setFirmaForm] = useState({
       return;
     }
 
-    if (!window.confirm('¿Eliminar esta firma de la evaluación?')) return;
+    const ok = await confirm({
+      title: 'Eliminar firma',
+      message: '¿Eliminar esta firma de la evaluación?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       setLoading(true);
@@ -1155,6 +1181,7 @@ const [firmaForm, setFirmaForm] = useState({
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+      {confirmDialog}
     </div>
   );
 };

@@ -9,15 +9,25 @@ import React, {
 // Permite a cualquier vista interna "tomar control" del encabezado del
 // dashboard (mostrando un botón de volver y un título contextual) en lugar de
 // pintar su propia barra superior dentro de la sección.
+export interface TopbarBreadcrumbItem {
+  label: string;
+  onClick?: () => void;
+  isClickable?: boolean;
+}
+
 export interface TopbarOverride {
   kicker?: string;
-  title: string;
+  title?: string;
   badge?: {
     label: string;
     className?: string;
   };
   onBack?: () => void;
   backLabel?: string;
+  /** Migas de pan (Evaluaciones: Áreas > …); sustituye título y muestra Volver a la derecha. */
+  breadcrumb?: TopbarBreadcrumbItem[];
+  /** Oculta por completo la cabecera del dashboard (p. ej. ficha de persona). */
+  hideHeader?: boolean;
 }
 
 interface TopbarContextValue {

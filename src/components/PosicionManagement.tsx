@@ -11,10 +11,15 @@ import {
   FaArrowLeft
 } from 'react-icons/fa';
 import { apiService, Posicion, Area, NivelPosicion, Evaluacion } from '../services/api';
+import { useToast } from '../hooks/useToast';
+import { useConfirm } from '../hooks/useConfirm';
+import ToastContainer from './ToastContainer';
 import './PosicionManagement.css';
 import './Settings.css';
 
 const PosicionManagement: React.FC = () => {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
+  const { confirm, confirmDialog } = useConfirm();
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +170,7 @@ const PosicionManagement: React.FC = () => {
       setShowCreateModal(false);
       resetCreateForm();
       loadPosiciones();
-      alert('Posición creada exitosamente');
+      showSuccess('Posición creada exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setCreateErrors(validationErrors);
@@ -183,7 +188,7 @@ const PosicionManagement: React.FC = () => {
       setCurrentView('list');
       setSelectedPosicion(null);
       loadPosiciones();
-      alert('Posición actualizada exitosamente');
+      showSuccess('Posición actualizada exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setEditErrors(validationErrors);
@@ -198,9 +203,9 @@ const PosicionManagement: React.FC = () => {
       setShowDeleteModal(false);
       setSelectedPosicion(null);
       loadPosiciones();
-      alert('Posición eliminada exitosamente');
+      showSuccess('Posición eliminada exitosamente');
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(`Error: ${err.message}`);
     }
   };
 
@@ -210,16 +215,16 @@ const PosicionManagement: React.FC = () => {
     try {
       if (selectedPosicion.is_active) {
         await apiService.deactivatePosicion(selectedPosicion.id);
-        alert('Posición desactivada exitosamente');
+        showSuccess('Posición desactivada exitosamente');
       } else {
         await apiService.activatePosicion(selectedPosicion.id);
-        alert('Posición activada exitosamente');
+        showSuccess('Posición activada exitosamente');
       }
       setShowDeactivateModal(false);
       setSelectedPosicion(null);
       loadPosiciones();
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(`Error: ${err.message}`);
     }
   };
 
@@ -303,15 +308,21 @@ const PosicionManagement: React.FC = () => {
         [posicionId]: nivelesResponse.results
       }));
       
-      alert(`Nivel ${nivel} creado exitosamente`);
+      showSuccess(`Nivel ${nivel} creado exitosamente`);
     } catch (err: any) {
-      alert(`Error al crear nivel: ${err.message}`);
+      showError(`Error al crear nivel: ${err.message}`);
     }
   };
 
   const handleEliminarNivel = async (nivelId: number) => {
     if (!selectedPosicion) return;
-    if (!confirm('¿Estás seguro de eliminar este nivel?')) return;
+    const ok = await confirm({
+      title: 'Eliminar nivel',
+      message: '¿Estás seguro de eliminar este nivel?',
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
     
     try {
       await apiService.deleteNivelPosicion(nivelId);
@@ -324,9 +335,9 @@ const PosicionManagement: React.FC = () => {
         [selectedPosicion.id]: nivelesResponse.results
       }));
       
-      alert('Nivel eliminado exitosamente');
+      showSuccess('Nivel eliminado exitosamente');
     } catch (err: any) {
-      alert(`Error al eliminar nivel: ${err.message}`);
+      showError(`Error al eliminar nivel: ${err.message}`);
     }
   };
 
@@ -336,7 +347,7 @@ const PosicionManagement: React.FC = () => {
       if (!plantilla) return;
 
       if (!nombre || !nombre.trim()) {
-        alert('Por favor ingresa un nombre para la evaluación');
+        showError('Por favor ingresa un nombre para la evaluación');
         return;
       }
 
@@ -384,9 +395,9 @@ const PosicionManagement: React.FC = () => {
         return newState;
       });
       
-      alert('Evaluación agregada al nivel exitosamente');
+      showSuccess('Evaluación agregada al nivel exitosamente');
     } catch (err: any) {
-      alert(`Error al agregar evaluación: ${err.message}`);
+      showError(`Error al agregar evaluación: ${err.message}`);
     }
   };
 
@@ -946,6 +957,8 @@ const PosicionManagement: React.FC = () => {
           </div>
         </div>
       )}
+      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+      {confirmDialog}
     </div>
   );
 };

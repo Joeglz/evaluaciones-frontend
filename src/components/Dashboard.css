@@ -138,6 +138,64 @@
   }
 }
 
+/* Navegación Evaluaciones: migas a la izquierda, Volver a la derecha */
+.dashboard-header--breadcrumb {
+  border-bottom: 2px solid var(--primary-red);
+}
+
+.dashboard-header__breadcrumb-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dashboard-header__breadcrumb {
+  font-size: 1.05rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.dashboard-header__breadcrumb--compact {
+  display: none;
+}
+
+.dashboard-header__breadcrumb-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--primary-red);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.dashboard-header__breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.dashboard-header__breadcrumb-text {
+  color: #6b7280;
+}
+
+.dashboard-header__breadcrumb-separator {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.dashboard-header__nav-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.dashboard-header__nav-back svg {
+  font-size: 0.85rem;
+}
+
 .logout-button {
   background-color: var(--primary-red);
   color: var(--white);
@@ -350,6 +408,72 @@
   margin: 0;
 }
 
+.dashboard-lazy-fallback {
+  padding: 2rem;
+  text-align: center;
+  color: #6c757d;
+}
+
+.dashboard-home {
+  padding: 1.5rem;
+}
+
+.dashboard-home__title {
+  margin: 0 0 0.5rem;
+  color: #1a1a1a;
+  font-size: 1.5rem;
+}
+
+.dashboard-home__lead {
+  margin: 0 0 1.5rem;
+  color: #6c757d;
+  max-width: 36rem;
+}
+
+.dashboard-home__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-home__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-height: 7rem;
+  padding: 1.1rem 1.25rem;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid rgba(225, 32, 38, 0.15);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  color: #1a1a1a;
+}
+
+.dashboard-home__card svg {
+  color: #e12026;
+  font-size: 1.35rem;
+}
+
+.dashboard-home__card span {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.dashboard-home__card small {
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+.dashboard-home__card:hover {
+  border-color: #e12026;
+}
+
+.menu-item-badge--error {
+  background: #6c757d;
+}
+
 @media (max-width: 480px) {
   .welcome-message h1 {
     font-size: 1.3rem;
@@ -389,4 +513,78 @@
 .menu-item:active {
   transform: scale(0.95);
   transition: transform 0.1s ease;
+}
+
+/* Tablet Tab A11+ (11" / 1920×1200): cabecera compacta + nav táctil */
+@media (min-width: 768px) and (max-width: 1280px) {
+  .dashboard-header {
+    padding: 0.55rem 1rem;
+    gap: 0.5rem;
+  }
+
+  .welcome-message h1 {
+    font-size: 1.1rem;
+    line-height: 1.3;
+  }
+
+  .logout-button {
+    min-height: 2.75rem;
+    padding: 0.55rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .dashboard-main {
+    padding: 1rem 1rem 0;
+  }
+
+  .bottom-menu {
+    padding: 0.55rem max(0.35rem, env(safe-area-inset-right, 0px)) calc(0.55rem + env(safe-area-inset-bottom, 0px)) max(0.35rem, env(safe-area-inset-left, 0px));
+  }
+
+  .menu-item {
+    min-width: 4.5rem;
+    min-height: 3.5rem;
+    padding: 0.45rem 0.55rem;
+    justify-content: center;
+  }
+
+  .menu-icon {
+    font-size: 1.35rem;
+  }
+
+  .menu-item span {
+    font-size: 0.72rem;
+    letter-spacing: 0.3px;
+  }
+
+  .menu-item.active {
+    background-color: rgba(255, 255, 255, 0.28);
+    box-shadow: inset 0 -3px 0 #ffffff;
+  }
+
+  .dashboard-header__breadcrumb--full {
+    display: none;
+  }
+
+  .dashboard-header__breadcrumb--compact {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    line-height: 1.2;
+  }
+
+  .dashboard-header__breadcrumb-kicker {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #9ca3af;
+  }
+
+  .dashboard-header__breadcrumb-current {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary-red);
+  }
 }

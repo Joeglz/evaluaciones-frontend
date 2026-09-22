@@ -1,0 +1,190 @@
+.banco-examen {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.banco-examen__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.banco-examen__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.banco-examen__hint {
+  margin: 0;
+  max-width: 36rem;
+  color: #555;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.banco-examen__niveles {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.banco-examen__nivel {
+  min-width: 4.5rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 0.25rem;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-weight: 600;
+}
+
+.banco-examen__nivel.is-active {
+  border-color: #e12026;
+  color: #e12026;
+}
+
+.banco-examen__nivel-count {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #666;
+}
+
+.banco-examen__badge {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.banco-examen__badge--empty {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.banco-examen__badge--partial {
+  background: #fff8e6;
+  color: #7a5b00;
+}
+
+.banco-examen__badge--ok {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.banco-examen__error {
+  color: #e12026;
+  margin: 0;
+}
+
+.banco-examen__muted {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.banco-examen__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.banco-examen__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+
+.banco-examen__item.is-inactive {
+  opacity: 0.55;
+}
+
+.banco-examen__pregunta {
+  margin: 0 0 0.35rem;
+  font-weight: 500;
+}
+
+.banco-examen__ops {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #444;
+  font-size: 0.9rem;
+}
+
+.banco-examen__ops .is-correct {
+  font-weight: 600;
+  color: #1b5e20;
+}
+
+.banco-examen__item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.banco-examen__empty {
+  padding: 1rem;
+  color: #666;
+  border: 1px dashed #ccc;
+  border-radius: 0.25rem;
+  text-align: center;
+}
+
+.banco-examen__form {
+  border-top: 1px solid #e0e0e0;
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.banco-examen__form h4 {
+  margin: 0;
+}
+
+.banco-examen__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.banco-examen__field textarea,
+.banco-examen__field input[type='text'] {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.25rem;
+  font: inherit;
+}
+
+.banco-examen__field--row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.banco-examen__field--row input[type='radio'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+}
+
+.banco-examen__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}

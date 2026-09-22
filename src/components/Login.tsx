@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { apiService, LoginRequest } from '../services/api';
+import { useToast } from '../hooks/useToast';
+import ToastContainer from './ToastContainer';
 import './Login.css';
 
 interface LoginProps {
@@ -9,9 +12,11 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const { toasts, removeToast, showInfo } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,15 +125,35 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           
           <div className="form-group">
             <label htmlFor="password" className="form-label">Contraseña</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="form-input"
-              required
-            />
-            <button type="button" className="forgot-password">Olvidé mi contraseña</button>
+            <div className="password-input-wrapper">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="form-input"
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="btn-toggle-password"
+                onClick={() => setShowPassword((prev) => !prev)}
+                title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="forgot-password"
+              onClick={() =>
+                showInfo('Contacta al administrador para restablecer tu acceso.')
+              }
+            >
+              Olvidé mi contraseña
+            </button>
           </div>
           
           {error && (
@@ -152,6 +177,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </button>
         </form>
       </div>
+      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
     </div>
   );
 };

@@ -11,10 +11,13 @@ import {
   FaArrowLeft
 } from 'react-icons/fa';
 import { apiService, Grupo, Area } from '../services/api';
+import { useToast } from '../hooks/useToast';
+import ToastContainer from './ToastContainer';
 import './GrupoManagement.css';
 import './Settings.css';
 
 const GrupoManagement: React.FC = () => {
+  const { toasts, removeToast, showSuccess, showError } = useToast();
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +142,7 @@ const GrupoManagement: React.FC = () => {
       setShowCreateModal(false);
       resetCreateForm();
       loadGrupos();
-      alert('Grupo creado exitosamente');
+      showSuccess('Grupo creado exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setCreateErrors(validationErrors);
@@ -157,7 +160,7 @@ const GrupoManagement: React.FC = () => {
       setCurrentView('list');
       setSelectedGrupo(null);
       loadGrupos();
-      alert('Grupo actualizado exitosamente');
+      showSuccess('Grupo actualizado exitosamente');
     } catch (err: any) {
       const validationErrors = handleValidationErrors(err);
       setEditErrors(validationErrors);
@@ -172,9 +175,9 @@ const GrupoManagement: React.FC = () => {
       setShowDeleteModal(false);
       setSelectedGrupo(null);
       loadGrupos();
-      alert('Grupo eliminado exitosamente');
+      showSuccess('Grupo eliminado exitosamente');
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(`Error: ${err.message}`);
     }
   };
 
@@ -184,16 +187,16 @@ const GrupoManagement: React.FC = () => {
     try {
       if (selectedGrupo.is_active) {
         await apiService.deactivateGrupo(selectedGrupo.id);
-        alert('Grupo desactivado exitosamente');
+        showSuccess('Grupo desactivado exitosamente');
       } else {
         await apiService.activateGrupo(selectedGrupo.id);
-        alert('Grupo activado exitosamente');
+        showSuccess('Grupo activado exitosamente');
       }
       setShowDeactivateModal(false);
       setSelectedGrupo(null);
       loadGrupos();
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showError(`Error: ${err.message}`);
     }
   };
 
@@ -518,6 +521,7 @@ const GrupoManagement: React.FC = () => {
           </div>
         </div>
       )}
+      <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
     </div>
   );
 };
