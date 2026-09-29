@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaEye, FaCopy, FaSearch, FaArrowLeft } from 'react-icons/fa';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaEye, FaCopy, FaSearch, FaArrowUp } from 'react-icons/fa';
 import { apiService } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useConfirm } from '../hooks/useConfirm';
+import { useTopbarOverride } from '../contexts/TopbarContext';
 import ToastContainer from './ToastContainer';
+import PlantillaEtiquetadoPanel from './plantillas/PlantillaEtiquetadoPanel';
 import './EvaluacionesManagement.css';
 import './Settings.css';
 
@@ -576,126 +578,197 @@ const [firmaForm, setFirmaForm] = useState({
     }
   };
 
+  const plantillaTopbar = useMemo(() => {
+    if (plantillaScreen === 'list') {
+      return null;
+    }
+
+    return {
+      kicker: 'Gestión de Plantillas',
+      title:
+        plantillaScreen === 'create'
+          ? 'Nueva plantilla'
+          : selectedEvaluacion?.nombre || 'Plantilla',
+      onBack: () => {
+        if (plantillaScreen === 'create') {
+          resetCreateForm();
+        }
+        cerrarPantallaPlantilla();
+      },
+      backLabel: 'Listado',
+    };
+  }, [plantillaScreen, selectedEvaluacion?.nombre]);
+
+  useTopbarOverride(plantillaTopbar, [plantillaTopbar]);
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const enEdicion = plantillaScreen !== 'list';
+    document.documentElement.classList.toggle(
+      'plantilla-management-edit-activa',
+      enEdicion,
+    );
+    return () => {
+      document.documentElement.classList.remove(
+        'plantilla-management-edit-activa',
+      );
+    };
+  }, [plantillaScreen]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || plantillaScreen !== 'list') {
+      setShowScrollTop(false);
+      return;
+    }
+    const onScroll = () => setShowScrollTop(el.scrollTop > 240);
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [plantillaScreen]);
+
+  const scrollBodyToTop = useCallback(() => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const renderPlantillaActions = (evaluacion: { id: number }, stopRowClick?: boolean) => (
+    <div
+      className="table-actions"
+      onClick={stopRowClick ? (e) => e.stopPropagation() : undefined}
+    >
+      <button
+        type="button"
+        className="btn-icon"
+        onClick={() => openDetailModal(evaluacion)}
+        title="Ver detalles"
+      >
+        <FaEye />
+      </button>
+      <button
+        type="button"
+        className="btn-icon btn-duplicate"
+        onClick={() => openDuplicateModal(evaluacion)}
+        title="Duplicar plantilla"
+      >
+        <FaCopy />
+      </button>
+      <button
+        type="button"
+        className="btn-icon btn-danger"
+        onClick={() => handleDeleteEvaluacion(evaluacion.id)}
+        title="Eliminar"
+      >
+        <FaTrash />
+      </button>
+    </div>
+  );
+
   return (
-    <div className="evaluaciones-management">
-      <div className="management-header">
-        <h2>
-          Gestión de Plantillas
-          {plantillaScreen === 'list' && nombreFilter.trim()
-            ? ` (${filteredEvaluaciones.length} de ${evaluaciones.length})`
-            : plantillaScreen === 'list'
-            ? ` (${evaluaciones.length})`
-            : plantillaScreen === 'create'
-            ? ' — Nueva plantilla'
-            : selectedEvaluacion
-            ? ` — ${selectedEvaluacion.nombre}`
-            : ''
-          }
-        </h2>
-        {plantillaScreen === 'list' ? (
-          <button
-            className="btn btn-primary"
-            onClick={() => setPlantillaScreen('create')}
-          >
-            <FaPlus /> Nueva Plantilla
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-secondary evaluaciones-management-btn-back"
-            onClick={() => {
-              if (plantillaScreen === 'create') {
-                resetCreateForm();
-              }
-              cerrarPantallaPlantilla();
-            }}
-          >
-            <FaArrowLeft /> Volver al listado
-          </button>
-        )}
-      </div>
-
+    <div
+      className={`evaluaciones-management${
+        plantillaScreen !== 'list' ? ' evaluaciones-management--edit' : ''
+      }`}
+    >
       {plantillaScreen === 'list' && (
-        <>
-      {/* Filtro por nombre */}
-      <div className="evaluaciones-filters">
-        <div className="evaluaciones-search">
-          <FaSearch className="search-icon" />
-          <input
-            type="text"
-            value={nombreFilter}
-            onChange={(e) => setNombreFilter(e.target.value)}
-            placeholder="Buscar"
-            aria-label="Buscar plantillas por nombre"
-          />
-        </div>
-      </div>
+        <div
+          className="evaluaciones-management-body"
+          data-scroll="true"
+          ref={bodyRef}
+        >
+          <div className="evaluaciones-management-toolbar">
+            <div className="evaluaciones-search search-box">
+              <FaSearch className="search-icon" aria-hidden />
+              <input
+                type="text"
+                value={nombreFilter}
+                onChange={(e) => setNombreFilter(e.target.value)}
+                placeholder="Buscar plantillas por nombre..."
+                aria-label="Buscar plantillas por nombre"
+              />
+            </div>
+            <div className="evaluaciones-management-toolbar-meta">
+              <span className="evaluaciones-management-count" aria-live="polite">
+                {nombreFilter.trim()
+                  ? `${filteredEvaluaciones.length} de ${evaluaciones.length}`
+                  : `${evaluaciones.length} plantillas`}
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setPlantillaScreen('create')}
+              >
+                <FaPlus /> Nueva Plantilla
+              </button>
+            </div>
+          </div>
 
-      {/* Lista de evaluaciones */}
-      <div className="evaluaciones-list">
-        {loading ? (
-          <div className="loading">Cargando...</div>
-        ) : evaluaciones.length === 0 ? (
-          <div className="no-data">No hay evaluaciones disponibles</div>
-        ) : (
-          <div className="evaluaciones-table-container">
-            <table className="evaluaciones-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEvaluaciones.length === 0 ? (
-                  <tr>
-                    <td colSpan={2} className="table-empty-message">
-                      Ninguna plantilla coincide con la búsqueda.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredEvaluaciones.map(evaluacion => (
-                    <tr 
-                      key={evaluacion.id}
-                      className="evaluacion-row-clickable"
+          <div className="evaluaciones-list">
+            {loading ? (
+              <div className="loading">Cargando...</div>
+            ) : evaluaciones.length === 0 ? (
+              <div className="no-data">No hay evaluaciones disponibles</div>
+            ) : filteredEvaluaciones.length === 0 ? (
+              <div className="no-data">Ninguna plantilla coincide con la búsqueda.</div>
+            ) : (
+              <>
+                <div className="evaluaciones-table-container">
+                  <table className="evaluaciones-table">
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredEvaluaciones.map((evaluacion) => (
+                        <tr
+                          key={evaluacion.id}
+                          className="evaluacion-row-clickable"
+                          onClick={() => openDetailModal(evaluacion)}
+                        >
+                          <td>{evaluacion.nombre}</td>
+                          <td>{renderPlantillaActions(evaluacion, true)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="plantillas-card-grid" role="list">
+                  {filteredEvaluaciones.map((evaluacion) => (
+                    <button
+                      key={`card-${evaluacion.id}`}
+                      type="button"
+                      className="plantilla-list-card"
+                      role="listitem"
                       onClick={() => openDetailModal(evaluacion)}
                     >
-                      <td>{evaluacion.nombre}</td>
-                      <td>
-                        <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                          <button 
-                            className="btn-icon"
-                            onClick={() => openDetailModal(evaluacion)}
-                            title="Ver detalles"
-                          >
-                            <FaEye />
-                          </button>
-                          <button 
-                            className="btn-icon btn-duplicate"
-                            onClick={() => openDuplicateModal(evaluacion)}
-                            title="Duplicar plantilla"
-                          >
-                            <FaCopy />
-                          </button>
-                          <button 
-                            className="btn-icon btn-danger"
-                            onClick={() => handleDeleteEvaluacion(evaluacion.id)}
-                            title="Eliminar"
-                          >
-                            <FaTrash />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      <span className="plantilla-list-card__name">{evaluacion.nombre}</span>
+                      <div
+                        className="plantilla-list-card__actions"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {renderPlantillaActions(evaluacion)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        )}
-      </div>
 
-      </>
+          <button
+            type="button"
+            className={`scroll-to-top-btn ${showScrollTop ? 'is-visible' : ''}`}
+            onClick={scrollBodyToTop}
+            aria-label="Volver arriba"
+            title="Volver arriba"
+          >
+            <FaArrowUp aria-hidden />
+          </button>
+        </div>
       )}
 
       {plantillaScreen === 'create' && (
@@ -763,6 +836,15 @@ const [firmaForm, setFirmaForm] = useState({
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="detail-section">
+                  <PlantillaEtiquetadoPanel
+                    plantilla={selectedEvaluacion}
+                    onPlantillaUpdated={(next) => setSelectedEvaluacion(next)}
+                    onSuccess={showSuccess}
+                    onError={showError}
+                  />
                 </div>
 
                 <div className="detail-section">

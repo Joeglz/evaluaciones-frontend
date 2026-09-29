@@ -715,6 +715,65 @@
   font-size: 0.85rem;
 }
 
+.posiciones-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 16rem;
+  align-items: center;
+}
+
+.posiciones-chips--all {
+  max-width: none;
+}
+
+.posiciones-chips--all .posicion-chip {
+  max-width: none;
+  white-space: normal;
+}
+
+.posicion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 9.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #f0fdf4;
+  color: #166534;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid #bbf7d0;
+  line-height: 1.25;
+}
+
+.posicion-chip--inactive {
+  background: #f8fafc;
+  color: #64748b;
+  border-color: #cbd5e1;
+  border-style: dashed;
+  font-weight: 500;
+}
+
+.posicion-chip__mark {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+
+.posicion-chip--more {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+  max-width: none;
+  cursor: help;
+}
+
 .areas-checkboxes {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -1245,6 +1304,14 @@
   gap: 0.4rem;
 }
 
+.user-detail-field--wide {
+  grid-column: 1 / -1;
+}
+
+.user-detail-field--wide .posiciones-chips {
+  max-width: none;
+}
+
 .user-detail-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1724,6 +1791,61 @@
 .posiciones-list__remove:hover {
   background: #e12026;
   color: white;
+}
+
+.posiciones-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.posiciones-list__action {
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  color: #374151;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  min-height: 2rem;
+}
+
+.posiciones-list__action:hover {
+  border-color: #e12026;
+  color: #e12026;
+}
+
+.posiciones-list__action--soft {
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.posiciones-list__action--soft:hover {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #d97706;
+}
+
+.posiciones-list__item--inactive {
+  opacity: 0.92;
+  background: #f8fafc;
+}
+
+.posiciones-list__badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  background: #e2e8f0;
+  border-radius: 999px;
+  vertical-align: middle;
 }
 
 .step-modal__footer {

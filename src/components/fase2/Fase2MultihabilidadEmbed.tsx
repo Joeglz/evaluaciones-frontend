@@ -6,7 +6,11 @@ import {
   type Tecnologia,
 } from '../../services/api';
 import FormularioTecnologias from './Fase2FormularioTecnologias';
-import { idsDeOp, nivelDeOp, resumenEtiquetasOp } from './fase2MultihabilidadUtils';
+import {
+  idsDeOp,
+  nivelDeOp,
+  resumenEtiquetasOp,
+} from '../../utils/evaluacionEtiquetaUtils';
 import './Fase2MultihabilidadEmbed.css';
 
 interface Fase2MultihabilidadEmbedProps {
