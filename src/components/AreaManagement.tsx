@@ -152,7 +152,7 @@ const AreaManagement: React.FC = () => {
     is_active: true,
     include_onboarding: true,
     tipo_area: 'produccion' as 'produccion' | 'soporte',
-    fase2_activa: false,
+    fase2_activa: true,
     n4_basicas_requeridas: 5,
     n4_complejas_requeridas: 3,
     grupos: [] as GrupoNested[],
@@ -164,7 +164,7 @@ const AreaManagement: React.FC = () => {
     is_active: true,
     include_onboarding: true,
     tipo_area: 'produccion' as 'produccion' | 'soporte',
-    fase2_activa: false,
+    fase2_activa: true,
     n4_basicas_requeridas: 5,
     n4_complejas_requeridas: 3,
     grupos: [] as GrupoNested[],
@@ -263,7 +263,7 @@ const AreaManagement: React.FC = () => {
     setCreateErrors({});
     
     try {
-      await apiService.createArea(createForm);
+      await apiService.createArea({ ...createForm, fase2_activa: true });
       setShowCreateModal(false);
       resetCreateForm();
       loadAreas();
@@ -281,7 +281,7 @@ const AreaManagement: React.FC = () => {
     setEditErrors({});
     
     try {
-      await apiService.updateArea(selectedArea.id, editForm);
+      await apiService.updateArea(selectedArea.id, { ...editForm, fase2_activa: true });
       await loadAreas();
       volverALista();
       showSuccess('Área actualizada exitosamente');
@@ -358,7 +358,7 @@ const AreaManagement: React.FC = () => {
       is_active: area.is_active,
       include_onboarding: (area as Area & { include_onboarding?: boolean }).include_onboarding !== false,
       tipo_area: area.tipo_area === 'soporte' ? 'soporte' : 'produccion',
-      fase2_activa: Boolean(area.fase2_activa),
+      fase2_activa: true,
       n4_basicas_requeridas: area.n4_basicas_requeridas ?? 5,
       n4_complejas_requeridas: area.n4_complejas_requeridas ?? 3,
       grupos: gruposConSupervisores,
@@ -473,7 +473,7 @@ const AreaManagement: React.FC = () => {
       is_active: true,
       include_onboarding: true,
       tipo_area: 'produccion',
-      fase2_activa: false,
+      fase2_activa: true,
       n4_basicas_requeridas: 5,
       n4_complejas_requeridas: 3,
       grupos: [],
@@ -1044,7 +1044,7 @@ const AreaManagement: React.FC = () => {
       is_active: true,
       include_onboarding: true,
       tipo_area: 'produccion',
-      fase2_activa: false,
+      fase2_activa: true,
       n4_basicas_requeridas: 5,
       n4_complejas_requeridas: 3,
       grupos: [],
@@ -1698,12 +1698,8 @@ const AreaManagement: React.FC = () => {
                     { id: 'general' as const, label: 'General' },
                     { id: 'grupos' as const, label: `Grupos (${editForm.grupos.length})` },
                     { id: 'posiciones' as const, label: `Posiciones (${editForm.posiciones.length})` },
-                    ...(editForm.fase2_activa
-                      ? [
-                          { id: 'multihabilidad' as const, label: 'Multihabilidad' },
-                          { id: 'examenes' as const, label: 'Exámenes' },
-                        ]
-                      : []),
+                    { id: 'multihabilidad' as const, label: 'Multihabilidad' },
+                    { id: 'examenes' as const, label: 'Exámenes' },
                   ] as const
                 ).map((tab) => (
                   <button
@@ -1760,22 +1756,6 @@ const AreaManagement: React.FC = () => {
                     onChange={(e) => setEditForm({...editForm, include_onboarding: e.target.checked})}
                   />
                   <span>Onboarding</span>
-                </label>
-                <label className="area-edit-toggle">
-                  <input
-                    type="checkbox"
-                    checked={editForm.fase2_activa}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setEditForm({...editForm, fase2_activa: on});
-                      setEditTab((tab) => {
-                        if (on) return 'multihabilidad';
-                        if (tab === 'multihabilidad' || tab === 'examenes') return 'general';
-                        return tab;
-                      });
-                    }}
-                  />
-                  <span>Multihabilidad (Fase 2)</span>
                 </label>
               </div>
               </div>
@@ -2097,13 +2077,13 @@ const AreaManagement: React.FC = () => {
                 </section>
               )}
 
-              {editTab === 'multihabilidad' && editForm.fase2_activa && selectedArea && (
+              {editTab === 'multihabilidad' && selectedArea && (
                 <section className="edit-section edit-section--flat edit-section--multihabilidad">
                   <Fase2MultihabilidadEmbed areaId={selectedArea.id} />
                 </section>
               )}
 
-              {editTab === 'examenes' && editForm.fase2_activa && selectedArea && (
+              {editTab === 'examenes' && selectedArea && (
                 <section className="edit-section edit-section--flat">
                   <BancoExamenEditor areaId={selectedArea.id} />
                 </section>

@@ -55,10 +55,11 @@
 
 .catalog-edit-footer {
   flex-shrink: 0;
-  padding-top: 1rem;
+  padding: 0.75rem 0 0.85rem;
   margin-top: 0.25rem;
   border-top: 1px solid #e2e8f0;
   background: #ffffff;
+  z-index: 1;
 }
 
 /* Contenido principal (scroll delegado al main del dashboard) */

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiService, type Area, type Evaluacion, type Tecnologia } from '../../services/api';
 import Fase2MultihabilidadEmbed from './Fase2MultihabilidadEmbed';
-import { idsDeOp, nivelDeOp } from './fase2MultihabilidadUtils';
+import { idsDeOp, nivelDeOp } from '../../utils/evaluacionEtiquetaUtils';
 import './Fase2Prototype.css';
 
 type FilaOperacionEtiquetaProps = {

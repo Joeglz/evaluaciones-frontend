@@ -1,4 +1,4 @@
-import type { Evaluacion, Tecnologia } from '../../services/api';
+import type { Evaluacion, Tecnologia } from '../services/api';
 
 /** Nivel operativo N1–N4 (prioriza nivel_posicion sobre campo legacy `nivel`). */
 export function nivelDeOp(op: Evaluacion): number | null {

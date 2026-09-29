@@ -181,6 +181,8 @@ export interface UserPosicionItem {
   posicion_id: number;
   posicion_name: string;
   es_principal: boolean;
+  /** false = historial; no cuenta en evaluaciones/reportes */
+  is_active?: boolean;
 }
 
 export interface UserGrupoItem {
@@ -251,6 +253,8 @@ export interface UserUpdate {
   role: string;
   areas: number[];
   posiciones: number[];
+  /** Historial: posiciones desactivadas (no operativas). */
+  posiciones_inactivas?: number[];
   /** Completar evaluaciones hasta ese nivel por posición (misma lógica que creación y carga masiva). */
   posiciones_nivel?: Array<{ posicion: number; nivel: number }>;
   /** @deprecated Preferir `grupos`. */
@@ -527,6 +531,33 @@ export interface EvaluacionesUsuarioListResponse {
   results: EvaluacionUsuario[];
 }
 
+export interface PlantillaUso {
+  id: number;
+  nombre: string;
+  area_id: number | null;
+  area_name: string | null;
+  posicion_name: string | null;
+  nivel: number | null;
+  is_active: boolean;
+}
+
+export interface PlantillaPosicionCatalogo {
+  posicion_id: number;
+  posicion_name: string;
+  nivel_posicion_id: number;
+  asignada: boolean;
+  evaluacion_id?: number | null;
+}
+
+export interface PlantillaAreaCatalogo {
+  area_id: number;
+  area_name: string;
+  nivel: number | null;
+  asignada: boolean;
+  operaciones: number;
+  posiciones: PlantillaPosicionCatalogo[];
+}
+
 export interface Evaluacion {
   id: number;
   nombre: string;
@@ -561,6 +592,8 @@ export interface Evaluacion {
   tronco_prioritario?: boolean;
   es_prerrequisito_seguridad?: boolean;
   nivel_seguridad?: 1 | 2 | null;
+  plantilla_usos?: PlantillaUso[];
+  instancias_actualizadas?: number;
   created_at: string;
   updated_at: string;
 }
@@ -1496,6 +1529,71 @@ class ApiService {
     return this.request<Evaluacion>(`/users/evaluaciones/${id}/`, {
       method: 'PATCH',
       body: JSON.stringify(evaluacionData),
+    });
+  }
+
+  async getPlantillaCatalogoAreas(
+    plantillaId: number,
+  ): Promise<PlantillaAreaCatalogo[]> {
+    return this.request<PlantillaAreaCatalogo[]>(
+      `/users/evaluaciones/${plantillaId}/catalogo-areas/`,
+    );
+  }
+
+  async asignarPlantillaEnArea(
+    plantillaId: number,
+    areaId: number,
+  ): Promise<{
+    creadas: number;
+    omitidas: number;
+    nivel: number;
+    plantilla: Evaluacion;
+  }> {
+    return this.request(`/users/evaluaciones/${plantillaId}/asignar-area/`, {
+      method: 'POST',
+      body: JSON.stringify({ area_id: areaId }),
+    });
+  }
+
+  async asignarPlantillaEnPosicion(
+    plantillaId: number,
+    nivelPosicionId: number,
+  ): Promise<{
+    creadas: number;
+    omitidas: number;
+    nivel: number;
+    posicion_name?: string | null;
+    area_name?: string | null;
+    plantilla: Evaluacion;
+  }> {
+    return this.request(`/users/evaluaciones/${plantillaId}/asignar-area/`, {
+      method: 'POST',
+      body: JSON.stringify({ nivel_posicion_id: nivelPosicionId }),
+    });
+  }
+
+  async desasignarPlantillaEnArea(
+    plantillaId: number,
+    areaId: number,
+  ): Promise<{ operaciones_eliminadas: number; plantilla: Evaluacion }> {
+    return this.request(`/users/evaluaciones/${plantillaId}/desasignar-area/`, {
+      method: 'POST',
+      body: JSON.stringify({ area_id: areaId }),
+    });
+  }
+
+  async desasignarPlantillaEnPosicion(
+    plantillaId: number,
+    nivelPosicionId: number,
+  ): Promise<{
+    operaciones_eliminadas: number;
+    posicion_name?: string | null;
+    area_name?: string | null;
+    plantilla: Evaluacion;
+  }> {
+    return this.request(`/users/evaluaciones/${plantillaId}/desasignar-area/`, {
+      method: 'POST',
+      body: JSON.stringify({ nivel_posicion_id: nivelPosicionId }),
     });
   }
 

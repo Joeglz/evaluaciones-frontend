@@ -131,6 +131,8 @@ const UserManagement: React.FC = () => {
   const [createPosicionesNivel, setCreatePosicionesNivel] = useState<Array<{ posicion: number; nivel: number }>>([]);
   /** Edición: mismos pares al agregar posición en paso 3. */
   const [editPosicionesNivel, setEditPosicionesNivel] = useState<Array<{ posicion: number; nivel: number }>>([]);
+  /** Edición: posiciones desactivadas (historial). */
+  const [editPosicionesInactivas, setEditPosicionesInactivas] = useState<number[]>([]);
   
   // Formularios
   const [createForm, setCreateForm] = useState<UserCreate>({
@@ -158,6 +160,7 @@ const UserManagement: React.FC = () => {
     role: 'USUARIO',
     areas: [],
     posiciones: [],
+    posiciones_inactivas: [],
     grupo: null,
     grupos: [],
     numero_empleado: null,
@@ -489,9 +492,12 @@ const UserManagement: React.FC = () => {
     setCurrentStep(1);
     setMaxReachedStep(1);
     setSelectedUser(user);
-    const userPosicionesIds = user.posiciones?.length
-      ? user.posiciones.map((p) => p.posicion_id)
+    const userPosicionesActivas = user.posiciones?.length
+      ? user.posiciones.filter((p) => p.is_active !== false).map((p) => p.posicion_id)
       : (user.posicion != null ? [user.posicion] : []);
+    const userPosicionesInactivas = user.posiciones?.length
+      ? user.posiciones.filter((p) => p.is_active === false).map((p) => p.posicion_id)
+      : [];
     const userGrupoIds = grupoIdsFromUser(user);
     setEditForm({
       username: user.username,
@@ -500,13 +506,15 @@ const UserManagement: React.FC = () => {
       last_name: user.last_name,
       role: user.role,
       areas: user.areas,
-      posiciones: userPosicionesIds,
+      posiciones: userPosicionesActivas,
+      posiciones_inactivas: userPosicionesInactivas,
       grupo: user.grupo,
       grupos: userGrupoIds,
       numero_empleado: user.numero_empleado,
       fecha_ingreso: user.fecha_ingreso,
       is_active: user.is_active
     });
+    setEditPosicionesInactivas(userPosicionesInactivas);
     setEditErrors({});
     // Abrir área del primer grupo asignado o la primera área.
     const areaDelGrupo =
@@ -670,6 +678,7 @@ const UserManagement: React.FC = () => {
     setStep3Nivel('');
     setCreatePosicionesNivel([]);
     setEditPosicionesNivel([]);
+    setEditPosicionesInactivas([]);
     setCreateErrors({});
     setEditErrors({});
 
@@ -1208,16 +1217,82 @@ const UserManagement: React.FC = () => {
     return map;
   }, [grupos]);
 
-  const getUserPositionName = (user: User): string => {
-    if (user.posiciones?.length) {
-      const principal = user.posiciones.find((p) => p.es_principal) || user.posiciones[0];
-      if (user.posiciones.length > 1) {
-        return `${principal.posicion_name} (+${user.posiciones.length - 1})`;
-      }
-      return principal.posicion_name;
+  /** Chips compactos: activas primero, inactivas atenuadas.
+   *  En tabla limita a 2 + “+N”; en detalle pasa maxVisible alto para ver todas. */
+  const renderPosicionChips = (user: User, maxVisible = 2) => {
+    const items = user.posiciones?.length
+      ? [...user.posiciones].sort((a, b) => {
+          const aActive = a.is_active !== false ? 0 : 1;
+          const bActive = b.is_active !== false ? 0 : 1;
+          if (aActive !== bActive) return aActive - bActive;
+          if (a.es_principal !== b.es_principal) return a.es_principal ? -1 : 1;
+          return (a.posicion_name || '').localeCompare(b.posicion_name || '');
+        })
+      : user.posicion_name
+        ? [
+            {
+              id: 0,
+              posicion_id: user.posicion ?? 0,
+              posicion_name: user.posicion_name,
+              es_principal: true,
+              is_active: true,
+            },
+          ]
+        : [];
+
+    if (items.length === 0) {
+      return <span className="no-areas">Sin posición</span>;
     }
-    if (user.posicion_name) return user.posicion_name;
-    return 'Sin posición';
+
+    const visible = items.slice(0, maxVisible);
+    const rest = items.slice(maxVisible);
+    const restTitle = rest
+      .map((p) =>
+        p.is_active === false
+          ? `${p.posicion_name} (historial)`
+          : p.posicion_name,
+      )
+      .join('\n');
+
+    return (
+      <div
+        className={`posiciones-chips${maxVisible >= items.length ? ' posiciones-chips--all' : ''}`}
+        title={items.map((p) => p.posicion_name).join(', ')}
+      >
+        {visible.map((p) => (
+          <span
+            key={`${p.posicion_id}-${p.id}`}
+            className={
+              p.is_active === false
+                ? 'posicion-chip posicion-chip--inactive'
+                : 'posicion-chip'
+            }
+            title={
+              p.is_active === false
+                ? `${p.posicion_name} (historial / inactiva)`
+                : p.es_principal
+                  ? `${p.posicion_name} (principal)`
+                  : p.posicion_name
+            }
+          >
+            {p.posicion_name}
+            {p.is_active === false ? (
+              <span className="posicion-chip__mark" aria-hidden>
+                H
+              </span>
+            ) : null}
+          </span>
+        ))}
+        {rest.length > 0 && (
+          <span
+            className="posicion-chip posicion-chip--more"
+            title={restTitle}
+          >
+            +{rest.length}
+          </span>
+        )}
+      </div>
+    );
   };
 
   const getUserGrupoName = (user: User): string => {
@@ -1238,9 +1313,15 @@ const UserManagement: React.FC = () => {
     if (term) {
       filtered = filtered.filter((user) => {
         const hayNumeroEmpleado = user.numero_empleado ? `#${user.numero_empleado}` : '';
-        const posicionNombre = user.posicion_name
+        const posicionesTexto = (user.posiciones || [])
+          .map((p) => p.posicion_name)
+          .join(' ')
+          .toLowerCase();
+        const posicionNombre = (
+          user.posicion_name
           || user.posiciones?.[0]?.posicion_name
-          || '';
+          || ''
+        ).toLowerCase();
         const areasTexto = (user.areas_list || []).join(' ').toLowerCase();
 
         return (
@@ -1249,7 +1330,8 @@ const UserManagement: React.FC = () => {
           (user.email || '').toLowerCase().includes(term) ||
           user.role_display.toLowerCase().includes(term) ||
           hayNumeroEmpleado.toLowerCase().includes(term) ||
-          posicionNombre.toLowerCase().includes(term) ||
+          posicionNombre.includes(term) ||
+          posicionesTexto.includes(term) ||
           areasTexto.includes(term)
         );
       });
@@ -1657,11 +1739,11 @@ const UserManagement: React.FC = () => {
   const handleAddPosicion = () => {
     if (step3PosicionId === '' || step3PosicionId === null) return;
     const form = isCreating ? createForm : editForm;
-    if (form.posiciones.includes(step3PosicionId as number)) return;
-    const pos = posiciones.find((p) => p.id === step3PosicionId);
-    const newPosiciones = [...form.posiciones, step3PosicionId as number];
-    const newAreas = pos && !form.areas.includes(pos.area) ? [...form.areas, pos.area] : form.areas;
     const pid = step3PosicionId as number;
+    if (form.posiciones.includes(pid)) return;
+    const pos = posiciones.find((p) => p.id === pid);
+    const newPosiciones = [...form.posiciones, pid];
+    const newAreas = pos && !form.areas.includes(pos.area) ? [...form.areas, pos.area] : form.areas;
     const nivelElegido =
       step3Nivel !== '' && step3Nivel >= 1 && step3Nivel <= 4 ? Number(step3Nivel) : null;
 
@@ -1676,7 +1758,15 @@ const UserManagement: React.FC = () => {
         setCreatePosicionesNivel((prev) => prev.filter((x) => x.posicion !== pid));
       }
     } else {
-      setEditForm({ ...editForm, posiciones: newPosiciones, areas: newAreas });
+      // Si estaba inactiva, reactivar (sacar del historial)
+      const nextInactivas = editPosicionesInactivas.filter((id) => id !== pid);
+      setEditPosicionesInactivas(nextInactivas);
+      setEditForm({
+        ...editForm,
+        posiciones: newPosiciones,
+        areas: newAreas,
+        posiciones_inactivas: nextInactivas,
+      });
       if (nivelElegido !== null) {
         setEditPosicionesNivel((prev) => [
           ...prev.filter((x) => x.posicion !== pid),
@@ -1690,14 +1780,58 @@ const UserManagement: React.FC = () => {
     setStep3Nivel('');
   };
 
+  /** Quitar: elimina el vínculo (no borra EvaluacionUsuario). */
   const handleRemovePosicion = (posicionId: number) => {
     if (isCreating) {
       setCreateForm({ ...createForm, posiciones: createForm.posiciones.filter((id) => id !== posicionId) });
       setCreatePosicionesNivel((prev) => prev.filter((x) => x.posicion !== posicionId));
     } else {
-      setEditForm({ ...editForm, posiciones: editForm.posiciones.filter((id) => id !== posicionId) });
+      const nextActivas = editForm.posiciones.filter((id) => id !== posicionId);
+      const nextInactivas = editPosicionesInactivas.filter((id) => id !== posicionId);
+      setEditPosicionesInactivas(nextInactivas);
+      setEditForm({
+        ...editForm,
+        posiciones: nextActivas,
+        posiciones_inactivas: nextInactivas,
+      });
       setEditPosicionesNivel((prev) => prev.filter((x) => x.posicion !== posicionId));
     }
+  };
+
+  /** Desactivar: queda en historial; no cuenta en evaluaciones/reportes. */
+  const handleDeactivatePosicion = (posicionId: number) => {
+    if (isCreating) {
+      handleRemovePosicion(posicionId);
+      return;
+    }
+    if (editPosicionesInactivas.includes(posicionId)) return;
+    const nextActivas = editForm.posiciones.filter((id) => id !== posicionId);
+    const nextInactivas = [...editPosicionesInactivas, posicionId];
+    setEditPosicionesInactivas(nextInactivas);
+    setEditForm({
+      ...editForm,
+      posiciones: nextActivas,
+      posiciones_inactivas: nextInactivas,
+    });
+    setEditPosicionesNivel((prev) => prev.filter((x) => x.posicion !== posicionId));
+  };
+
+  /** Reactivar: vuelve a operativa. */
+  const handleReactivatePosicion = (posicionId: number) => {
+    if (isCreating) return;
+    if (editForm.posiciones.includes(posicionId)) return;
+    const pos = posiciones.find((p) => p.id === posicionId);
+    const nextActivas = [...editForm.posiciones, posicionId];
+    const nextInactivas = editPosicionesInactivas.filter((id) => id !== posicionId);
+    const newAreas =
+      pos && !editForm.areas.includes(pos.area) ? [...editForm.areas, pos.area] : editForm.areas;
+    setEditPosicionesInactivas(nextInactivas);
+    setEditForm({
+      ...editForm,
+      posiciones: nextActivas,
+      posiciones_inactivas: nextInactivas,
+      areas: newAreas,
+    });
   };
 
   /** Supervisores: añadir área al usuario sin grupo ni posición. */
@@ -1716,7 +1850,7 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  /** Quitar área del usuario y las posiciones/grupo de esa área. */
+  /** Quitar área del usuario; las posiciones de esa área pasan a historial (inactivas). */
   const handleRemoveAreaAssignment = (areaIdToRemove: number) => {
     const form = isCreating ? createForm : editForm;
     const posIdsInArea = new Set(
@@ -1742,10 +1876,16 @@ const UserManagement: React.FC = () => {
       });
       setCreatePosicionesNivel((prev) => prev.filter((x) => !posIdsInArea.has(x.posicion)));
     } else {
+      const fromActivas = form.posiciones.filter((pid) => posIdsInArea.has(pid));
+      const mergedInactivas = Array.from(
+        new Set([...editPosicionesInactivas, ...fromActivas]),
+      );
+      setEditPosicionesInactivas(mergedInactivas);
       setEditForm({
         ...editForm,
         areas: nextAreas,
         posiciones: nextPosiciones,
+        posiciones_inactivas: mergedInactivas,
         grupos: nextGrupos,
         grupo: nextGrupos[0] ?? null,
       });
@@ -1892,7 +2032,16 @@ const UserManagement: React.FC = () => {
                     type="button"
                     className="btn btn-secondary"
                     onClick={handleAddPosicion}
-                    disabled={step3PosicionId === '' || form.posiciones.includes(step3PosicionId as number)}
+                    disabled={
+                      step3PosicionId === '' ||
+                      form.posiciones.includes(step3PosicionId as number)
+                    }
+                    title={
+                      !isCreating &&
+                      editPosicionesInactivas.includes(step3PosicionId as number)
+                        ? 'Esta posición está en historial: al agregar se reactivará'
+                        : undefined
+                    }
                   >
                     Agregar posición
                   </button>
@@ -1978,7 +2127,7 @@ const UserManagement: React.FC = () => {
           <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>Posiciones asignadas</label>
             <ul className="posiciones-list">
-              {form.posiciones.map((posId, index) => {
+              {form.posiciones.map((posId) => {
                 const pos = posiciones.find((p) => p.id === posId);
                 const areaName = pos ? areas.find((a) => a.id === pos.area)?.name : '';
                 const nivelAsignado = posicionesNivelPaso.find((x) => x.posicion === posId)?.nivel;
@@ -1990,14 +2139,26 @@ const UserManagement: React.FC = () => {
                         <span className="posiciones-list__nivel"> — Nivel hasta {nivelAsignado}</span>
                       ) : null}
                     </span>
-                    <button
-                      type="button"
-                      className="posiciones-list__remove"
-                      onClick={() => handleRemovePosicion(posId)}
-                      title="Quitar posición"
-                    >
-                      Quitar
-                    </button>
+                    <div className="posiciones-list__actions">
+                      {!isCreating && (
+                        <button
+                          type="button"
+                          className="posiciones-list__action posiciones-list__action--soft"
+                          onClick={() => handleDeactivatePosicion(posId)}
+                          title="Desactivar: queda en historial; no aparece en evaluaciones ni reportes"
+                        >
+                          Desactivar
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="posiciones-list__remove"
+                        onClick={() => handleRemovePosicion(posId)}
+                        title="Quitar vínculo (las evaluaciones ya hechas no se borran)"
+                      >
+                        Quitar
+                      </button>
+                    </div>
                   </li>
                 );
               })}
@@ -2006,6 +2167,47 @@ const UserManagement: React.FC = () => {
             {errors.posiciones_nivel && (
               <div className="error-message">{errors.posiciones_nivel[0]}</div>
             )}
+          </div>
+        )}
+
+        {!isCreating && editPosicionesInactivas.length > 0 && (
+          <div className="form-group" style={{ marginTop: '1rem' }}>
+            <label>Posiciones en historial (inactivas)</label>
+            <p className="form-hint" style={{ margin: '0 0 0.5rem', color: '#666', lineHeight: 1.4 }}>
+              No cuentan en evaluaciones ni reportes. Puedes reactivarlas si el usuario vuelve a esa posición.
+            </p>
+            <ul className="posiciones-list">
+              {editPosicionesInactivas.map((posId) => {
+                const pos = posiciones.find((p) => p.id === posId);
+                const areaName = pos ? areas.find((a) => a.id === pos.area)?.name : '';
+                return (
+                  <li key={`inact-${posId}`} className="posiciones-list__item posiciones-list__item--inactive">
+                    <span>
+                      {pos ? `${pos.name}${areaName ? ` (${areaName})` : ''}` : `ID ${posId}`}
+                      <span className="posiciones-list__badge">Inactiva</span>
+                    </span>
+                    <div className="posiciones-list__actions">
+                      <button
+                        type="button"
+                        className="posiciones-list__action"
+                        onClick={() => handleReactivatePosicion(posId)}
+                        title="Reactivar posición"
+                      >
+                        Reactivar
+                      </button>
+                      <button
+                        type="button"
+                        className="posiciones-list__remove"
+                        onClick={() => handleRemovePosicion(posId)}
+                        title="Quitar del historial (las evaluaciones ya hechas no se borran)"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </div>
@@ -2130,6 +2332,10 @@ const UserManagement: React.FC = () => {
           }
 
           editForm.posiciones.forEach((posId) => formData.append('posiciones', String(posId)));
+          formData.append('sync_posiciones_historial', '1');
+          editPosicionesInactivas.forEach((posId) =>
+            formData.append('posiciones_inactivas', String(posId)),
+          );
 
           (editForm.grupos ?? []).forEach((gid) => formData.append('grupos', String(gid)));
           if ((editForm.grupos ?? []).length === 0) {
@@ -2148,10 +2354,14 @@ const UserManagement: React.FC = () => {
 
           payload = formData;
         } else {
-          payload =
-            editPosicionesNivel.length > 0
-              ? { ...editForm, remove_profile_photo: removeProfilePhoto, posiciones_nivel: editPosicionesNivel }
-              : { ...editForm, remove_profile_photo: removeProfilePhoto };
+          payload = {
+            ...editForm,
+            posiciones_inactivas: editPosicionesInactivas,
+            remove_profile_photo: removeProfilePhoto,
+            ...(editPosicionesNivel.length > 0
+              ? { posiciones_nivel: editPosicionesNivel }
+              : {}),
+          };
         }
 
         await apiService.updateUser(selectedUser.id, payload);
@@ -2315,12 +2525,12 @@ const UserManagement: React.FC = () => {
         <table className="users-table">
           <thead>
             <tr>
+              <th>No. De empleado</th>
               <th>Nombre</th>
               <th>Rol</th>
-              <th>Número de Empleado</th>
-              <th>Posición</th>
               <th>Áreas</th>
               <th>Grupo</th>
+              <th>Posiciones</th>
               {hayAreasConTechs && <th>Máquinas</th>}
             </tr>
           </thead>
@@ -2331,6 +2541,9 @@ const UserManagement: React.FC = () => {
                 className="user-row"
                 onClick={() => openUserDetailModal(user)}
               >
+                <td>
+                  {user.numero_empleado ? `#${user.numero_empleado}` : 'Sin asignar'}
+                </td>
                 <td className="user-name-cell">
                   <div className="user-info">
                     <div className="user-avatar">
@@ -2357,12 +2570,6 @@ const UserManagement: React.FC = () => {
                   </span>
                 </td>
                 <td>
-                  {user.numero_empleado ? `#${user.numero_empleado}` : 'Sin asignar'}
-                </td>
-                <td>
-                  {getUserPositionName(user)}
-                </td>
-                <td>
                   <div className="areas-list">
                     {user.areas_list && user.areas_list.length > 0 ? (
                       user.areas_list.map((areaName, index) => (
@@ -2377,6 +2584,9 @@ const UserManagement: React.FC = () => {
                 </td>
                 <td>
                   {getUserGrupoName(user)}
+                </td>
+                <td>
+                  {renderPosicionChips(user)}
                 </td>
                 {hayAreasConTechs && <td>{renderTechChips(user)}</td>}
               </tr>
@@ -2659,9 +2869,11 @@ const UserManagement: React.FC = () => {
                 <span className="value">{selectedUser.email}</span>
               </div>
  
-              <div className="user-detail-field">
-                <span className="label">Posición</span>
-                <span className="value">{getUserPositionName(selectedUser)}</span>
+              <div className="user-detail-field user-detail-field--wide">
+                <span className="label">Posiciones</span>
+                <span className="value areas-value">
+                  {renderPosicionChips(selectedUser, Number.POSITIVE_INFINITY)}
+                </span>
               </div>
  
               <div className="user-detail-field">
