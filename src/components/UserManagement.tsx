@@ -2224,10 +2224,8 @@ const UserManagement: React.FC = () => {
         <UserTechnologiesEditor
           userId={selectedUser.id}
           role={editForm.role}
-          posicionIds={editForm.posiciones}
           areas={areas}
           areaIds={editForm.areas}
-          posicionesCatalog={posiciones}
           onError={setError}
         />
       </div>

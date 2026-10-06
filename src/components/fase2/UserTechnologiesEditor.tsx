@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   apiService,
   type Area,
-  type Posicion,
   type Tecnologia,
 } from '../../services/api';
 import { usuarioVeTodasLasTechs } from './userTechUtils';
@@ -11,20 +10,16 @@ import './UserTechnologiesEditor.css';
 interface UserTechnologiesEditorProps {
   userId: number;
   role: string;
-  posicionIds: number[];
   areas: Area[];
   areaIds: number[];
-  posicionesCatalog: Posicion[];
   onError?: (message: string | null) => void;
 }
 
 const UserTechnologiesEditor: React.FC<UserTechnologiesEditorProps> = ({
   userId,
   role,
-  posicionIds,
   areas,
   areaIds,
-  posicionesCatalog,
   onError,
 }) => {
   const [asignadas, setAsignadas] = useState<Record<number, number[]>>({});
@@ -40,7 +35,7 @@ const UserTechnologiesEditor: React.FC<UserTechnologiesEditorProps> = ({
     [areaIds, areas],
   );
 
-  const veTodas = usuarioVeTodasLasTechs(role, posicionIds, posicionesCatalog);
+  const veTodas = usuarioVeTodasLasTechs(role);
 
   const cargar = useCallback(async () => {
     if (areasF2.length === 0) {
@@ -121,7 +116,7 @@ const UserTechnologiesEditor: React.FC<UserTechnologiesEditorProps> = ({
       </p>
       {veTodas && (
         <p className="user-tech-editor__note">
-          Este perfil (staff o Líder/Entrenador) ve todas las tecnologías del área en Evaluaciones.
+          Este perfil (ADMIN, ENTRENADOR o SUPERVISOR) ve todas las tecnologías del área en Evaluaciones.
         </p>
       )}
       {areasF2.map((area) => {

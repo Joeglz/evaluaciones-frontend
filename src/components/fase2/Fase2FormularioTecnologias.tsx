@@ -18,7 +18,7 @@ const FormularioTecnologias: React.FC<FormularioTecnologiasProps> = ({
   const [complejidad, setComplejidad] = useState<'basica' | 'compleja'>('basica');
   const [guardando, setGuardando] = useState(false);
   const [generando, setGenerando] = useState(false);
-  const [expandido, setExpandido] = useState(false);
+  const [listaAbierta, setListaAbierta] = useState(tecnologias.length === 0);
 
   const crear = async () => {
     const name = nombre.trim();
@@ -35,6 +35,7 @@ const FormularioTecnologias: React.FC<FormularioTecnologiasProps> = ({
         is_active: true,
       });
       setNombre('');
+      setListaAbierta(true);
       await onRefresh();
     } catch {
       onError('No se pudo crear la tecnología (solo ADMIN).');
@@ -61,7 +62,9 @@ const FormularioTecnologias: React.FC<FormularioTecnologiasProps> = ({
         `Candados N1/N2: creadas ${res.creadas}, actualizadas ${res.actualizadas}.`,
       );
     } catch {
-      onError('No se pudieron generar candados. Hace falta el candado de tronco N1 del área.');
+      onError(
+        'No se pudieron generar candados. Hace falta el candado de tronco N1 del área.',
+      );
     } finally {
       setGenerando(false);
     }
@@ -69,19 +72,60 @@ const FormularioTecnologias: React.FC<FormularioTecnologiasProps> = ({
 
   return (
     <div className="f2-embed-tech-block">
+      <div className="f2-embed-tech-block__head">
+        <h3 className="f2-embed-tech-block__title">
+          Tecnologías del área ({tecnologias.length})
+        </h3>
+        <div className="f2-embed-tech-form">
+          <input
+            type="text"
+            placeholder="Nombre nueva tecnología"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void crear();
+              }
+            }}
+            aria-label="Nombre de la tecnología"
+          />
+          <select
+            value={complejidad}
+            onChange={(e) =>
+              setComplejidad(e.target.value as 'basica' | 'compleja')
+            }
+            aria-label="Complejidad"
+          >
+            <option value="basica">Básica</option>
+            <option value="compleja">Compleja</option>
+          </select>
+          <button
+            type="button"
+            className="f2-embed-tech-form__crear"
+            disabled={guardando || !nombre.trim()}
+            onClick={() => void crear()}
+          >
+            {guardando ? 'Creando…' : 'Crear tecnología'}
+          </button>
+        </div>
+      </div>
+
       <button
         type="button"
         className="f2-embed-tech-block__toggle"
-        aria-expanded={expandido}
-        onClick={() => setExpandido((v) => !v)}
+        aria-expanded={listaAbierta}
+        onClick={() => setListaAbierta((v) => !v)}
       >
-        Tecnologías del área ({tecnologias.length})
+        {listaAbierta ? 'Ocultar listado' : 'Gestionar existentes'}
+        {tecnologias.length > 0 ? ` (${tecnologias.length})` : ''}
       </button>
-      {expandido && (
+
+      {listaAbierta && (
         <div className="f2-embed-tech-block__body">
           {tecnologias.length === 0 ? (
             <p className="f2-embed-tech-empty">
-              Crea la primera tecnología para etiquetar operaciones.
+              Crea la primera tecnología arriba para etiquetar operaciones.
             </p>
           ) : (
             <ul className="f2-embed-tech-list">
@@ -106,41 +150,14 @@ const FormularioTecnologias: React.FC<FormularioTecnologiasProps> = ({
               ))}
             </ul>
           )}
-          <div className="f2-embed-tech-form">
-            <input
-              type="text"
-              placeholder="Nombre nueva tecnología"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              aria-label="Nombre de la tecnología"
-            />
-            <select
-              value={complejidad}
-              onChange={(e) =>
-                setComplejidad(e.target.value as 'basica' | 'compleja')
-              }
-              aria-label="Complejidad"
-            >
-              <option value="basica">Básica</option>
-              <option value="compleja">Compleja</option>
-            </select>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={guardando}
-              onClick={() => void crear()}
-            >
-              Crear
-            </button>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={generando || tecnologias.length === 0}
-              onClick={() => void generarCandados()}
-            >
-              Generar candados
-            </button>
-          </div>
+          <button
+            type="button"
+            className="f2-embed-tech-item__btn"
+            disabled={generando || tecnologias.length === 0}
+            onClick={() => void generarCandados()}
+          >
+            {generando ? 'Generando…' : 'Generar candados N1/N2'}
+          </button>
         </div>
       )}
     </div>

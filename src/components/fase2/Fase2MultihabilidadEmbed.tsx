@@ -9,9 +9,10 @@ import FormularioTecnologias from './Fase2FormularioTecnologias';
 import {
   idsDeOp,
   nivelDeOp,
-  resumenEtiquetasOp,
 } from '../../utils/evaluacionEtiquetaUtils';
 import './Fase2MultihabilidadEmbed.css';
+
+type FiltroTech = 'todos' | 'sin' | 'tronco' | number;
 
 interface Fase2MultihabilidadEmbedProps {
   areaId: number;
@@ -27,6 +28,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   const [cargado, setCargado] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroNivel, setFiltroNivel] = useState<number | 'todos'>('todos');
+  const [filtroTech, setFiltroTech] = useState<FiltroTech>('todos');
   const [opSeleccionadaId, setOpSeleccionadaId] = useState<number | null>(null);
 
   const cargarArea = useCallback(async (id: number) => {
@@ -43,6 +45,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   useEffect(() => {
     setCargado(false);
     setOpSeleccionadaId(null);
+    setFiltroTech('todos');
     void cargarArea(areaId);
   }, [areaId, cargarArea]);
 
@@ -58,17 +61,26 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       if (filtroNivel !== 'todos' && nivelOp !== filtroNivel) {
         return false;
       }
+      const ids = idsDeOp(op);
+      if (filtroTech === 'sin') {
+        if (op.es_tronco_comun || ids.length > 0) {
+          return false;
+        }
+      } else if (filtroTech === 'tronco') {
+        if (!op.es_tronco_comun) {
+          return false;
+        }
+      } else if (typeof filtroTech === 'number') {
+        if (op.es_tronco_comun || !ids.includes(filtroTech)) {
+          return false;
+        }
+      }
       if (!q) {
         return true;
       }
       return (op.nombre || '').toLowerCase().includes(q);
     });
-  }, [ops, busqueda, filtroNivel]);
-
-  const opSeleccionada = useMemo(
-    () => ops.find((o) => o.id === opSeleccionadaId) ?? null,
-    [ops, opSeleccionadaId],
-  );
+  }, [ops, busqueda, filtroNivel, filtroTech]);
 
   const guardarEtiqueta = async (
     op: Evaluacion,
@@ -136,7 +148,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     });
   };
 
-  const renderDetalleOp = (op: Evaluacion) => {
+  const renderCandados = (op: Evaluacion) => {
     const ids = idsDeOp(op);
     const tieneTechs = !op.es_tronco_comun && ids.length > 0;
     const esCandadoTech = Boolean(
@@ -148,16 +160,14 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       <div className="f2-embed-detail">
         <div className="f2-embed-detail__head">
           <div>
-            <h4 className="f2-embed-detail__title">{op.nombre}</h4>
-            <span className="f2-embed-detail__nivel">
-              Nivel {nivelDeOp(op) ?? '?'}
-            </span>
+            <h4 className="f2-embed-detail__title">Candados seguridad</h4>
+            <span className="f2-embed-detail__nivel">{op.nombre}</span>
           </div>
           <button
             type="button"
             className="f2-embed-detail__close"
             onClick={() => setOpSeleccionadaId(null)}
-            aria-label="Cerrar detalle"
+            aria-label="Cerrar candados"
           >
             <FaTimes />
           </button>
@@ -167,30 +177,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
             Guardando...
           </p>
         )}
-        <div className="f2-embed-detail__toggles">
-          <label className="f2-embed-toggle">
-            <input
-              type="checkbox"
-              disabled={guardando}
-              checked={Boolean(op.es_tronco_comun)}
-              onChange={(e) => marcarTronco(op, e.target.checked)}
-            />
-            <span>Tronco común</span>
-          </label>
-          {techsActivas.map((t) => (
-            <label key={t.id} className="f2-embed-toggle">
-              <input
-                type="checkbox"
-                disabled={guardando || Boolean(op.es_tronco_comun)}
-                checked={!op.es_tronco_comun && ids.includes(t.id)}
-                onChange={(e) => toggleTech(op, t.id, e.target.checked)}
-              />
-              <span>{t.name}</span>
-            </label>
-          ))}
-        </div>
         <div className="f2-embed-detail__candados">
-          <span className="f2-embed-detail__candados-label">Candados seguridad</span>
           {tieneTechs ? (
             <>
               <label className="f2-embed-toggle">
@@ -227,8 +214,8 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
           )}
         </div>
         <p className="f2-embed-detail__hint">
-          Los cambios se guardan al instante. Tronco común quita las tecnologías
-          de la operación.
+          Tronco y tecnologías se marcan en la fila sin abrir. Aquí solo los
+          candados de seguridad.
         </p>
       </div>
     );
@@ -280,43 +267,107 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
         </div>
       </div>
 
+      <div
+        className="f2-embed-nivel-filters f2-embed-tech-filters"
+        role="tablist"
+        aria-label="Filtrar por tecnología"
+      >
+        {(
+          [
+            { key: 'todos' as const, label: 'Todas' },
+            { key: 'sin' as const, label: 'Sin etiqueta' },
+            { key: 'tronco' as const, label: 'Tronco' },
+            ...techsActivas.map((t) => ({
+              key: t.id as FiltroTech,
+              label: t.name,
+            })),
+          ] as { key: FiltroTech; label: string }[]
+        ).map((item) => (
+          <button
+            key={String(item.key)}
+            type="button"
+            role="tab"
+            aria-selected={filtroTech === item.key}
+            className={`f2-embed-nivel-chip${filtroTech === item.key ? ' is-active' : ''}`}
+            onClick={() => setFiltroTech(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <p className="f2-embed-count">
         {opsFiltradas.length} operación{opsFiltradas.length === 1 ? '' : 'es'} ·
-        guardado automático
+        etiquetas en la fila · candados al abrir
       </p>
 
       <ul className="f2-embed-op-list">
         {opsFiltradas.map((op) => {
-          const chips = resumenEtiquetasOp(op, techsActivas);
+          const ids = idsDeOp(op);
           const activa = opSeleccionadaId === op.id;
           const nivelOp = nivelDeOp(op);
+          const guardando = savingId === op.id;
+          const tieneCandado = Boolean(op.es_prerrequisito_seguridad);
+
           return (
-            <li key={op.id}>
-              <button
-                type="button"
-                className={`f2-embed-op-row${activa ? ' is-active' : ''}`}
-                onClick={() =>
-                  setOpSeleccionadaId(activa ? null : op.id)
-                }
-                aria-expanded={activa}
-              >
-                <span className="f2-embed-op-row__nivel">
-                  {nivelOp != null ? `N${nivelOp}` : 'N?'}
-                </span>
-                <span className="f2-embed-op-row__nombre">{op.nombre}</span>
-                <span className="f2-embed-op-row__chips">
-                  {chips.length === 0 ? (
-                    <span className="f2-embed-chip f2-embed-chip--muted">Sin etiqueta</span>
-                  ) : (
-                    chips.map((c) => (
-                      <span key={c} className="f2-embed-chip">
-                        {c}
-                      </span>
-                    ))
-                  )}
-                </span>
-              </button>
-              {activa && renderDetalleOp(op)}
+            <li key={op.id} className="f2-embed-op-item">
+              <div className={`f2-embed-op-card${activa ? ' is-active' : ''}`}>
+                <div className="f2-embed-op-card__main">
+                  <span className="f2-embed-op-row__nivel">
+                    {nivelOp != null ? `N${nivelOp}` : 'N?'}
+                  </span>
+                  <div className="f2-embed-op-card__body">
+                    <span className="f2-embed-op-row__nombre">{op.nombre}</span>
+                    <div
+                      className="f2-embed-op-inline-techs"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <label className="f2-embed-inline-check">
+                        <input
+                          type="checkbox"
+                          disabled={guardando}
+                          checked={Boolean(op.es_tronco_comun)}
+                          onChange={(e) => marcarTronco(op, e.target.checked)}
+                        />
+                        <span>Tronco</span>
+                      </label>
+                      {techsActivas.map((t) => (
+                        <label key={t.id} className="f2-embed-inline-check">
+                          <input
+                            type="checkbox"
+                            disabled={guardando || Boolean(op.es_tronco_comun)}
+                            checked={!op.es_tronco_comun && ids.includes(t.id)}
+                            onChange={(e) =>
+                              toggleTech(op, t.id, e.target.checked)
+                            }
+                          />
+                          <span>{t.name}</span>
+                        </label>
+                      ))}
+                      {guardando && (
+                        <span className="f2-embed-inline-saving">Guardando…</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`f2-embed-op-candado-btn${tieneCandado ? ' has-candado' : ''}${activa ? ' is-open' : ''}`}
+                    onClick={() =>
+                      setOpSeleccionadaId(activa ? null : op.id)
+                    }
+                    aria-expanded={activa}
+                    aria-label={
+                      activa
+                        ? 'Cerrar candados de seguridad'
+                        : 'Abrir candados de seguridad'
+                    }
+                  >
+                    Candados
+                  </button>
+                </div>
+                {activa && renderCandados(op)}
+              </div>
             </li>
           );
         })}

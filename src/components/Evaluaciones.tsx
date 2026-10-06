@@ -22,7 +22,7 @@ import {
   FaRedo,
   FaEllipsisV,
 } from 'react-icons/fa';
-import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, FirmaEvaluacionUsuario, EvaluacionUsuario, ProgresoNivel, getMediaUrl } from '../services/api';
+import { apiService, Area, Grupo, Posicion, User, ListaAsistencia, ListaAsistenciaCreate, FirmaEvaluacion, FirmaEvaluacionUsuario, EvaluacionUsuario, ProgresoNivel, Tecnologia, getMediaUrl } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useConfirm } from '../hooks/useConfirm';
 import ToastContainer from './ToastContainer';
@@ -136,6 +136,8 @@ const Evaluaciones: React.FC<EvaluacionesProps> = ({
   const [guardandoFirma, setGuardandoFirma] = useState(false);
 const [progresosNivel, setProgresosNivel] = useState<Record<number, Record<number, ProgresoNivel>>>({});
 const [nivelFiltroUsuarios, setNivelFiltroUsuarios] = useState<number | 'todos'>('todos');
+  const [techFiltroUsuarios, setTechFiltroUsuarios] = useState<number | 'todos'>('todos');
+  const [techsFiltroArea, setTechsFiltroArea] = useState<Tecnologia[]>([]);
  
   // Referencia y estados para firmas dinámicas
 const firmaCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -367,7 +369,9 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         setEvaluacionModoLectura(isRegularUser || isVisor);
         await loadEvaluacionesUsuario(user as User, {
           area: areaContexto,
-          posicionId: posicionPrincipalId(user as User),
+          posicionId: areaUsaNavegacionPorTecnologia(areaContexto)
+            ? undefined
+            : posicionPrincipalId(user as User),
         });
         if (isRegularUser) {
           inicializacionRegularListaRef.current = true;
@@ -1016,9 +1020,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       setSelectedPosicion(null);
       setCurrentView('usuarios');
       setNivelFiltroUsuarios('todos');
+      setTechFiltroUsuarios('todos');
       void loadUsuariosEvaluacionesContext(selectedArea, grupo, null);
+      void loadTechsFiltroArea(selectedArea);
       return;
     }
+    setTechsFiltroArea([]);
+    setTechFiltroUsuarios('todos');
     setCurrentView('posiciones');
   };
 
@@ -1033,10 +1041,30 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
     setCurrentView('onboarding');
   };
 
+  const loadTechsFiltroArea = async (area: Area | null | undefined) => {
+    if (!area || !areaUsaNavegacionPorTecnologia(area)) {
+      setTechsFiltroArea([]);
+      return;
+    }
+    try {
+      const techs = await apiService.getTecnologias({
+        area_id: area.id,
+        is_active: true,
+      });
+      setTechsFiltroArea(
+        [...techs].sort((a, b) => a.name.localeCompare(b.name, 'es')),
+      );
+    } catch (err) {
+      console.error('Error al cargar tecnologías para filtro:', err);
+      setTechsFiltroArea([]);
+    }
+  };
+
   const handlePosicionClick = (posicion: Posicion) => {
     setSelectedPosicion(posicion);
     setCurrentView('usuarios');
     setNivelFiltroUsuarios('todos');
+    setTechFiltroUsuarios('todos');
     void loadUsuariosEvaluacionesContext(selectedArea, selectedGrupo, posicion);
   };
 
@@ -1060,8 +1088,13 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       const areaId =
         area?.id ??
         (Array.isArray(user.areas) && user.areas.length > 0 ? user.areas[0] : undefined);
-      const posicionId =
-        contexto?.posicionId ?? selectedPosicion?.id ?? posicionPrincipalId(user);
+      // En áreas con tecnologías la navegación es Área→Grupo→Usuario: no forzar
+      // la posición principal (si no, ops etiquetadas en otra posición del mismo
+      // usuario quedan invisibles, p. ej. Titular vs Auxiliar).
+      const navPorTech = areaUsaNavegacionPorTecnologia(area);
+      const posicionId = navPorTech
+        ? (contexto?.posicionId ?? selectedPosicion?.id)
+        : (contexto?.posicionId ?? selectedPosicion?.id ?? posicionPrincipalId(user));
       const evaluacionesParams: {
         area_id?: number;
         posicion_id?: number;
@@ -1193,13 +1226,19 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
         if (areaContexto) {
           setSelectedArea(areaContexto);
         }
-        const posicionId = posicionPrincipalId(usuarioDetalle as User);
-        const posicionContexto =
-          posicionId != null
-            ? areaContexto?.posiciones?.find((p) => p.id === posicionId)
-            : undefined;
-        if (posicionContexto) {
-          setSelectedPosicion(posicionContexto);
+        const navPorTech = areaUsaNavegacionPorTecnologia(areaContexto);
+        const posicionId = navPorTech
+          ? undefined
+          : posicionPrincipalId(usuarioDetalle as User);
+        if (!navPorTech && posicionId != null) {
+          const posicionContexto = areaContexto?.posiciones?.find(
+            (p) => p.id === posicionId,
+          );
+          if (posicionContexto) {
+            setSelectedPosicion(posicionContexto);
+          }
+        } else {
+          setSelectedPosicion(null);
         }
         setSelectedUser(usuarioDetalle as User);
         await loadEvaluacionesUsuario(usuarioDetalle as User, {
@@ -2801,12 +2840,47 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
                 ))}
               </select>
             </div>
+            {areaUsaNavegacionPorTecnologia(selectedArea) && techsFiltroArea.length > 0 && (
+              <div className="nivel-filter">
+                <label htmlFor="tech-filter-select">Tecnología</label>
+                <select
+                  id="tech-filter-select"
+                  value={
+                    techFiltroUsuarios === 'todos'
+                      ? 'todos'
+                      : techFiltroUsuarios.toString()
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === 'todos') {
+                      setTechFiltroUsuarios('todos');
+                    } else {
+                      const parsed = parseInt(value, 10);
+                      setTechFiltroUsuarios(Number.isNaN(parsed) ? 'todos' : parsed);
+                    }
+                  }}
+                >
+                  <option value="todos">Todas las tecnologías</option>
+                  {techsFiltroArea.map((tech) => (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
         
         <div className="usuarios-list">
           {(() => {
-            const usuariosPorNivel = filteredUsuarios.filter((user) => {
+            const usuariosPorTech = filteredUsuarios.filter((user) => {
+              if (techFiltroUsuarios === 'todos') {
+                return true;
+              }
+              return (user.tecnologia_ids ?? []).includes(techFiltroUsuarios);
+            });
+            const usuariosFiltrados = usuariosPorTech.filter((user) => {
               if (nivelFiltroUsuarios === 'todos') {
                 return true;
               }
@@ -2818,8 +2892,8 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
               return progresoNivel ? progresoNivel.completado : false;
             });
 
-            return usuariosPorNivel.length > 0 ? (
-              usuariosPorNivel.map((user) => (
+            return usuariosFiltrados.length > 0 ? (
+              usuariosFiltrados.map((user) => (
               <div 
                 key={user.id} 
                 className="usuario-item clickeable"
@@ -2888,11 +2962,24 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
             ) : (
               <div className="no-results">
                 <FaUsers />
-                {filteredUsuarios.length > 0 && nivelFiltroUsuarios !== 'todos' ? (
+                {filteredUsuarios.length > 0 &&
+                techFiltroUsuarios !== 'todos' &&
+                usuariosPorTech.length === 0 ? (
+                  <>
+                    <h3>Ningún usuario con esa tecnología</h3>
+                    <p>
+                      Hay {filteredUsuarios.length} usuario(s) en esta ubicación, pero ninguno
+                      tiene asignada «
+                      {techsFiltroArea.find((t) => t.id === techFiltroUsuarios)?.name ??
+                        'esa tecnología'}
+                      ». Prueba con «Todas las tecnologías».
+                    </p>
+                  </>
+                ) : usuariosPorTech.length > 0 && nivelFiltroUsuarios !== 'todos' ? (
                   <>
                     <h3>Ningún usuario con el nivel filtrado</h3>
                     <p>
-                      Hay {filteredUsuarios.length} usuario(s) en esta ubicación, pero ninguno
+                      Hay {usuariosPorTech.length} usuario(s) con el filtro actual, pero ninguno
                       tiene completado el Nivel {nivelFiltroUsuarios}. Prueba con «Todos los niveles».
                     </p>
                   </>
