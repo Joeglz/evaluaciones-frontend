@@ -1364,7 +1364,25 @@ const UserManagement: React.FC = () => {
       });
     }
 
-    return filtered;
+    // Orden numérico por número de empleado (no lexicográfico).
+    return [...filtered].sort((a, b) => {
+      const rawA = a.numero_empleado?.trim() ?? '';
+      const rawB = b.numero_empleado?.trim() ?? '';
+      const na = Number(rawA);
+      const nb = Number(rawB);
+      const aOk = rawA !== '' && Number.isFinite(na);
+      const bOk = rawB !== '' && Number.isFinite(nb);
+      if (aOk && bOk) {
+        return na - nb;
+      }
+      if (aOk) {
+        return -1;
+      }
+      if (bOk) {
+        return 1;
+      }
+      return rawA.localeCompare(rawB, 'es');
+    });
   }, [users, searchTerm, roleFilter, statusFilter, areaFilter, grupoFilter]);
 
   const FieldError: React.FC<{ errors: string[] | undefined }> = ({ errors }) => {
