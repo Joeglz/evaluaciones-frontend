@@ -9,6 +9,7 @@ import FormularioTecnologias from './Fase2FormularioTecnologias';
 import {
   idsDeOp,
   nivelDeOp,
+  posicionDeOp,
 } from '../../utils/evaluacionEtiquetaUtils';
 import './Fase2MultihabilidadEmbed.css';
 
@@ -29,6 +30,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   const [busqueda, setBusqueda] = useState('');
   const [filtroNivel, setFiltroNivel] = useState<number | 'todos'>('todos');
   const [filtroTech, setFiltroTech] = useState<FiltroTech>('todos');
+  const [filtroPosicion, setFiltroPosicion] = useState<number | 'todos'>('todos');
   const [opSeleccionadaId, setOpSeleccionadaId] = useState<number | null>(null);
 
   const cargarArea = useCallback(async (id: number) => {
@@ -46,6 +48,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     setCargado(false);
     setOpSeleccionadaId(null);
     setFiltroTech('todos');
+    setFiltroPosicion('todos');
     void cargarArea(areaId);
   }, [areaId, cargarArea]);
 
@@ -54,11 +57,28 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     [tecnologias],
   );
 
+  const posicionesFiltro = useMemo(() => {
+    const map = new Map<number, string>();
+    ops.forEach((op) => {
+      const { id, nombre } = posicionDeOp(op);
+      if (id != null) {
+        map.set(id, nombre);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [ops]);
+
   const opsFiltradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return ops.filter((op) => {
+    const filtradas = ops.filter((op) => {
       const nivelOp = nivelDeOp(op);
       if (filtroNivel !== 'todos' && nivelOp !== filtroNivel) {
+        return false;
+      }
+      const pos = posicionDeOp(op);
+      if (filtroPosicion !== 'todos' && pos.id !== filtroPosicion) {
         return false;
       }
       const ids = idsDeOp(op);
@@ -78,9 +98,20 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       if (!q) {
         return true;
       }
-      return (op.nombre || '').toLowerCase().includes(q);
+      const hayNombre = (op.nombre || '').toLowerCase().includes(q);
+      const hayPos = pos.nombre.toLowerCase().includes(q);
+      return hayNombre || hayPos;
     });
-  }, [ops, busqueda, filtroNivel, filtroTech]);
+    return filtradas.sort((a, b) => {
+      const pa = posicionDeOp(a).nombre;
+      const pb = posicionDeOp(b).nombre;
+      const byPos = pa.localeCompare(pb, 'es');
+      if (byPos !== 0) {
+        return byPos;
+      }
+      return (a.nombre || '').localeCompare(b.nombre || '', 'es');
+    });
+  }, [ops, busqueda, filtroNivel, filtroTech, filtroPosicion]);
 
   const guardarEtiqueta = async (
     op: Evaluacion,
@@ -270,6 +301,34 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       <div
         className="f2-embed-nivel-filters f2-embed-tech-filters"
         role="tablist"
+        aria-label="Filtrar por posición"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={filtroPosicion === 'todos'}
+          className={`f2-embed-nivel-chip${filtroPosicion === 'todos' ? ' is-active' : ''}`}
+          onClick={() => setFiltroPosicion('todos')}
+        >
+          Todas posiciones
+        </button>
+        {posicionesFiltro.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={filtroPosicion === p.id}
+            className={`f2-embed-nivel-chip${filtroPosicion === p.id ? ' is-active' : ''}`}
+            onClick={() => setFiltroPosicion(p.id)}
+          >
+            {p.nombre}
+          </button>
+        ))}
+      </div>
+
+      <div
+        className="f2-embed-nivel-filters f2-embed-tech-filters"
+        role="tablist"
         aria-label="Filtrar por tecnología"
       >
         {(
@@ -298,7 +357,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
 
       <p className="f2-embed-count">
         {opsFiltradas.length} operación{opsFiltradas.length === 1 ? '' : 'es'} ·
-        etiquetas en la fila · candados al abrir
+        posición en cada fila · candados al abrir
       </p>
 
       <ul className="f2-embed-op-list">
@@ -306,6 +365,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
           const ids = idsDeOp(op);
           const activa = opSeleccionadaId === op.id;
           const nivelOp = nivelDeOp(op);
+          const pos = posicionDeOp(op);
           const guardando = savingId === op.id;
           const tieneCandado = Boolean(op.es_prerrequisito_seguridad);
 
@@ -318,6 +378,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
                   </span>
                   <div className="f2-embed-op-card__body">
                     <span className="f2-embed-op-row__nombre">{op.nombre}</span>
+                    <span className="f2-embed-op-row__posicion">{pos.nombre}</span>
                     <div
                       className="f2-embed-op-inline-techs"
                       onClick={(e) => e.stopPropagation()}

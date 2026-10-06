@@ -5,6 +5,27 @@ export function nivelDeOp(op: Evaluacion): number | null {
   return op.nivel_posicion_data?.nivel ?? op.nivel ?? null;
 }
 
+/** Posición de la operación (nombre e id) para listados Multihabilidad. */
+export function posicionDeOp(op: Evaluacion): {
+  id: number | null;
+  nombre: string;
+} {
+  const np = op.nivel_posicion_data;
+  if (np?.posicion != null) {
+    return {
+      id: np.posicion,
+      nombre: np.posicion_name || op.posicion_name || `Posición ${np.posicion}`,
+    };
+  }
+  if (op.posicion != null) {
+    return {
+      id: op.posicion,
+      nombre: op.posicion_name || `Posición ${op.posicion}`,
+    };
+  }
+  return { id: null, nombre: 'Sin posición' };
+}
+
 export function idsDeOp(op: Evaluacion): number[] {
   if (op.tecnologia_ids && op.tecnologia_ids.length > 0) {
     return op.tecnologia_ids;
