@@ -567,7 +567,8 @@ const UserManagement: React.FC = () => {
     const errors: ValidationErrors = {};
 
     if (currentStep === 1) {
-      if (!form.username?.trim()) {
+      // En alta el username lo genera el backend desde numero_empleado; el campo no se muestra.
+      if (!isCreating && !form.username?.trim()) {
         errors.username = ['El usuario es obligatorio'];
       }
       if (!form.email?.trim()) {
