@@ -31,7 +31,7 @@ const UserTechnologiesEditor: React.FC<UserTechnologiesEditorProps> = ({
     () =>
       areaIds
         .map((id) => areas.find((a) => a.id === id))
-        .filter((a): a is Area => Boolean(a?.fase2_activa)),
+        .filter((a): a is Area => Boolean(a)),
     [areaIds, areas],
   );
 

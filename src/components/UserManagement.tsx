@@ -538,10 +538,9 @@ const UserManagement: React.FC = () => {
   };
 
   const editFormAreas = editForm.areas;
+  // Multihabilidad siempre activa: paso Tecnologías si el usuario tiene área(s).
   const showTechStep =
-    isEditing &&
-    selectedUser != null &&
-    editFormAreas.some((aid) => areas.find((a) => a.id === aid)?.fase2_activa);
+    isEditing && selectedUser != null && editFormAreas.length > 0;
   const maxStep: 3 | 4 = showTechStep ? 4 : 3;
 
   const areaF2Filtrada = useMemo(() => {
