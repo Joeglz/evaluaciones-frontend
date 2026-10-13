@@ -31,6 +31,19 @@
   flex-direction: column;
 }
 
+/* Mi Perfil: con dashboard-main--inner-scroll el main no hace scroll;
+   este contenedor debe poder desplazarse (foto + datos + guardar). */
+.settings-container > .user-profile-container {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding-bottom: 1.5rem;
+}
+
 /* Layout tablet: cuerpo con scroll interno y pie fijo (misma idea que AreaManagement) */
 .catalog-edit-screen {
   display: flex;

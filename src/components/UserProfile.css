@@ -1,8 +1,10 @@
 /* Estilos para UserProfile */
 .user-profile-container {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 1000px;
   margin: 0 auto;
-  padding: 2rem 2rem 1rem;
+  padding: 2rem 2rem 1.5rem;
 }
 
 .user-profile-header {
