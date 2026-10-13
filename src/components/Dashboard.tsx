@@ -604,8 +604,8 @@ const DashboardInner: React.FC<DashboardProps> = ({ onLogout }) => {
         <main
           data-scroll="true"
           className={`dashboard-main${
-            // Solo wizards con scroll interno (usuarios/áreas/plantillas).
-            // Mi Perfil no tiene body propio: si se activa inner-scroll, se corta la foto.
+            // Wizards con scroll interno. Mi Perfil y Tecnologías scrollean en el main
+            // o en su propio contenedor (perfil no debe quedar cortado).
             activeView === 'ajustes' &&
             settingsSectionTitle &&
             settingsSectionTitle !== 'Mi Perfil'

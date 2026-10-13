@@ -1952,6 +1952,12 @@ class ApiService {
     });
   }
 
+  async deleteTecnologia(id: number): Promise<void> {
+    await this.request<void>(`/users/tecnologias/${id}/`, {
+      method: 'DELETE',
+    });
+  }
+
   async generarCandadosTech(areaId: number, plantillaId?: number): Promise<{ creadas: number; actualizadas: number }> {
     return this.request<{ creadas: number; actualizadas: number }>('/users/tecnologias/generar-candados/', {
       method: 'POST',

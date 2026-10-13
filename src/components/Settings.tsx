@@ -3,7 +3,8 @@ import {
   FaUsers,
   FaBuilding,
   FaUser,
-  FaChartBar
+  FaChartBar,
+  FaCogs,
 } from 'react-icons/fa';
 import './Settings.css';
 
@@ -11,6 +12,7 @@ const UserManagement = lazy(() => import('./UserManagement'));
 const AreaManagement = lazy(() => import('./AreaManagement'));
 const UserProfile = lazy(() => import('./UserProfile'));
 const EvaluacionesManagement = lazy(() => import('./EvaluacionesManagement'));
+const TecnologiasManagement = lazy(() => import('./fase2/TecnologiasManagement'));
 
 interface SettingsProps {
   userRole?: string;
@@ -31,6 +33,7 @@ const SECTION_TITLES: Record<string, string> = {
   profile: 'Mi Perfil',
   users: 'Gestión de Usuarios',
   areas: 'Gestión de Áreas',
+  tecnologias: 'Gestión de Tecnologías',
   plantillas: 'Gestión de Plantillas',
 };
 
@@ -46,7 +49,7 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
   const allowedSections = useMemo<string[]>(() => {
     switch (userRole) {
       case 'ADMIN':
-        return ['profile', 'users', 'areas', 'plantillas'];
+        return ['profile', 'users', 'areas', 'tecnologias', 'plantillas'];
       case 'ENTRENADOR':
       case 'SUPERVISOR':
         return ['profile'];
@@ -103,6 +106,10 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
         return allowedSections.includes('areas') ? (
           <Suspense fallback={fallback}><AreaManagement /></Suspense>
         ) : renderAccessDenied();
+      case 'tecnologias':
+        return allowedSections.includes('tecnologias') ? (
+          <Suspense fallback={fallback}><TecnologiasManagement /></Suspense>
+        ) : renderAccessDenied();
       case 'plantillas':
         return allowedSections.includes('plantillas') ? (
           <Suspense fallback={fallback}><EvaluacionesManagement /></Suspense>
@@ -117,7 +124,10 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
           <div className="settings-main">
             <div className="settings-header">
               <h1>Ajustes del Sistema</h1>
-              <p>Gestiona la configuración del sistema de evaluaciones</p>
+              <p>
+                Orden recomendado: Áreas → Tecnologías → Plantillas (tech + posiciones) →
+                Usuarios
+              </p>
             </div>
 
             <div className="settings-grid" role="list">
@@ -135,7 +145,7 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
                   </div>
                   <div className="settings-card-content">
                     <h3>Mi Perfil</h3>
-                    <p>Edita tu información personal</p>
+                    <p>Información personal y foto</p>
                   </div>
                   <div className="settings-card-arrow" aria-hidden="true">
                     →
@@ -157,7 +167,7 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
                   </div>
                   <div className="settings-card-content">
                     <h3>Gestión de Usuarios</h3>
-                    <p>Administra usuarios, roles y permisos del sistema</p>
+                    <p>Alta, rol, área, puesto, grupo y tecnologías de la persona</p>
                   </div>
                   <div className="settings-card-arrow" aria-hidden="true">
                     →
@@ -179,7 +189,29 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
                   </div>
                   <div className="settings-card-content">
                     <h3>Gestión de Áreas</h3>
-                    <p>Administra áreas, grupos y posiciones</p>
+                    <p>Áreas, grupos y posiciones (procesos AD)</p>
+                  </div>
+                  <div className="settings-card-arrow" aria-hidden="true">
+                    →
+                  </div>
+                </div>
+              )}
+
+              {allowedSections.includes('tecnologias') && (
+                <div
+                  className="settings-card"
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={() => openSection('tecnologias')}
+                  onKeyDown={onCardKeyDown('tecnologias')}
+                  aria-label="Gestión de Tecnologías"
+                >
+                  <div className="settings-card-icon" aria-hidden="true">
+                    <FaCogs />
+                  </div>
+                  <div className="settings-card-content">
+                    <h3>Gestión de Tecnologías</h3>
+                    <p>Crear, renombrar, activar/baja y candados N1/N2 por área</p>
                   </div>
                   <div className="settings-card-arrow" aria-hidden="true">
                     →
@@ -201,7 +233,9 @@ const Settings: React.FC<SettingsProps> = ({ userRole, resetSignal, onSectionCha
                   </div>
                   <div className="settings-card-content">
                     <h3>Gestión de Plantillas</h3>
-                    <p>Administra plantillas de evaluación</p>
+                    <p>
+                      Operaciones por nivel: asigna tecnología y posiciones (se propaga)
+                    </p>
                   </div>
                   <div className="settings-card-arrow" aria-hidden="true">
                     →

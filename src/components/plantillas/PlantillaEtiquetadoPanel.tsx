@@ -8,7 +8,6 @@ import {
   type Tecnologia,
 } from '../../services/api';
 import { useConfirm } from '../../hooks/useConfirm';
-import FormularioTecnologias from '../fase2/Fase2FormularioTecnologias';
 import { idsDeOp, resumenEtiquetasOp } from '../../utils/evaluacionEtiquetaUtils';
 import '../fase2/Fase2MultihabilidadEmbed.css';
 import './PlantillaEtiquetadoPanel.css';
@@ -37,7 +36,7 @@ const PlantillaEtiquetadoPanel: React.FC<PlantillaEtiquetadoPanelProps> = ({
 
   const usos = plantilla.plantilla_usos ?? [];
 
-  const areaIds = useMemo(() => {
+  const areaIdsDesdeUsos = useMemo(() => {
     const ids = new Set<number>();
     usos.forEach((u) => {
       if (u.area_id != null) {
@@ -47,17 +46,27 @@ const PlantillaEtiquetadoPanel: React.FC<PlantillaEtiquetadoPanelProps> = ({
     return Array.from(ids);
   }, [usos]);
 
+  /** Techs del catálogo de áreas (aunque aún no haya hijas), para poder etiquetar ya. */
+  const areaIdsParaTechs = useMemo(() => {
+    if (catalogoAreas.length > 0) {
+      return catalogoAreas.map((a) => a.area_id);
+    }
+    return areaIdsDesdeUsos;
+  }, [catalogoAreas, areaIdsDesdeUsos]);
+
   const nivelPlantilla = catalogoAreas.find((a) => a.nivel != null)?.nivel ?? null;
 
   const cargarTecnologias = useCallback(async () => {
     setCargandoTechs(true);
     try {
-      if (areaIds.length === 0) {
+      if (areaIdsParaTechs.length === 0) {
         setTecnologias([]);
         return;
       }
       const listas = await Promise.all(
-        areaIds.map((areaId) => apiService.getTecnologias({ area_id: areaId })),
+        areaIdsParaTechs.map((areaId) =>
+          apiService.getTecnologias({ area_id: areaId }),
+        ),
       );
       const porId = new Map<number, Tecnologia>();
       listas.flat().forEach((t) => porId.set(t.id, t));
@@ -69,7 +78,7 @@ const PlantillaEtiquetadoPanel: React.FC<PlantillaEtiquetadoPanelProps> = ({
     } finally {
       setCargandoTechs(false);
     }
-  }, [areaIds, onError]);
+  }, [areaIdsParaTechs, onError]);
 
   useEffect(() => {
     void cargarTecnologias();
@@ -249,14 +258,19 @@ const PlantillaEtiquetadoPanel: React.FC<PlantillaEtiquetadoPanelProps> = ({
     <div className="plantilla-etiquetado">
       {confirmDialog}
       <h4>Operaciones y etiquetado</h4>
+      <p className="plantilla-etiquetado__hint">
+        Flujo: (1) elige tecnología o tronco abajo → (2) marca posiciones del área.
+        La etiqueta se propaga a todas las operaciones hijas. Si no ves la op en
+        Multihabilidad, primero asígnala a posiciones aquí.
+      </p>
       <div className="plantilla-etiquetado__asignacion-areas">
         <span className="plantilla-etiquetado__areas-label">
-          Asignar a posiciones
+          1. Asignar a posiciones
           {nivelPlantilla != null ? ` (N${nivelPlantilla})` : ''}
         </span>
         <p className="plantilla-etiquetado__hint">
           El nivel sale del campo de la plantilla o del nombre («Nivel N …»). Marca
-          solo las posiciones donde quieres la operación.
+          las posiciones donde quieres la operación (ej. todas las de Strap).
         </p>
         {cargandoAreas ? (
           <p className="plantilla-etiquetado__hint">Cargando áreas...</p>
@@ -338,101 +352,106 @@ const PlantillaEtiquetadoPanel: React.FC<PlantillaEtiquetadoPanelProps> = ({
           ))}
         </div>
       )}
-      {usos.length > 0 && cargandoTechs ? (
-        <p className="plantilla-etiquetado__hint">Cargando tecnologías...</p>
-      ) : usos.length > 0 ? (
-        <>
-          {areaIds.length === 1 && (
-            <FormularioTecnologias
-              areaId={areaIds[0]}
-              tecnologias={tecnologias}
-              onRefresh={cargarTecnologias}
-              onError={onError}
-            />
-          )}
-          {areaIds.length > 1 && (
-            <p className="plantilla-etiquetado__hint">
-              Esta plantilla se usa en varias áreas; aquí se listan todas las tecnologías
-              activas de esas áreas.
-            </p>
-          )}
-          {techsActivas.length === 0 && (
-            <p className="plantilla-etiquetado__hint">
-              Aún no hay tecnologías en el área. Puedes crearlas abajo o en Gestión de
-              Áreas → Multihabilidad. Mientras tanto, marca tronco o deja sin etiquetar
-              (ningún check).
-            </p>
-          )}
-          {guardando && (
-            <p className="f2-embed-detail__saving" aria-live="polite">
-              Guardando...
-            </p>
-          )}
-          <div className="f2-embed-detail__toggles">
-            <label className="f2-embed-toggle">
-              <input
-                type="checkbox"
-                disabled={guardando}
-                checked={Boolean(plantilla.es_tronco_comun)}
-                onChange={(e) => marcarTronco(e.target.checked)}
-              />
-              <span>Tronco común</span>
-            </label>
-            {techsActivas.map((t) => (
-              <label key={t.id} className="f2-embed-toggle">
-                <input
-                  type="checkbox"
-                  disabled={guardando || Boolean(plantilla.es_tronco_comun)}
-                  checked={!plantilla.es_tronco_comun && ids.includes(t.id)}
-                  onChange={(e) => toggleTech(t.id, e.target.checked)}
-                />
-                <span>{t.name}</span>
-              </label>
-            ))}
-          </div>
-          <div className="f2-embed-detail__candados">
-            <span className="f2-embed-detail__candados-label">Candados seguridad</span>
-            {tieneTechs ? (
-              <>
-                <label className="f2-embed-toggle">
-                  <input
-                    type="checkbox"
-                    disabled={guardando}
-                    checked={esCandadoTech && plantilla.nivel_seguridad === 1}
-                    onChange={(e) => marcarCandadoTech(1, e.target.checked)}
-                  />
-                  <span>Seguridad N1 (línea)</span>
-                </label>
-                <label className="f2-embed-toggle">
-                  <input
-                    type="checkbox"
-                    disabled={guardando}
-                    checked={esCandadoTech && plantilla.nivel_seguridad === 2}
-                    onChange={(e) => marcarCandadoTech(2, e.target.checked)}
-                  />
-                  <span>Seguridad N2 (línea)</span>
-                </label>
-              </>
-            ) : (
+
+      <div className="plantilla-etiquetado__asignacion-areas">
+        <span className="plantilla-etiquetado__areas-label">
+          2. Tecnología de esta operación
+        </span>
+        {cargandoTechs ? (
+          <p className="plantilla-etiquetado__hint">Cargando tecnologías...</p>
+        ) : (
+          <>
+            {areaIdsParaTechs.length === 1 && (
+              <p className="plantilla-etiquetado__hint">
+                Si falta una tech, créala en Ajustes → Gestión de Tecnologías.
+              </p>
+            )}
+            {areaIdsParaTechs.length > 1 && (
+              <p className="plantilla-etiquetado__hint">
+                Se listan tecnologías de las áreas del catálogo. Créalas en Gestión de
+                Tecnologías si faltan.
+              </p>
+            )}
+            {techsActivas.length === 0 && (
+              <p className="plantilla-etiquetado__hint plantilla-etiquetado__hint--warn">
+                Aún no hay tecnologías activas. Ve a Ajustes → Gestión de Tecnologías o
+                marca solo tronco.
+              </p>
+            )}
+            {guardando && (
+              <p className="f2-embed-detail__saving" aria-live="polite">
+                Guardando...
+              </p>
+            )}
+            <div className="f2-embed-detail__toggles">
               <label className="f2-embed-toggle">
                 <input
                   type="checkbox"
                   disabled={guardando}
-                  checked={Boolean(
-                    plantilla.es_prerrequisito_seguridad && plantilla.es_tronco_comun,
-                  )}
-                  onChange={(e) => marcarCandadoN1Tronco(e.target.checked)}
+                  checked={Boolean(plantilla.es_tronco_comun)}
+                  onChange={(e) => marcarTronco(e.target.checked)}
                 />
-                <span>Seguridad N1 (tronco)</span>
+                <span>Tronco común</span>
               </label>
-            )}
-          </div>
-          <p className="plantilla-etiquetado__hint">
-            Los cambios se guardan al instante en la plantilla y se propagan a todas las
-            operaciones listadas arriba. Tronco común quita las tecnologías de la operación.
-          </p>
-        </>
-      ) : null}
+              {techsActivas.map((t) => (
+                <label key={t.id} className="f2-embed-toggle">
+                  <input
+                    type="checkbox"
+                    disabled={guardando || Boolean(plantilla.es_tronco_comun)}
+                    checked={!plantilla.es_tronco_comun && ids.includes(t.id)}
+                    onChange={(e) => toggleTech(t.id, e.target.checked)}
+                  />
+                  <span>
+                    {t.name}
+                    {t.area_name ? ` (${t.area_name})` : ''}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="f2-embed-detail__candados">
+              <span className="f2-embed-detail__candados-label">Candados seguridad</span>
+              {tieneTechs ? (
+                <>
+                  <label className="f2-embed-toggle">
+                    <input
+                      type="checkbox"
+                      disabled={guardando}
+                      checked={esCandadoTech && plantilla.nivel_seguridad === 1}
+                      onChange={(e) => marcarCandadoTech(1, e.target.checked)}
+                    />
+                    <span>Seguridad N1 (línea)</span>
+                  </label>
+                  <label className="f2-embed-toggle">
+                    <input
+                      type="checkbox"
+                      disabled={guardando}
+                      checked={esCandadoTech && plantilla.nivel_seguridad === 2}
+                      onChange={(e) => marcarCandadoTech(2, e.target.checked)}
+                    />
+                    <span>Seguridad N2 (línea)</span>
+                  </label>
+                </>
+              ) : (
+                <label className="f2-embed-toggle">
+                  <input
+                    type="checkbox"
+                    disabled={guardando}
+                    checked={Boolean(
+                      plantilla.es_prerrequisito_seguridad && plantilla.es_tronco_comun,
+                    )}
+                    onChange={(e) => marcarCandadoN1Tronco(e.target.checked)}
+                  />
+                  <span>Seguridad N1 (tronco)</span>
+                </label>
+              )}
+            </div>
+            <p className="plantilla-etiquetado__hint">
+              Se guarda al instante en la plantilla y se propaga a las operaciones hijas
+              (si ya asignaste posiciones). Tronco quita las tecnologías.
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 };

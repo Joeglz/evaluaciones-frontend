@@ -24,7 +24,8 @@
 .settings-container > .area-management,
 .settings-container > .evaluaciones-management,
 .settings-container > .grupo-management,
-.settings-container > .posicion-management {
+.settings-container > .posicion-management,
+.settings-container > .tech-mgmt {
   flex: 1;
   min-height: 0;
   display: flex;

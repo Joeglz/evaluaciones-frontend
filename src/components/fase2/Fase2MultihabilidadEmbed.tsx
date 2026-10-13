@@ -264,6 +264,11 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     <div className="f2-embed">
       {error && <p className="f2-embed-error">{error}</p>}
 
+      <p className="f2-embed-count">
+        Ajuste fino por operación. Para crear/renombrar techs usa Ajustes → Gestión de
+        Tecnologías; para cargar masivo (tech + posiciones) usa Gestión de Plantillas.
+      </p>
+
       <FormularioTecnologias
         areaId={areaId}
         tecnologias={tecnologias}
