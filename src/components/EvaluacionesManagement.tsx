@@ -678,7 +678,7 @@ const [firmaForm, setFirmaForm] = useState({
           ref={bodyRef}
         >
           <div className="evaluaciones-management-toolbar">
-            <div className="evaluaciones-search search-box">
+            <div className="evaluaciones-search">
               <FaSearch className="search-icon" aria-hidden />
               <input
                 type="text"

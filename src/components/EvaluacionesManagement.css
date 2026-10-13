@@ -46,19 +46,28 @@
   width: 100%;
 }
 
+/* En fila el basis 16rem es ancho; en columna (móvil) NO usar flex-grow/basis
+   o el search-box crece a ~16rem de alto (conflicto con .search-box global). */
 .evaluaciones-management-toolbar .search-box,
 .evaluaciones-management-toolbar .evaluaciones-search {
-  flex: 1 1 16rem;
+  flex: 1 1 auto;
   min-width: 12rem;
   max-width: 28rem;
+  width: auto;
+  height: auto;
+  min-height: 2.75rem;
+  max-height: none;
   position: relative;
   display: flex;
+  flex-direction: row;
   align-items: center;
+  align-self: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #fff;
   border: 2px solid #e0e0e0;
   border-radius: 8px;
+  box-sizing: border-box;
 }
 
 .evaluaciones-management-toolbar .evaluaciones-search .search-icon {
@@ -477,12 +486,18 @@
 
   .evaluaciones-management-toolbar .search-box,
   .evaluaciones-management-toolbar .evaluaciones-search {
+    flex: 0 0 auto;
     max-width: none;
     width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+    height: auto;
+    align-self: stretch;
   }
 
   .evaluaciones-management-toolbar-meta {
     margin-left: 0;
+    width: 100%;
     justify-content: space-between;
   }
 
