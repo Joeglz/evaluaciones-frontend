@@ -3053,10 +3053,10 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       gruposEvaluacionesNivel.some((grupo) => grupo.clave === filtroGrupoEval)
         ? filtroGrupoEval
         : 'todas';
-    // «Todas»: sin duplicar filas (clave primaria). Chip tech: membresía.
+    // «Todas» y chips: multi-tech se repite en cada sección/tech.
     const gruposEvaluacionesFiltrados =
       filtroGrupoEfectivo === 'todas'
-        ? agruparEvaluacionesPorTecnologia(evaluacionesDelNivel, fase2ActivaFicha, false)
+        ? gruposEvaluacionesNivel
         : [
             {
               clave: filtroGrupoEfectivo,

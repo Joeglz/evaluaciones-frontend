@@ -407,8 +407,8 @@ export const ordenGrupoTecnologia = (clave: string): number => {
 
 /**
  * Agrupa por tecnología.
- * - `expandirMultiTech` true (chips): una op con N techs aparece en N grupos.
- * - false («Todas»): una sola sección por clave primaria (sin duplicar filas).
+ * - `expandirMultiTech` true: una op con N techs aparece en N grupos (chips y «Todas»).
+ * - false: solo clave primaria (sin repetir filas).
  */
 export function agruparEvaluacionesPorTecnologia<T extends {
   es_tronco_comun?: boolean;
