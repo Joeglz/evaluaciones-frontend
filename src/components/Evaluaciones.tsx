@@ -43,6 +43,7 @@ import {
   resolverAreaDeUsuario,
   etiquetaChipGrupo,
   agruparEvaluacionesPorTecnologia,
+  filtrarEvaluacionesPorClaveGrupo,
   calcularResumenNiveles,
   TIPO_FIRMA_EMPLEADO,
   TIPO_FIRMA_PRODUCCION,
@@ -3040,21 +3041,33 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       })
       .sort((a, b) => compararEvaluacionesOrdenListaAsignadas(a, b, evaluacionesUsuarioGuardadas));
 
+    const fase2ActivaFicha = Boolean(selectedArea?.fase2_activa);
+    // Chips: multi-tech se reparte en cada tech individual
     const gruposEvaluacionesNivel = agruparEvaluacionesPorTecnologia(
       evaluacionesDelNivel,
-      Boolean(selectedArea?.fase2_activa)
+      fase2ActivaFicha,
+      true
     );
     const filtroGrupoEfectivo =
       filtroGrupoEval === 'todas' ||
       gruposEvaluacionesNivel.some((grupo) => grupo.clave === filtroGrupoEval)
         ? filtroGrupoEval
         : 'todas';
+    // «Todas»: sin duplicar filas (clave primaria). Chip tech: membresía.
     const gruposEvaluacionesFiltrados =
       filtroGrupoEfectivo === 'todas'
-        ? gruposEvaluacionesNivel
-        : gruposEvaluacionesNivel.filter((grupo) => grupo.clave === filtroGrupoEfectivo);
-    const mostrarFiltrosTech =
-      Boolean(selectedArea?.fase2_activa) && gruposEvaluacionesNivel.length > 0;
+        ? agruparEvaluacionesPorTecnologia(evaluacionesDelNivel, fase2ActivaFicha, false)
+        : [
+            {
+              clave: filtroGrupoEfectivo,
+              titulo: null as string | null,
+              items: filtrarEvaluacionesPorClaveGrupo(
+                evaluacionesDelNivel,
+                filtroGrupoEfectivo
+              ),
+            },
+          ];
+    const mostrarFiltrosTech = fase2ActivaFicha && gruposEvaluacionesNivel.length > 0;
 
     const posicionVistaDetalle =
       selectedPosicion?.id ?? selectedUser.posicion ?? null;
@@ -3063,9 +3076,22 @@ const [onboardingUsuarioId, setOnboardingUsuarioId] = useState<number | null>(nu
       selectedUser.posicion == null ||
       Number(selectedUser.posicion) === Number(posicionVistaDetalle);
 
+    // Cuadritos N1–N4: con chip tech/tronco/otras, avance solo de ese subconjunto
+    const nivelesCompletosPorChip =
+      fase2ActivaFicha && filtroGrupoEfectivo !== 'todas'
+        ? calcularResumenNiveles(
+            filtrarEvaluacionesPorClaveGrupo(evaluacionesUsuario, filtroGrupoEfectivo),
+            evaluacionesUsuarioGuardadas
+          ).completados
+        : null;
+
     const isNivelCompleto = (nivel: number): boolean => {
       if (!selectedUser) {
         return false;
+      }
+
+      if (nivelesCompletosPorChip) {
+        return Boolean(nivelesCompletosPorChip[nivel]);
       }
 
       // Resumen calculado al cargar evaluaciones para la posición del breadcrumb

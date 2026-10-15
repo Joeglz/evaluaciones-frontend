@@ -331,20 +331,42 @@ export const resolverAreaDeUsuario = (user: User, areasCatalogo: Area[]): Area |
   return areasCatalogo.find((area) => asignadas.includes(area.id));
 };
 
+/** Claves de chip/sección: tronco, otras, o una por cada tecnología (multi-tech → varias). */
+export const clavesGrupoTecnologia = (evaluacion: {
+  es_tronco_comun?: boolean;
+  tecnologia_nombres?: string[];
+  tecnologia_nombre?: string | null;
+}): string[] => {
+  if (evaluacion.es_tronco_comun) {
+    return ['tronco'];
+  }
+  const nombres = nombresTecnologiaEvaluacion(evaluacion);
+  if (nombres.length === 0) {
+    return ['otras'];
+  }
+  return nombres.map((nombre) => `tech:${nombre}`);
+};
+
+/** Clave primaria (primera tech alfabética) para listar sin duplicar en «Todas». */
 export const claveGrupoTecnologia = (evaluacion: {
   es_tronco_comun?: boolean;
   tecnologia_nombres?: string[];
   tecnologia_nombre?: string | null;
-}): string => {
-  if (evaluacion.es_tronco_comun) {
-    return 'tronco';
+}): string => clavesGrupoTecnologia(evaluacion)[0] ?? 'otras';
+
+/** Filtra ops que pertenecen al chip (membresía). `todas` = sin filtro. */
+export function filtrarEvaluacionesPorClaveGrupo<T extends {
+  es_tronco_comun?: boolean;
+  tecnologia_nombres?: string[];
+  tecnologia_nombre?: string | null;
+}>(evaluaciones: T[], clave: string): T[] {
+  if (!clave || clave === 'todas') {
+    return evaluaciones;
   }
-  const nombres = nombresTecnologiaEvaluacion(evaluacion);
-  if (nombres.length === 0) {
-    return 'otras';
-  }
-  return `tech:${nombres.join(', ')}`;
-};
+  return evaluaciones.filter((evaluacion) =>
+    clavesGrupoTecnologia(evaluacion).includes(clave)
+  );
+}
 
 export const tituloGrupoTecnologia = (clave: string): string => {
   if (clave === 'tronco') {
@@ -383,23 +405,36 @@ export const ordenGrupoTecnologia = (clave: string): number => {
   return 1;
 };
 
+/**
+ * Agrupa por tecnología.
+ * - `expandirMultiTech` true (chips): una op con N techs aparece en N grupos.
+ * - false («Todas»): una sola sección por clave primaria (sin duplicar filas).
+ */
 export function agruparEvaluacionesPorTecnologia<T extends {
   es_tronco_comun?: boolean;
   tecnologia_nombres?: string[];
   tecnologia_nombre?: string | null;
-}>(evaluaciones: T[], agrupar: boolean): Array<{ clave: string; titulo: string | null; items: T[] }> {
+}>(
+  evaluaciones: T[],
+  agrupar: boolean,
+  expandirMultiTech = true
+): Array<{ clave: string; titulo: string | null; items: T[] }> {
   if (!agrupar) {
     return [{ clave: 'todas', titulo: null, items: evaluaciones }];
   }
   const mapa = new Map<string, T[]>();
   evaluaciones.forEach((evaluacion) => {
-    const clave = claveGrupoTecnologia(evaluacion);
-    const grupo = mapa.get(clave);
-    if (grupo) {
-      grupo.push(evaluacion);
-    } else {
-      mapa.set(clave, [evaluacion]);
-    }
+    const claves = expandirMultiTech
+      ? clavesGrupoTecnologia(evaluacion)
+      : [claveGrupoTecnologia(evaluacion)];
+    claves.forEach((clave) => {
+      const grupo = mapa.get(clave);
+      if (grupo) {
+        grupo.push(evaluacion);
+      } else {
+        mapa.set(clave, [evaluacion]);
+      }
+    });
   });
   return Array.from(mapa.entries())
     .sort(([claveA], [claveB]) => {
