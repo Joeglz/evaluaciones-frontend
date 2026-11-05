@@ -388,17 +388,32 @@
 }
 
 .f2-embed-chip {
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 0.12rem 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
   border-radius: 999px;
   background: #f1f5f9;
   color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.f2-embed-chip--tech {
+  background: rgba(225, 32, 38, 0.1);
+  border-color: rgba(225, 32, 38, 0.35);
+  color: #991b1b;
+}
+
+.f2-embed-chip--tronco {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 .f2-embed-chip--muted {
   color: #94a3b8;
   font-style: italic;
+  font-weight: 600;
+  background: #f8fafc;
 }
 
 .f2-embed-detail {

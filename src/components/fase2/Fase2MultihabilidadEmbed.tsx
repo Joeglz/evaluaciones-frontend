@@ -37,7 +37,6 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   const [techMasivaId, setTechMasivaId] = useState<number | ''>('');
   const [accionMasiva, setAccionMasiva] = useState<AccionMasiva>('anadir-tech');
   const [panelTechsAbierto, setPanelTechsAbierto] = useState(false);
-  const [opEditandoId, setOpEditandoId] = useState<number | null>(null);
   const [bulkProgreso, setBulkProgreso] = useState<{
     hecho: number;
     total: number;
@@ -57,7 +56,6 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   useEffect(() => {
     setCargado(false);
     setOpSeleccionadaId(null);
-    setOpEditandoId(null);
     setPanelTechsAbierto(false);
     setFiltroTech('todos');
     setFiltroPosicion('todos');
@@ -78,7 +76,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       return [];
     }
     return ids
-      .map((id) => techsActivas.find((t) => t.id === id)?.name || `#${id}`)
+      .map((id) => tecnologias.find((t) => t.id === id)?.name || `#${id}`)
       .filter(Boolean);
   };
 
@@ -200,14 +198,6 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     } finally {
       setSavingId(null);
     }
-  };
-
-  const marcarTronco = (op: Evaluacion, on: boolean) => {
-    void guardarEtiqueta(op, patchMarcarTronco(op, on));
-  };
-
-  const toggleTech = (op: Evaluacion, techId: number, on: boolean) => {
-    void guardarEtiqueta(op, patchToggleTech(op, techId, on));
   };
 
   const aplicarMasivo = async (accion: AccionMasiva) => {
@@ -380,8 +370,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
           )}
         </div>
         <p className="f2-embed-detail__hint">
-          Tronco y tecnologías se marcan en la fila sin abrir. Aquí solo los
-          candados de seguridad.
+          La tech se asigna en el paso 2 (lote). Aquí solo candados de seguridad.
         </p>
       </div>
     );
@@ -407,8 +396,8 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       <header className="f2-embed-intro">
         <h3 className="f2-embed-intro__title">Etiquetar operaciones</h3>
         <p className="f2-embed-intro__text">
-          1) Filtra · 2) Aplica un lote · 3) Ajusta una fila si hace falta. Techs
-          nuevas: Ajustes → Gestión de Tecnologías.
+          1) Filtra · 2) Aplica un lote · 3) Revisa la tech en la lista (candados
+          por fila). Techs nuevas: Ajustes → Gestión de Tecnologías.
         </p>
       </header>
 
@@ -612,15 +601,11 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
           <h4 id="f2-lista-title" className="f2-embed-panel__title">
             Lista
           </h4>
-          <span className="f2-embed-panel__meta">
-            Editar o candados por fila
-          </span>
+          <span className="f2-embed-panel__meta">Tech asignada</span>
         </div>
         <ul className="f2-embed-op-list">
           {opsFiltradas.map((op) => {
-            const ids = idsDeOp(op);
             const candadosAbiertos = opSeleccionadaId === op.id;
-            const editando = opEditandoId === op.id;
             const nivelOp = nivelDeOp(op);
             const pos = posicionDeOp(op);
             const guardando = savingId === op.id || Boolean(bulkProgreso);
@@ -630,7 +615,7 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
             return (
               <li key={op.id} className="f2-embed-op-item">
                 <div
-                  className={`f2-embed-op-card${candadosAbiertos || editando ? ' is-active' : ''}`}
+                  className={`f2-embed-op-card${candadosAbiertos ? ' is-active' : ''}`}
                 >
                   <div className="f2-embed-op-card__main">
                     <span className="f2-embed-op-row__nivel">
@@ -639,79 +624,33 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
                     <div className="f2-embed-op-card__body">
                       <span className="f2-embed-op-row__nombre">{op.nombre}</span>
                       <span className="f2-embed-op-row__posicion">{pos.nombre}</span>
-                      <div className="f2-embed-op-row__chips" aria-label="Etiqueta actual">
+                      <div className="f2-embed-op-row__chips" aria-label="Tecnología asignada">
                         {labels.length === 0 ? (
                           <span className="f2-embed-chip f2-embed-chip--muted">
                             Sin etiqueta
                           </span>
                         ) : (
                           labels.map((label) => (
-                            <span key={label} className="f2-embed-chip">
+                            <span
+                              key={label}
+                              className={`f2-embed-chip${label === 'Tronco' ? ' f2-embed-chip--tronco' : ' f2-embed-chip--tech'}`}
+                            >
                               {label}
                             </span>
                           ))
                         )}
-                        {guardando && !editando && (
+                        {guardando && (
                           <span className="f2-embed-inline-saving">Guardando…</span>
                         )}
                       </div>
-                      {editando && (
-                        <div
-                          className="f2-embed-op-inline-techs"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        >
-                          <label className="f2-embed-inline-check">
-                            <input
-                              type="checkbox"
-                              disabled={guardando}
-                              checked={Boolean(op.es_tronco_comun)}
-                              onChange={(e) => marcarTronco(op, e.target.checked)}
-                            />
-                            <span>Tronco</span>
-                          </label>
-                          {techsActivas.map((t) => (
-                            <label key={t.id} className="f2-embed-inline-check">
-                              <input
-                                type="checkbox"
-                                disabled={guardando || Boolean(op.es_tronco_comun)}
-                                checked={!op.es_tronco_comun && ids.includes(t.id)}
-                                onChange={(e) =>
-                                  toggleTech(op, t.id, e.target.checked)
-                                }
-                              />
-                              <span>{t.name}</span>
-                            </label>
-                          ))}
-                          {guardando && (
-                            <span className="f2-embed-inline-saving">Guardando…</span>
-                          )}
-                        </div>
-                      )}
                     </div>
                     <div className="f2-embed-op-card__actions">
                       <button
                         type="button"
-                        className={`f2-embed-op-candado-btn${editando ? ' is-open' : ''}`}
-                        onClick={() => {
-                          setOpEditandoId(editando ? null : op.id);
-                          if (!editando) {
-                            setOpSeleccionadaId(null);
-                          }
-                        }}
-                        aria-expanded={editando}
-                      >
-                        {editando ? 'Cerrar' : 'Editar'}
-                      </button>
-                      <button
-                        type="button"
                         className={`f2-embed-op-candado-btn${tieneCandado ? ' has-candado' : ''}${candadosAbiertos ? ' is-open' : ''}`}
-                        onClick={() => {
-                          setOpSeleccionadaId(candadosAbiertos ? null : op.id);
-                          if (!candadosAbiertos) {
-                            setOpEditandoId(null);
-                          }
-                        }}
+                        onClick={() =>
+                          setOpSeleccionadaId(candadosAbiertos ? null : op.id)
+                        }
                         aria-expanded={candadosAbiertos}
                       >
                         Candados
