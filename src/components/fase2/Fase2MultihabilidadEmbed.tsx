@@ -15,6 +15,8 @@ import './Fase2MultihabilidadEmbed.css';
 
 type FiltroTech = 'todos' | 'sin' | 'tronco' | number;
 
+type AccionMasiva = 'anadir-tech' | 'quitar-tech' | 'tronco' | 'quitar-etiqueta';
+
 interface Fase2MultihabilidadEmbedProps {
   areaId: number;
 }
@@ -32,6 +34,11 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   const [filtroTech, setFiltroTech] = useState<FiltroTech>('todos');
   const [filtroPosicion, setFiltroPosicion] = useState<number | 'todos'>('todos');
   const [opSeleccionadaId, setOpSeleccionadaId] = useState<number | null>(null);
+  const [techMasivaId, setTechMasivaId] = useState<number | ''>('');
+  const [bulkProgreso, setBulkProgreso] = useState<{
+    hecho: number;
+    total: number;
+  } | null>(null);
 
   const cargarArea = useCallback(async (id: number) => {
     setError(null);
@@ -113,6 +120,50 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     });
   }, [ops, busqueda, filtroNivel, filtroTech, filtroPosicion]);
 
+  const patchMarcarTronco = (
+    op: Evaluacion,
+    on: boolean,
+  ): Parameters<typeof apiService.patchEvaluacion>[1] => ({
+    es_tronco_comun: on,
+    tecnologia_ids: [],
+    es_prerrequisito_seguridad: on
+      ? Boolean(op.es_prerrequisito_seguridad)
+      : false,
+    tronco_prioritario: on ? Boolean(op.tronco_prioritario) : false,
+    nivel_seguridad: on ? op.nivel_seguridad ?? null : null,
+  });
+
+  const patchToggleTech = (
+    op: Evaluacion,
+    techId: number,
+    on: boolean,
+  ): Parameters<typeof apiService.patchEvaluacion>[1] => {
+    const actuales = idsDeOp(op);
+    const next = on
+      ? Array.from(new Set([...actuales, techId]))
+      : actuales.filter((id) => id !== techId);
+    const keepCandado =
+      next.length > 0 &&
+      Boolean(op.es_prerrequisito_seguridad && !op.es_tronco_comun);
+    return {
+      es_tronco_comun: false,
+      tecnologia_ids: next,
+      es_prerrequisito_seguridad: keepCandado,
+      tronco_prioritario: false,
+      nivel_seguridad: keepCandado ? op.nivel_seguridad ?? null : null,
+    };
+  };
+
+  const patchQuitarEtiqueta = (): Parameters<
+    typeof apiService.patchEvaluacion
+  >[1] => ({
+    es_tronco_comun: false,
+    tecnologia_ids: [],
+    es_prerrequisito_seguridad: false,
+    tronco_prioritario: false,
+    nivel_seguridad: null,
+  });
+
   const guardarEtiqueta = async (
     op: Evaluacion,
     patch: Parameters<typeof apiService.patchEvaluacion>[1],
@@ -131,32 +182,95 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   };
 
   const marcarTronco = (op: Evaluacion, on: boolean) => {
-    void guardarEtiqueta(op, {
-      es_tronco_comun: on,
-      tecnologia_ids: [],
-      es_prerrequisito_seguridad: on
-        ? Boolean(op.es_prerrequisito_seguridad)
-        : false,
-      tronco_prioritario: on ? Boolean(op.tronco_prioritario) : false,
-      nivel_seguridad: on ? op.nivel_seguridad ?? null : null,
-    });
+    void guardarEtiqueta(op, patchMarcarTronco(op, on));
   };
 
   const toggleTech = (op: Evaluacion, techId: number, on: boolean) => {
-    const actuales = idsDeOp(op);
-    const next = on
-      ? Array.from(new Set([...actuales, techId]))
-      : actuales.filter((id) => id !== techId);
-    const keepCandado =
-      next.length > 0 &&
-      Boolean(op.es_prerrequisito_seguridad && !op.es_tronco_comun);
-    void guardarEtiqueta(op, {
-      es_tronco_comun: false,
-      tecnologia_ids: next,
-      es_prerrequisito_seguridad: keepCandado,
-      tronco_prioritario: false,
-      nivel_seguridad: keepCandado ? op.nivel_seguridad ?? null : null,
-    });
+    void guardarEtiqueta(op, patchToggleTech(op, techId, on));
+  };
+
+  const aplicarMasivo = async (accion: AccionMasiva) => {
+    const destino = opsFiltradas;
+    if (destino.length === 0 || bulkProgreso) {
+      return;
+    }
+    if (
+      (accion === 'anadir-tech' || accion === 'quitar-tech') &&
+      techMasivaId === ''
+    ) {
+      setError('Elige una tecnología para la acción masiva.');
+      return;
+    }
+
+    const techNombre =
+      techMasivaId === ''
+        ? ''
+        : techsActivas.find((t) => t.id === techMasivaId)?.name ||
+          `tech #${techMasivaId}`;
+    const n = destino.length;
+    const mensajes: Record<AccionMasiva, string> = {
+      'anadir-tech': `¿Añadir «${techNombre}» a las ${n} operaciones filtradas? (se quita Tronco si estaba)`,
+      'quitar-tech': `¿Quitar «${techNombre}» de las ${n} operaciones filtradas?`,
+      tronco: `¿Marcar Tronco en las ${n} operaciones filtradas? (se quitan tecnologías)`,
+      'quitar-etiqueta': `¿Quitar etiqueta (tronco/techs) de las ${n} operaciones filtradas?`,
+    };
+    if (!window.confirm(mensajes[accion])) {
+      return;
+    }
+
+    setError(null);
+    setBulkProgreso({ hecho: 0, total: n });
+    let fallos = 0;
+    const CONCURRENCY = 4;
+    let indice = 0;
+    let hechos = 0;
+
+    const worker = async () => {
+      while (indice < destino.length) {
+        const i = indice;
+        indice += 1;
+        const op = destino[i];
+        let patch: Parameters<typeof apiService.patchEvaluacion>[1];
+        switch (accion) {
+          case 'anadir-tech':
+            patch = patchToggleTech(op, techMasivaId as number, true);
+            break;
+          case 'quitar-tech':
+            patch = patchToggleTech(op, techMasivaId as number, false);
+            break;
+          case 'tronco':
+            patch = patchMarcarTronco(op, true);
+            break;
+          case 'quitar-etiqueta':
+            patch = patchQuitarEtiqueta();
+            break;
+          default: {
+            const _exhaustive: never = accion;
+            throw new Error(`Acción no soportada: ${_exhaustive}`);
+          }
+        }
+        try {
+          const updated = await apiService.patchEvaluacion(op.id, patch);
+          setOps((prev) =>
+            prev.map((e) => (e.id === op.id ? { ...e, ...updated } : e)),
+          );
+        } catch {
+          fallos += 1;
+        }
+        hechos += 1;
+        setBulkProgreso({ hecho: hechos, total: n });
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, n) }, () => worker()),
+    );
+    setBulkProgreso(null);
+    if (fallos > 0) {
+      setError(
+        `Acción masiva terminó con ${fallos} error${fallos === 1 ? '' : 'es'} de ${n}.`,
+      );
+    }
   };
 
   const marcarCandadoN1 = (op: Evaluacion, on: boolean) => {
@@ -265,8 +379,8 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
       {error && <p className="f2-embed-error">{error}</p>}
 
       <p className="f2-embed-count">
-        Ajuste fino por operación. Para crear/renombrar techs usa Ajustes → Gestión de
-        Tecnologías; para cargar masivo (tech + posiciones) usa Gestión de Plantillas.
+        Filtra y usa acciones masivas sobre las visibles, o ajusta fila a fila. Crear/renombrar
+        techs: Ajustes → Gestión de Tecnologías. Carga tech + posiciones: Gestión de Plantillas.
       </p>
 
       <FormularioTecnologias
@@ -365,13 +479,89 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
         posición en cada fila · candados al abrir
       </p>
 
+      <div className="f2-embed-bulk" aria-label="Acciones masivas sobre filtradas">
+        <p className="f2-embed-bulk__title">
+          Acciones masivas sobre las {opsFiltradas.length} filtradas
+        </p>
+        <div className="f2-embed-bulk__row">
+          <label className="f2-embed-bulk__tech">
+            <span className="f2-embed-bulk__label">Tecnología</span>
+            <select
+              value={techMasivaId === '' ? '' : String(techMasivaId)}
+              disabled={Boolean(bulkProgreso) || techsActivas.length === 0}
+              onChange={(e) => {
+                const v = e.target.value;
+                setTechMasivaId(v === '' ? '' : Number(v));
+              }}
+              aria-label="Tecnología para acción masiva"
+            >
+              <option value="">Elegir tech…</option>
+              {techsActivas.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="f2-embed-bulk__btn"
+            disabled={
+              Boolean(bulkProgreso) ||
+              opsFiltradas.length === 0 ||
+              techMasivaId === ''
+            }
+            onClick={() => void aplicarMasivo('anadir-tech')}
+          >
+            Añadir tech a filtradas
+          </button>
+          <button
+            type="button"
+            className="f2-embed-bulk__btn"
+            disabled={
+              Boolean(bulkProgreso) ||
+              opsFiltradas.length === 0 ||
+              techMasivaId === ''
+            }
+            onClick={() => void aplicarMasivo('quitar-tech')}
+          >
+            Quitar tech de filtradas
+          </button>
+          <button
+            type="button"
+            className="f2-embed-bulk__btn f2-embed-bulk__btn--primary"
+            disabled={Boolean(bulkProgreso) || opsFiltradas.length === 0}
+            onClick={() => void aplicarMasivo('tronco')}
+          >
+            Marcar Tronco
+          </button>
+          <button
+            type="button"
+            className="f2-embed-bulk__btn f2-embed-bulk__btn--danger"
+            disabled={Boolean(bulkProgreso) || opsFiltradas.length === 0}
+            onClick={() => void aplicarMasivo('quitar-etiqueta')}
+          >
+            Quitar etiqueta
+          </button>
+        </div>
+        {bulkProgreso && (
+          <p className="f2-embed-bulk__progress" aria-live="polite">
+            Aplicando {bulkProgreso.hecho}/{bulkProgreso.total}…
+          </p>
+        )}
+        <p className="f2-embed-bulk__hint">
+          Filtra primero (nivel, posición, sin etiqueta, etc.) y aplica el lote.
+          Sigue disponible el ajuste fila a fila abajo.
+        </p>
+      </div>
+
       <ul className="f2-embed-op-list">
         {opsFiltradas.map((op) => {
           const ids = idsDeOp(op);
           const activa = opSeleccionadaId === op.id;
           const nivelOp = nivelDeOp(op);
           const pos = posicionDeOp(op);
-          const guardando = savingId === op.id;
+          const guardando = savingId === op.id || Boolean(bulkProgreso);
           const tieneCandado = Boolean(op.es_prerrequisito_seguridad);
 
           return (
