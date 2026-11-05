@@ -35,6 +35,9 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   const [filtroPosicion, setFiltroPosicion] = useState<number | 'todos'>('todos');
   const [opSeleccionadaId, setOpSeleccionadaId] = useState<number | null>(null);
   const [techMasivaId, setTechMasivaId] = useState<number | ''>('');
+  const [accionMasiva, setAccionMasiva] = useState<AccionMasiva>('anadir-tech');
+  const [panelTechsAbierto, setPanelTechsAbierto] = useState(false);
+  const [opEditandoId, setOpEditandoId] = useState<number | null>(null);
   const [bulkProgreso, setBulkProgreso] = useState<{
     hecho: number;
     total: number;
@@ -54,6 +57,8 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
   useEffect(() => {
     setCargado(false);
     setOpSeleccionadaId(null);
+    setOpEditandoId(null);
+    setPanelTechsAbierto(false);
     setFiltroTech('todos');
     setFiltroPosicion('todos');
     void cargarArea(areaId);
@@ -63,6 +68,22 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     () => tecnologias.filter((t) => t.is_active),
     [tecnologias],
   );
+
+  const etiquetasOp = (op: Evaluacion): string[] => {
+    if (op.es_tronco_comun) {
+      return ['Tronco'];
+    }
+    const ids = idsDeOp(op);
+    if (ids.length === 0) {
+      return [];
+    }
+    return ids
+      .map((id) => techsActivas.find((t) => t.id === id)?.name || `#${id}`)
+      .filter(Boolean);
+  };
+
+  const necesitaTechMasiva =
+    accionMasiva === 'anadir-tech' || accionMasiva === 'quitar-tech';
 
   const posicionesFiltro = useMemo(() => {
     const map = new Map<number, string>();
@@ -374,264 +395,339 @@ const Fase2MultihabilidadEmbed: React.FC<Fase2MultihabilidadEmbedProps> = ({
     );
   }
 
+  const bulkDisabled =
+    Boolean(bulkProgreso) ||
+    opsFiltradas.length === 0 ||
+    (necesitaTechMasiva && techMasivaId === '');
+
   return (
     <div className="f2-embed">
       {error && <p className="f2-embed-error">{error}</p>}
 
-      <p className="f2-embed-count">
-        Filtra y usa acciones masivas sobre las visibles, o ajusta fila a fila. Crear/renombrar
-        techs: Ajustes → Gestión de Tecnologías. Carga tech + posiciones: Gestión de Plantillas.
-      </p>
+      <header className="f2-embed-intro">
+        <h3 className="f2-embed-intro__title">Etiquetar operaciones</h3>
+        <p className="f2-embed-intro__text">
+          1) Filtra · 2) Aplica un lote · 3) Ajusta una fila si hace falta. Techs
+          nuevas: Ajustes → Gestión de Tecnologías.
+        </p>
+      </header>
 
-      <FormularioTecnologias
-        areaId={areaId}
-        tecnologias={tecnologias}
-        onRefresh={() => cargarArea(areaId)}
-        onError={setError}
-      />
-
-      <div className="f2-embed-toolbar">
-        <div className="f2-embed-search">
-          <FaSearch aria-hidden />
-          <input
-            type="search"
-            placeholder="Buscar operación..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            aria-label="Buscar operación"
+      <details
+        className="f2-embed-advanced"
+        open={panelTechsAbierto}
+        onToggle={(e) =>
+          setPanelTechsAbierto((e.target as HTMLDetailsElement).open)
+        }
+      >
+        <summary className="f2-embed-advanced__summary">
+          Tecnologías del área ({tecnologias.length}) — opcional
+        </summary>
+        <div className="f2-embed-advanced__body">
+          <FormularioTecnologias
+            areaId={areaId}
+            tecnologias={tecnologias}
+            onRefresh={() => cargarArea(areaId)}
+            onError={setError}
           />
         </div>
-        <div className="f2-embed-nivel-filters" role="tablist" aria-label="Filtrar por nivel">
-          {(['todos', 1, 2, 3, 4] as const).map((n) => (
-            <button
-              key={String(n)}
-              type="button"
-              role="tab"
-              aria-selected={filtroNivel === n}
-              className={`f2-embed-nivel-chip${filtroNivel === n ? ' is-active' : ''}`}
-              onClick={() => setFiltroNivel(n)}
-            >
-              {n === 'todos' ? 'Todos' : `N${n}`}
-            </button>
-          ))}
+      </details>
+
+      <section className="f2-embed-panel" aria-labelledby="f2-filtro-title">
+        <div className="f2-embed-panel__head">
+          <span className="f2-embed-panel__step">1</span>
+          <h4 id="f2-filtro-title" className="f2-embed-panel__title">
+            Filtrar
+          </h4>
+          <span className="f2-embed-panel__meta">
+            {opsFiltradas.length} de {ops.length}
+          </span>
         </div>
-      </div>
-
-      <div
-        className="f2-embed-nivel-filters f2-embed-tech-filters"
-        role="tablist"
-        aria-label="Filtrar por posición"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={filtroPosicion === 'todos'}
-          className={`f2-embed-nivel-chip${filtroPosicion === 'todos' ? ' is-active' : ''}`}
-          onClick={() => setFiltroPosicion('todos')}
-        >
-          Todas posiciones
-        </button>
-        {posicionesFiltro.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="tab"
-            aria-selected={filtroPosicion === p.id}
-            className={`f2-embed-nivel-chip${filtroPosicion === p.id ? ' is-active' : ''}`}
-            onClick={() => setFiltroPosicion(p.id)}
-          >
-            {p.nombre}
-          </button>
-        ))}
-      </div>
-
-      <div
-        className="f2-embed-nivel-filters f2-embed-tech-filters"
-        role="tablist"
-        aria-label="Filtrar por tecnología"
-      >
-        {(
-          [
-            { key: 'todos' as const, label: 'Todas' },
-            { key: 'sin' as const, label: 'Sin etiqueta' },
-            { key: 'tronco' as const, label: 'Tronco' },
-            ...techsActivas.map((t) => ({
-              key: t.id as FiltroTech,
-              label: t.name,
-            })),
-          ] as { key: FiltroTech; label: string }[]
-        ).map((item) => (
-          <button
-            key={String(item.key)}
-            type="button"
-            role="tab"
-            aria-selected={filtroTech === item.key}
-            className={`f2-embed-nivel-chip${filtroTech === item.key ? ' is-active' : ''}`}
-            onClick={() => setFiltroTech(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      <p className="f2-embed-count">
-        {opsFiltradas.length} operación{opsFiltradas.length === 1 ? '' : 'es'} ·
-        posición en cada fila · candados al abrir
-      </p>
-
-      <div className="f2-embed-bulk" aria-label="Acciones masivas sobre filtradas">
-        <p className="f2-embed-bulk__title">
-          Acciones masivas sobre las {opsFiltradas.length} filtradas
-        </p>
-        <div className="f2-embed-bulk__row">
-          <label className="f2-embed-bulk__tech">
-            <span className="f2-embed-bulk__label">Tecnología</span>
-            <select
-              value={techMasivaId === '' ? '' : String(techMasivaId)}
-              disabled={Boolean(bulkProgreso) || techsActivas.length === 0}
-              onChange={(e) => {
-                const v = e.target.value;
-                setTechMasivaId(v === '' ? '' : Number(v));
-              }}
-              aria-label="Tecnología para acción masiva"
+        <div className="f2-embed-panel__body">
+          <div className="f2-embed-toolbar">
+            <div className="f2-embed-search">
+              <FaSearch aria-hidden />
+              <input
+                type="search"
+                placeholder="Buscar operación o posición..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                aria-label="Buscar operación"
+              />
+            </div>
+          </div>
+          <div className="f2-embed-filter-group">
+            <span className="f2-embed-filter-group__label">Nivel</span>
+            <div
+              className="f2-embed-nivel-filters"
+              role="tablist"
+              aria-label="Filtrar por nivel"
             >
-              <option value="">Elegir tech…</option>
-              {techsActivas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
+              {(['todos', 1, 2, 3, 4] as const).map((n) => (
+                <button
+                  key={String(n)}
+                  type="button"
+                  role="tab"
+                  aria-selected={filtroNivel === n}
+                  className={`f2-embed-nivel-chip${filtroNivel === n ? ' is-active' : ''}`}
+                  onClick={() => setFiltroNivel(n)}
+                >
+                  {n === 'todos' ? 'Todos' : `N${n}`}
+                </button>
               ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="f2-embed-bulk__btn"
-            disabled={
-              Boolean(bulkProgreso) ||
-              opsFiltradas.length === 0 ||
-              techMasivaId === ''
-            }
-            onClick={() => void aplicarMasivo('anadir-tech')}
-          >
-            Añadir tech a filtradas
-          </button>
-          <button
-            type="button"
-            className="f2-embed-bulk__btn"
-            disabled={
-              Boolean(bulkProgreso) ||
-              opsFiltradas.length === 0 ||
-              techMasivaId === ''
-            }
-            onClick={() => void aplicarMasivo('quitar-tech')}
-          >
-            Quitar tech de filtradas
-          </button>
-          <button
-            type="button"
-            className="f2-embed-bulk__btn f2-embed-bulk__btn--primary"
-            disabled={Boolean(bulkProgreso) || opsFiltradas.length === 0}
-            onClick={() => void aplicarMasivo('tronco')}
-          >
-            Marcar Tronco
-          </button>
-          <button
-            type="button"
-            className="f2-embed-bulk__btn f2-embed-bulk__btn--danger"
-            disabled={Boolean(bulkProgreso) || opsFiltradas.length === 0}
-            onClick={() => void aplicarMasivo('quitar-etiqueta')}
-          >
-            Quitar etiqueta
-          </button>
+            </div>
+          </div>
+          <div className="f2-embed-filter-group">
+            <span className="f2-embed-filter-group__label">Posición</span>
+            <div
+              className="f2-embed-nivel-filters f2-embed-tech-filters"
+              role="tablist"
+              aria-label="Filtrar por posición"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={filtroPosicion === 'todos'}
+                className={`f2-embed-nivel-chip${filtroPosicion === 'todos' ? ' is-active' : ''}`}
+                onClick={() => setFiltroPosicion('todos')}
+              >
+                Todas
+              </button>
+              {posicionesFiltro.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filtroPosicion === p.id}
+                  className={`f2-embed-nivel-chip${filtroPosicion === p.id ? ' is-active' : ''}`}
+                  onClick={() => setFiltroPosicion(p.id)}
+                >
+                  {p.nombre}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="f2-embed-filter-group">
+            <span className="f2-embed-filter-group__label">Etiqueta</span>
+            <div
+              className="f2-embed-nivel-filters f2-embed-tech-filters"
+              role="tablist"
+              aria-label="Filtrar por tecnología"
+            >
+              {(
+                [
+                  { key: 'todos' as const, label: 'Todas' },
+                  { key: 'sin' as const, label: 'Sin etiqueta' },
+                  { key: 'tronco' as const, label: 'Tronco' },
+                  ...techsActivas.map((t) => ({
+                    key: t.id as FiltroTech,
+                    label: t.name,
+                  })),
+                ] as { key: FiltroTech; label: string }[]
+              ).map((item) => (
+                <button
+                  key={String(item.key)}
+                  type="button"
+                  role="tab"
+                  aria-selected={filtroTech === item.key}
+                  className={`f2-embed-nivel-chip${filtroTech === item.key ? ' is-active' : ''}`}
+                  onClick={() => setFiltroTech(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        {bulkProgreso && (
-          <p className="f2-embed-bulk__progress" aria-live="polite">
-            Aplicando {bulkProgreso.hecho}/{bulkProgreso.total}…
-          </p>
-        )}
-        <p className="f2-embed-bulk__hint">
-          Filtra primero (nivel, posición, sin etiqueta, etc.) y aplica el lote.
-          Sigue disponible el ajuste fila a fila abajo.
-        </p>
-      </div>
+      </section>
 
-      <ul className="f2-embed-op-list">
-        {opsFiltradas.map((op) => {
-          const ids = idsDeOp(op);
-          const activa = opSeleccionadaId === op.id;
-          const nivelOp = nivelDeOp(op);
-          const pos = posicionDeOp(op);
-          const guardando = savingId === op.id || Boolean(bulkProgreso);
-          const tieneCandado = Boolean(op.es_prerrequisito_seguridad);
+      <section className="f2-embed-panel f2-embed-panel--accent" aria-labelledby="f2-lote-title">
+        <div className="f2-embed-panel__head">
+          <span className="f2-embed-panel__step">2</span>
+          <h4 id="f2-lote-title" className="f2-embed-panel__title">
+            Aplicar a filtradas
+          </h4>
+          <span className="f2-embed-panel__meta">
+            {opsFiltradas.length} op{opsFiltradas.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <div className="f2-embed-panel__body f2-embed-bulk">
+          <div className="f2-embed-bulk__row">
+            <label className="f2-embed-bulk__tech">
+              <span className="f2-embed-bulk__label">Qué hacer</span>
+              <select
+                value={accionMasiva}
+                disabled={Boolean(bulkProgreso)}
+                onChange={(e) => setAccionMasiva(e.target.value as AccionMasiva)}
+                aria-label="Acción masiva"
+              >
+                <option value="anadir-tech">Añadir tecnología</option>
+                <option value="quitar-tech">Quitar tecnología</option>
+                <option value="tronco">Marcar Tronco</option>
+                <option value="quitar-etiqueta">Quitar etiqueta</option>
+              </select>
+            </label>
+            {necesitaTechMasiva && (
+              <label className="f2-embed-bulk__tech">
+                <span className="f2-embed-bulk__label">Tecnología</span>
+                <select
+                  value={techMasivaId === '' ? '' : String(techMasivaId)}
+                  disabled={Boolean(bulkProgreso) || techsActivas.length === 0}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTechMasivaId(v === '' ? '' : Number(v));
+                  }}
+                  aria-label="Tecnología para acción masiva"
+                >
+                  <option value="">Elegir…</option>
+                  {techsActivas.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              type="button"
+              className="f2-embed-bulk__btn f2-embed-bulk__btn--primary f2-embed-bulk__apply"
+              disabled={bulkDisabled}
+              onClick={() => void aplicarMasivo(accionMasiva)}
+            >
+              {bulkProgreso
+                ? `${bulkProgreso.hecho}/${bulkProgreso.total}…`
+                : `Aplicar a ${opsFiltradas.length}`}
+            </button>
+          </div>
+          {bulkProgreso && (
+            <p className="f2-embed-bulk__progress" aria-live="polite">
+              Aplicando lote…
+            </p>
+          )}
+        </div>
+      </section>
 
-          return (
-            <li key={op.id} className="f2-embed-op-item">
-              <div className={`f2-embed-op-card${activa ? ' is-active' : ''}`}>
-                <div className="f2-embed-op-card__main">
-                  <span className="f2-embed-op-row__nivel">
-                    {nivelOp != null ? `N${nivelOp}` : 'N?'}
-                  </span>
-                  <div className="f2-embed-op-card__body">
-                    <span className="f2-embed-op-row__nombre">{op.nombre}</span>
-                    <span className="f2-embed-op-row__posicion">{pos.nombre}</span>
-                    <div
-                      className="f2-embed-op-inline-techs"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    >
-                      <label className="f2-embed-inline-check">
-                        <input
-                          type="checkbox"
-                          disabled={guardando}
-                          checked={Boolean(op.es_tronco_comun)}
-                          onChange={(e) => marcarTronco(op, e.target.checked)}
-                        />
-                        <span>Tronco</span>
-                      </label>
-                      {techsActivas.map((t) => (
-                        <label key={t.id} className="f2-embed-inline-check">
-                          <input
-                            type="checkbox"
-                            disabled={guardando || Boolean(op.es_tronco_comun)}
-                            checked={!op.es_tronco_comun && ids.includes(t.id)}
-                            onChange={(e) =>
-                              toggleTech(op, t.id, e.target.checked)
-                            }
-                          />
-                          <span>{t.name}</span>
-                        </label>
-                      ))}
-                      {guardando && (
-                        <span className="f2-embed-inline-saving">Guardando…</span>
+      <section className="f2-embed-panel f2-embed-panel--list" aria-labelledby="f2-lista-title">
+        <div className="f2-embed-panel__head">
+          <span className="f2-embed-panel__step">3</span>
+          <h4 id="f2-lista-title" className="f2-embed-panel__title">
+            Lista
+          </h4>
+          <span className="f2-embed-panel__meta">
+            Editar o candados por fila
+          </span>
+        </div>
+        <ul className="f2-embed-op-list">
+          {opsFiltradas.map((op) => {
+            const ids = idsDeOp(op);
+            const candadosAbiertos = opSeleccionadaId === op.id;
+            const editando = opEditandoId === op.id;
+            const nivelOp = nivelDeOp(op);
+            const pos = posicionDeOp(op);
+            const guardando = savingId === op.id || Boolean(bulkProgreso);
+            const tieneCandado = Boolean(op.es_prerrequisito_seguridad);
+            const labels = etiquetasOp(op);
+
+            return (
+              <li key={op.id} className="f2-embed-op-item">
+                <div
+                  className={`f2-embed-op-card${candadosAbiertos || editando ? ' is-active' : ''}`}
+                >
+                  <div className="f2-embed-op-card__main">
+                    <span className="f2-embed-op-row__nivel">
+                      {nivelOp != null ? `N${nivelOp}` : 'N?'}
+                    </span>
+                    <div className="f2-embed-op-card__body">
+                      <span className="f2-embed-op-row__nombre">{op.nombre}</span>
+                      <span className="f2-embed-op-row__posicion">{pos.nombre}</span>
+                      <div className="f2-embed-op-row__chips" aria-label="Etiqueta actual">
+                        {labels.length === 0 ? (
+                          <span className="f2-embed-chip f2-embed-chip--muted">
+                            Sin etiqueta
+                          </span>
+                        ) : (
+                          labels.map((label) => (
+                            <span key={label} className="f2-embed-chip">
+                              {label}
+                            </span>
+                          ))
+                        )}
+                        {guardando && !editando && (
+                          <span className="f2-embed-inline-saving">Guardando…</span>
+                        )}
+                      </div>
+                      {editando && (
+                        <div
+                          className="f2-embed-op-inline-techs"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <label className="f2-embed-inline-check">
+                            <input
+                              type="checkbox"
+                              disabled={guardando}
+                              checked={Boolean(op.es_tronco_comun)}
+                              onChange={(e) => marcarTronco(op, e.target.checked)}
+                            />
+                            <span>Tronco</span>
+                          </label>
+                          {techsActivas.map((t) => (
+                            <label key={t.id} className="f2-embed-inline-check">
+                              <input
+                                type="checkbox"
+                                disabled={guardando || Boolean(op.es_tronco_comun)}
+                                checked={!op.es_tronco_comun && ids.includes(t.id)}
+                                onChange={(e) =>
+                                  toggleTech(op, t.id, e.target.checked)
+                                }
+                              />
+                              <span>{t.name}</span>
+                            </label>
+                          ))}
+                          {guardando && (
+                            <span className="f2-embed-inline-saving">Guardando…</span>
+                          )}
+                        </div>
                       )}
                     </div>
+                    <div className="f2-embed-op-card__actions">
+                      <button
+                        type="button"
+                        className={`f2-embed-op-candado-btn${editando ? ' is-open' : ''}`}
+                        onClick={() => {
+                          setOpEditandoId(editando ? null : op.id);
+                          if (!editando) {
+                            setOpSeleccionadaId(null);
+                          }
+                        }}
+                        aria-expanded={editando}
+                      >
+                        {editando ? 'Cerrar' : 'Editar'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`f2-embed-op-candado-btn${tieneCandado ? ' has-candado' : ''}${candadosAbiertos ? ' is-open' : ''}`}
+                        onClick={() => {
+                          setOpSeleccionadaId(candadosAbiertos ? null : op.id);
+                          if (!candadosAbiertos) {
+                            setOpEditandoId(null);
+                          }
+                        }}
+                        aria-expanded={candadosAbiertos}
+                      >
+                        Candados
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className={`f2-embed-op-candado-btn${tieneCandado ? ' has-candado' : ''}${activa ? ' is-open' : ''}`}
-                    onClick={() =>
-                      setOpSeleccionadaId(activa ? null : op.id)
-                    }
-                    aria-expanded={activa}
-                    aria-label={
-                      activa
-                        ? 'Cerrar candados de seguridad'
-                        : 'Abrir candados de seguridad'
-                    }
-                  >
-                    Candados
-                  </button>
+                  {candadosAbiertos && renderCandados(op)}
                 </div>
-                {activa && renderCandados(op)}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      {opsFiltradas.length === 0 && (
-        <p className="f2-embed-empty">No hay operaciones con ese filtro.</p>
-      )}
+              </li>
+            );
+          })}
+        </ul>
+        {opsFiltradas.length === 0 && (
+          <p className="f2-embed-empty">No hay operaciones con ese filtro.</p>
+        )}
+      </section>
     </div>
   );
 };
